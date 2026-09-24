@@ -50,28 +50,17 @@ function setLocalStore<T>(key: string, items: T[]) {
 export async function fetchStudents(): Promise<StudentProfile[]> {
   try {
     if (typeof window !== 'undefined') {
-      const res = await fetch('/api/admin/presence');
+      const res = await fetch('/api/admin/students');
       const data = await res.json();
-      if (data.success && Array.isArray(data.students) && data.students.length > 0) {
-        return data.students.map((s: any) => ({
-          id: s.student_id,
-          email: `${s.register_number.toLowerCase()}@student.jit.edu`,
-          full_name: s.full_name,
-          role: 'student' as const,
-          register_number: s.register_number,
-          department: s.department,
-          year: s.year,
-          section: s.section || 'A',
-          status: 'active' as const,
-          created_at: new Date(s.last_seen || Date.now()).toISOString(),
-        }));
+      if (data.success && Array.isArray(data.students)) {
+        return data.students;
       }
     }
   } catch (err) {
     console.warn('API fetchStudents error:', err);
   }
 
-  return getLocalStore<StudentProfile>(STORAGE_KEYS.STUDENTS);
+  return [];
 }
 
 export async function saveStudent(student: StudentProfile): Promise<boolean> {
@@ -95,11 +84,7 @@ export async function saveStudent(student: StudentProfile): Promise<boolean> {
     console.warn('API saveStudent error:', err);
   }
 
-  const existing = getLocalStore<StudentProfile>(STORAGE_KEYS.STUDENTS);
-  const updated = existing.filter((s) => s.id !== student.id && s.register_number !== student.register_number);
-  updated.push(student);
-  setLocalStore(STORAGE_KEYS.STUDENTS, updated);
-  return true;
+  return false;
 }
 
 // ==============================================================================

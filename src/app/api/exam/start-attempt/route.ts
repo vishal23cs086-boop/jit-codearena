@@ -13,7 +13,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await startOrGetAssessmentAttempt(testId, studentId);
+    const sessionVersion = body.session_version ?? body.sessionVersion;
+    const result = await startOrGetAssessmentAttempt(
+      testId,
+      studentId,
+      sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined
+    );
 
     return NextResponse.json({
       success: true,

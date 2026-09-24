@@ -6,29 +6,41 @@ import { TestCase } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
     const {
       questionId,
       code,
       attemptId,
       studentId,
+      sessionVersion,
+      session_version,
       attemptNumber = 1,
       testCases: clientTestCases,
       timeLimitMs: clientTimeLimit,
       marks: clientMarks,
-    } = await req.json();
+    } = body;
 
     if (!questionId || typeof code !== 'string') {
       return NextResponse.json({ error: 'Question ID and code are required' }, { status: 400 });
     }
 
-    // Strict Academic Year & Attempt Assignment Guard
+    // Strict Academic Year & Attempt Assignment Guard & Student Validation
     if (studentId) {
       const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
-      const verification = await verifyQuestionForStudentAttempt(studentId, questionId, attemptId);
+      const verVersion = sessionVersion ?? session_version;
+      const verification = await verifyQuestionForStudentAttempt(
+        studentId,
+        questionId,
+        attemptId,
+        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
+      );
       if (!verification.valid) {
         return NextResponse.json(
-          { error: verification.error || 'Submission rejected: question does not belong to your academic year or attempt.' },
-          { status: 403 }
+          {
+            error: verification.error || 'Submission rejected.',
+            message: verification.error || 'Submission rejected.',
+          },
+          { status: verification.code || 401 }
         );
       }
     }

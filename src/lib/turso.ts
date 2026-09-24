@@ -171,7 +171,10 @@ export async function initTursoDb(): Promise<void> {
   }
 
   const alters = [
-    'ALTER TABLE students ADD COLUMN is_archived INTEGER DEFAULT 0;',
+    'ALTER TABLE students ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
+    'ALTER TABLE students ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;',
+    'ALTER TABLE students ADD COLUMN account_deleted INTEGER NOT NULL DEFAULT 0;',
+    'ALTER TABLE students ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1;',
     'ALTER TABLE questions ADD COLUMN year INTEGER NOT NULL DEFAULT 2;',
     "ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT 'Algorithms';",
     "ALTER TABLE questions ADD COLUMN input_format TEXT DEFAULT '';",
@@ -185,6 +188,7 @@ export async function initTursoDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_tests_year ON tests(year);',
     'CREATE INDEX IF NOT EXISTS idx_attempt_questions_attempt ON attempt_questions(attempt_id);',
     'CREATE INDEX IF NOT EXISTS idx_attempt_questions_question ON attempt_questions(question_id);',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_students_reg_no_upper ON students(UPPER(TRIM(register_number)));',
   ];
 
   for (const alt of alters) {
@@ -195,16 +199,78 @@ export async function initTursoDb(): Promise<void> {
     }
   }
 
+  try {
+    await client.execute('UPDATE students SET is_active = 1 WHERE is_active IS NULL');
+    await client.execute('UPDATE students SET is_archived = 0 WHERE is_archived IS NULL');
+    await client.execute('UPDATE students SET account_deleted = 0 WHERE account_deleted IS NULL');
+    await client.execute('UPDATE students SET session_version = 1 WHERE session_version IS NULL');
+  } catch {
+    // safe non-blocking
+  }
+
   isInitialized = true;
 }
 
 // -------------------------------------------------------------
-// STUDENT REPOSITORY
+// STUDENT REPOSITORY & SESSION VALIDATION
 // -------------------------------------------------------------
+export async function validateStudentAccountAndSession(
+  studentId: string,
+  sessionVersion?: number
+): Promise<{
+  valid: boolean;
+  code: number;
+  message: string;
+  student?: any;
+}> {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  if (!studentId || typeof studentId !== 'string') {
+    return { valid: false, code: 401, message: 'Authentication required. Please log in.' };
+  }
+
+  const res = await client.execute({
+    sql: `SELECT id, register_number, full_name, email, department, year, section, phone,
+                 status, is_active, is_archived, account_deleted, session_version
+          FROM students
+          WHERE id = ? LIMIT 1`,
+    args: [studentId],
+  });
+
+  if (res.rows.length === 0) {
+    return { valid: false, code: 401, message: 'Your account is no longer active.' };
+  }
+
+  const student: any = res.rows[0];
+
+  if (Number(student.account_deleted || 0) === 1) {
+    return { valid: false, code: 401, message: 'Your account is no longer active.' };
+  }
+
+  if (Number(student.is_archived || 0) === 1 || student.status === 'archived') {
+    return { valid: false, code: 401, message: 'Your account is no longer active.' };
+  }
+
+  if (Number(student.is_active ?? 1) === 0 || student.status === 'disabled' || student.status === 'suspended') {
+    return { valid: false, code: 401, message: 'Your account has been disabled. Please contact the administrator.' };
+  }
+
+  if (sessionVersion !== undefined && sessionVersion !== null) {
+    const clientVersion = Number(sessionVersion);
+    const dbVersion = Number(student.session_version || 1);
+    if (clientVersion !== dbVersion) {
+      return { valid: false, code: 401, message: 'Your session has expired or was invalidated. Please log in again.' };
+    }
+  }
+
+  return { valid: true, code: 200, message: 'Active', student };
+}
+
 export async function getStudentsFromDb() {
   await initTursoDb();
   const client = getTursoClient();
-  const res = await client.execute('SELECT * FROM students ORDER BY register_number ASC');
+  const res = await client.execute('SELECT * FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) ORDER BY register_number ASC');
   return res.rows.map((row: any) => ({
     id: String(row.id),
     email: String(row.email),
@@ -216,6 +282,9 @@ export async function getStudentsFromDb() {
     section: String(row.section || 'A'),
     phone: row.phone ? String(row.phone) : undefined,
     status: (row.status as 'active' | 'disabled' | 'suspended') || 'active',
+    is_active: Number(row.is_active ?? 1) === 1,
+    is_archived: Number(row.is_archived || 0) === 1,
+    session_version: Number(row.session_version || 1),
     created_at: String(row.created_at),
   }));
 }
@@ -223,9 +292,10 @@ export async function getStudentsFromDb() {
 export async function findStudentByRegNo(registerNumber: string) {
   await initTursoDb();
   const client = getTursoClient();
+  const normalized = registerNumber.trim().toUpperCase();
   const res = await client.execute({
-    sql: 'SELECT * FROM students WHERE UPPER(register_number) = UPPER(?) LIMIT 1',
-    args: [registerNumber.trim().toUpperCase()],
+    sql: 'SELECT * FROM students WHERE UPPER(TRIM(register_number)) = ? LIMIT 1',
+    args: [normalized],
   });
   if (res.rows.length === 0) return null;
   const row: any = res.rows[0];
@@ -234,13 +304,17 @@ export async function findStudentByRegNo(registerNumber: string) {
     email: String(row.email),
     full_name: String(row.full_name),
     role: 'student' as const,
-    register_number: String(row.register_number),
+    register_number: String(row.register_number).trim().toUpperCase(),
     department: String(row.department),
     year: Number(row.year),
     section: String(row.section || 'A'),
     phone: row.phone ? String(row.phone) : undefined,
     password_hash: row.password_hash ? String(row.password_hash) : undefined,
     status: (row.status as 'active' | 'disabled' | 'suspended' | 'archived') || 'active',
+    is_active: Number(row.is_active ?? 1) === 1,
+    is_archived: Number(row.is_archived || 0) === 1,
+    account_deleted: Number(row.account_deleted || 0) === 1,
+    session_version: Number(row.session_version || 1),
     created_at: String(row.created_at),
   };
 }
@@ -256,13 +330,22 @@ export async function upsertStudentInDb(student: {
   phone?: string;
   password_hash?: string;
   status?: string;
+  is_active?: number;
+  is_archived?: number;
+  account_deleted?: number;
+  session_version?: number;
 }) {
   await initTursoDb();
   const client = getTursoClient();
   const now = new Date().toISOString();
+  const cleanRegNo = student.register_number.trim().toUpperCase();
+
   await client.execute({
-    sql: `INSERT INTO students (id, register_number, full_name, email, department, year, section, phone, password_hash, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO students (
+            id, register_number, full_name, email, department, year, section, phone,
+            password_hash, status, is_active, is_archived, account_deleted, session_version,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(register_number) DO UPDATE SET
             full_name = excluded.full_name,
             email = excluded.email,
@@ -272,18 +355,26 @@ export async function upsertStudentInDb(student: {
             phone = excluded.phone,
             password_hash = COALESCE(excluded.password_hash, students.password_hash),
             status = excluded.status,
+            is_active = excluded.is_active,
+            is_archived = excluded.is_archived,
+            account_deleted = excluded.account_deleted,
+            session_version = excluded.session_version,
             updated_at = excluded.updated_at`,
     args: [
       student.id,
-      student.register_number.toUpperCase(),
-      student.full_name,
+      cleanRegNo,
+      student.full_name.trim(),
       student.email,
-      student.department,
+      student.department.trim(),
       student.year,
       student.section || 'A',
       student.phone || null,
       student.password_hash || null,
       student.status || 'active',
+      student.is_active ?? 1,
+      student.is_archived ?? 0,
+      student.account_deleted ?? 0,
+      student.session_version ?? 1,
       now,
       now,
     ],
@@ -294,7 +385,7 @@ export async function upsertStudentInDb(student: {
 export async function getStudentsWithDetails() {
   await initTursoDb();
   const client = getTursoClient();
-  const res = await client.execute('SELECT * FROM students ORDER BY register_number ASC');
+  const res = await client.execute('SELECT * FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) ORDER BY register_number ASC');
   const students = [];
 
   for (const row of res.rows) {
@@ -314,7 +405,7 @@ export async function getStudentsWithDetails() {
 
     // Last login from login_activity
     const logRes = await client.execute({
-      sql: 'SELECT login_time FROM login_activity WHERE user_id = ? OR UPPER(register_number) = UPPER(?) ORDER BY login_time DESC LIMIT 1',
+      sql: 'SELECT login_time FROM login_activity WHERE user_id = ? OR UPPER(TRIM(register_number)) = UPPER(?) ORDER BY login_time DESC LIMIT 1',
       args: [studentId, regNo],
     });
     const lastLogin = logRes.rows[0]?.login_time ? String(logRes.rows[0]?.login_time) : null;
@@ -330,7 +421,10 @@ export async function getStudentsWithDetails() {
       section: String(row.section || 'A'),
       phone: row.phone ? String(row.phone) : undefined,
       status: (row.status as 'active' | 'disabled' | 'archived') || 'active',
+      is_active: Number(row.is_active ?? 1) === 1,
       is_archived: Number(row.is_archived || 0) === 1,
+      account_deleted: Number(row.account_deleted || 0) === 1,
+      session_version: Number(row.session_version || 1),
       created_at: String(row.created_at),
       updated_at: row.updated_at ? String(row.updated_at) : undefined,
       attempts_count: attemptsCount,
@@ -591,15 +685,24 @@ export async function setStudentStatus(
 
   const now = new Date().toISOString();
   const isArchived = newStatus === 'archived' ? 1 : 0;
+  const isActive = newStatus === 'active' ? 1 : 0;
 
+  // Invalidate any active session by bumping session_version
   await client.execute({
-    sql: 'UPDATE students SET status = ?, is_archived = ?, updated_at = ? WHERE id = ?',
-    args: [newStatus, isArchived, now, studentId],
+    sql: `UPDATE students SET
+            status = ?,
+            is_active = ?,
+            is_archived = ?,
+            session_version = session_version + 1,
+            updated_at = ?
+          WHERE id = ?`,
+    args: [newStatus, isActive, isArchived, now, studentId],
   });
 
+  // If disabling or archiving, immediately purge from live presence
   if (newStatus === 'disabled' || newStatus === 'archived') {
     await client.execute({
-      sql: "UPDATE student_presence SET session_status = 'OFFLINE', active_assessment_id = null WHERE student_id = ?",
+      sql: 'DELETE FROM student_presence WHERE student_id = ?',
       args: [studentId],
     });
   }
@@ -621,7 +724,16 @@ export async function setStudentStatus(
     metadata: { previousStatus: current.status, newStatus, admin: adminInfo },
   });
 
-  return { studentId, status: newStatus, is_archived: isArchived === 1 };
+  await recordActivityLogInDb({
+    student_id: studentId,
+    student_name: current.full_name,
+    register_number: current.register_number,
+    event_type: 'STUDENT_SESSION_INVALIDATED',
+    description: `Active session tokens revoked for candidate ${current.register_number} following status change to ${newStatus}.`,
+    metadata: { admin: adminInfo },
+  });
+
+  return { studentId, status: newStatus, is_active: isActive === 1, is_archived: isArchived === 1 };
 }
 
 export async function resetStudentPassword(
@@ -637,8 +749,9 @@ export async function resetStudentPassword(
   const current: any = sRes.rows[0];
 
   const now = new Date().toISOString();
+  // Password reset also invalidates existing sessions
   await client.execute({
-    sql: 'UPDATE students SET password_hash = ?, updated_at = ? WHERE id = ?',
+    sql: 'UPDATE students SET password_hash = ?, session_version = session_version + 1, updated_at = ? WHERE id = ?',
     args: [newPassword, now, studentId],
   });
 
@@ -649,6 +762,15 @@ export async function resetStudentPassword(
     register_number: current.register_number,
     event_type: 'PASSWORD_RESET',
     description: `${adminName} initiated security password reset for student ${current.register_number}`,
+    metadata: { admin: adminInfo },
+  });
+
+  await recordActivityLogInDb({
+    student_id: studentId,
+    student_name: current.full_name,
+    register_number: current.register_number,
+    event_type: 'STUDENT_SESSION_INVALIDATED',
+    description: `Active session invalidated for ${current.register_number} following password reset.`,
     metadata: { admin: adminInfo },
   });
 
@@ -667,28 +789,70 @@ export async function deleteOrArchiveStudentInDb(
   const current: any = sRes.rows[0];
 
   const history = await checkStudentExamHistory(studentId);
+  const adminName = adminInfo?.name || 'Administrator';
+  const now = new Date().toISOString();
 
   if (history.hasHistory) {
-    // Has examination records -> Safe Archive
-    await setStudentStatus(studentId, 'archived', adminInfo);
+    // Has examination records -> Safe Archive & Invalidate Session
+    await client.execute({
+      sql: `UPDATE students
+            SET is_active = 0, is_archived = 1, status = 'archived',
+                session_version = session_version + 1, updated_at = ?
+            WHERE id = ?`,
+      args: [now, studentId],
+    });
+
+    // Remove immediately from active presence
+    await client.execute({ sql: 'DELETE FROM student_presence WHERE student_id = ?', args: [studentId] });
+
+    await recordActivityLogInDb({
+      student_id: studentId,
+      student_name: current.full_name,
+      register_number: current.register_number,
+      event_type: 'STUDENT_ARCHIVED',
+      description: `${adminName} safely archived candidate ${current.register_number} (${current.full_name}). Academic records preserved.`,
+      metadata: { admin: adminInfo, attemptsCount: history.attemptsCount, submissionsCount: history.submissionsCount },
+    });
+
+    await recordActivityLogInDb({
+      student_id: studentId,
+      student_name: current.full_name,
+      register_number: current.register_number,
+      event_type: 'STUDENT_SESSION_INVALIDATED',
+      description: `Active session credentials revoked for archived candidate ${current.register_number}.`,
+      metadata: { admin: adminInfo },
+    });
+
     return {
       action: 'archived',
-      message: `Student "${current.full_name}" (${current.register_number}) has ${history.attemptsCount} examination attempts and ${history.submissionsCount} submissions. The account was safely archived; historical exam records remain preserved.`,
+      message: `Student "${current.full_name}" (${current.register_number}) has ${history.attemptsCount} examination attempts and ${history.submissionsCount} submissions. The account was safely archived and login access disabled; historical records remain preserved.`,
     };
   } else {
     // 0 history -> Safe permanent delete
     await client.execute({ sql: 'DELETE FROM student_presence WHERE student_id = ?', args: [studentId] });
-    await client.execute({ sql: 'DELETE FROM login_activity WHERE user_id = ? OR register_number = ?', args: [studentId, current.register_number] });
+    await client.execute({
+      sql: 'DELETE FROM login_activity WHERE user_id = ? OR UPPER(TRIM(register_number)) = ?',
+      args: [studentId, current.register_number.trim().toUpperCase()],
+    });
     await client.execute({ sql: 'DELETE FROM activity_logs WHERE student_id = ?', args: [studentId] });
+    await client.execute({ sql: 'DELETE FROM test_attempts WHERE student_id = ?', args: [studentId] });
     await client.execute({ sql: 'DELETE FROM students WHERE id = ?', args: [studentId] });
 
-    const adminName = adminInfo?.name || 'Administrator';
     await recordActivityLogInDb({
       student_id: studentId,
       student_name: current.full_name,
       register_number: current.register_number,
       event_type: 'STUDENT_DELETED',
       description: `${adminName} permanently deleted candidate ${current.register_number} (${current.full_name}). Zero historical records found.`,
+      metadata: { admin: adminInfo },
+    });
+
+    await recordActivityLogInDb({
+      student_id: studentId,
+      student_name: current.full_name,
+      register_number: current.register_number,
+      event_type: 'STUDENT_SESSION_INVALIDATED',
+      description: `All active sessions revoked for permanently deleted candidate ${current.register_number}.`,
       metadata: { admin: adminInfo },
     });
 
@@ -776,6 +940,7 @@ export async function getLoginActivityFromDb(limit = 100) {
 // -------------------------------------------------------------
 export async function updateHeartbeatInDb(data: {
   student_id: string;
+  session_version?: number;
   register_number: string;
   full_name: string;
   department: string;
@@ -791,6 +956,20 @@ export async function updateHeartbeatInDb(data: {
 }) {
   await initTursoDb();
   const client = getTursoClient();
+
+  // 1. Verify student account state and session validity
+  const validation = await validateStudentAccountAndSession(data.student_id, data.session_version);
+  if (!validation.valid) {
+    // If account was deleted/archived/disabled, immediately purge any presence row
+    await client.execute({
+      sql: 'DELETE FROM student_presence WHERE student_id = ?',
+      args: [data.student_id],
+    });
+    const error: any = new Error(validation.message);
+    error.statusCode = validation.code;
+    throw error;
+  }
+
   const now = Date.now();
 
   await client.execute({
@@ -838,7 +1017,30 @@ export async function updateHeartbeatInDb(data: {
 export async function getPresenceListFromDb() {
   await initTursoDb();
   const client = getTursoClient();
-  const res = await client.execute('SELECT * FROM student_presence ORDER BY last_seen DESC');
+
+  // Purge any orphan presence records for accounts that are deleted, archived, or disabled
+  await client.execute(`
+    DELETE FROM student_presence 
+    WHERE student_id NOT IN (
+      SELECT id FROM students 
+      WHERE (account_deleted = 0 OR account_deleted IS NULL)
+        AND (is_archived = 0 OR is_archived IS NULL)
+        AND (is_active = 1 OR is_active IS NULL)
+        AND (status = 'active' OR status IS NULL)
+    )
+  `).catch(() => {});
+
+  // Only select presence records that belong to currently active, non-archived, non-deleted students
+  const res = await client.execute(`
+    SELECT sp.* 
+    FROM student_presence sp
+    INNER JOIN students s ON sp.student_id = s.id
+    WHERE (s.account_deleted = 0 OR s.account_deleted IS NULL)
+      AND (s.is_archived = 0 OR s.is_archived IS NULL)
+      AND (s.is_active = 1 OR s.is_active IS NULL)
+      AND (s.status = 'active' OR s.status IS NULL)
+    ORDER BY sp.last_seen DESC
+  `);
   const now = Date.now();
 
   return res.rows.map((row: any) => {
@@ -1549,30 +1751,18 @@ export async function getQuestionPoolStats() {
 // -------------------------------------------------------------
 // YEAR-BASED RANDOMIZED ASSESSMENT ENGINE (FROZEN ATTEMPTS)
 // -------------------------------------------------------------
-export async function startOrGetAssessmentAttempt(testId: string, studentId: string) {
+export async function startOrGetAssessmentAttempt(testId: string, studentId: string, sessionVersion?: number) {
   await initTursoDb();
   const client = getTursoClient();
 
   // 1. Authenticate & load student from Turso DB
-  const sRes = await client.execute({
-    sql: 'SELECT id, register_number, full_name, email, department, year, section, status FROM students WHERE id = ? LIMIT 1',
-    args: [studentId],
-  });
-  if (sRes.rows.length === 0) {
-    const err: any = new Error('Student record not found in system.');
-    err.status = 404;
+  const validation = await validateStudentAccountAndSession(studentId, sessionVersion);
+  if (!validation.valid) {
+    const err: any = new Error(validation.message);
+    err.status = validation.code;
     throw err;
   }
-  const student: any = sRes.rows[0];
-  if (student.status === 'disabled' || student.status === 'archived') {
-    const err: any = new Error(
-      student.status === 'disabled'
-        ? 'Your student account has been disabled by the administrator. Please contact the Examination Cell.'
-        : 'Your student account has been archived. Login access is no longer permitted.'
-    );
-    err.status = 403;
-    throw err;
-  }
+  const student: any = validation.student;
   const studentYear = Number(student.year);
 
   // 2. Load assessment from Turso DB
@@ -1831,20 +2021,19 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
 export async function verifyQuestionForStudentAttempt(
   studentId: string,
   questionId: string,
-  attemptId?: string
-): Promise<{ valid: boolean; error?: string }> {
+  attemptId?: string,
+  sessionVersion?: number
+): Promise<{ valid: boolean; error?: string; code?: number }> {
   await initTursoDb();
   const client = getTursoClient();
 
-  // 1. Fetch student
-  const sRes = await client.execute({
-    sql: 'SELECT id, year, status FROM students WHERE id = ? LIMIT 1',
-    args: [studentId],
-  });
-  if (sRes.rows.length === 0) {
-    return { valid: false, error: 'Student not found.' };
+  // 1. Validate student account and session state
+  const validation = await validateStudentAccountAndSession(studentId, sessionVersion);
+  if (!validation.valid) {
+    return { valid: false, error: validation.message, code: validation.code };
   }
-  const studentYear = Number(sRes.rows[0].year);
+  const student: any = validation.student;
+  const studentYear = Number(student.year);
 
   // 2. Fetch question
   const qRes = await client.execute({

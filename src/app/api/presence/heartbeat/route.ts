@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { updateHeartbeatInDb } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
@@ -25,11 +25,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const sessionVersion = body.session_version ?? body.sessionVersion;
+
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     const userAgent = req.headers.get('user-agent') || 'Browser';
 
     await updateHeartbeatInDb({
       student_id,
+      session_version: sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined,
       register_number,
       full_name: full_name || register_number,
       department: department || 'General',
@@ -46,10 +49,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, timestamp: Date.now() });
   } catch (error: any) {
-    console.error('Heartbeat error:', error);
+    const statusCode = error?.statusCode || (error?.message?.includes('no longer active') || error?.message?.includes('session') ? 401 : 500);
     return NextResponse.json(
-      { success: false, error: error?.message || 'Heartbeat update failed' },
-      { status: 500 }
+      {
+        success: false,
+        code: statusCode === 401 ? 'SESSION_REVOKED' : 'ERROR',
+        error: error?.message || 'Heartbeat update failed',
+        message: error?.message || 'Heartbeat update failed',
+      },
+      { status: statusCode }
     );
   }
 }

@@ -2,10 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { attemptId, questionId, code, studentId } = await req.json();
+    const body = await req.json();
+    const { attemptId, questionId, code, studentId, sessionVersion, session_version } = body;
 
     if (!attemptId || !questionId) {
       return NextResponse.json({ error: 'Missing attempt or question parameters' }, { status: 400 });
+    }
+
+    if (studentId) {
+      const { validateStudentAccountAndSession } = await import('@/lib/turso');
+      const verVersion = sessionVersion ?? session_version;
+      const validation = await validateStudentAccountAndSession(
+        studentId,
+        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
+      );
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.message, message: validation.message },
+          { status: validation.code || 401 }
+        );
+      }
     }
 
     const savedAt = new Date().toISOString();

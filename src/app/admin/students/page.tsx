@@ -1071,18 +1071,16 @@ export default function StudentManagementPage() {
 
             {deleteHistoryInfo?.hasHistory ? (
               <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-1">
-                <p className="font-semibold text-amber-950">This student has examination history.</p>
-                <p className="text-[11px] leading-relaxed text-amber-800">
-                  Found {deleteHistoryInfo.attemptsCount} assessment attempt records. The account will be disabled, but
-                  all historical examination scores, rankings, and audit logs will be permanently preserved.
+                <p className="font-semibold text-amber-950">Assessment History Detected</p>
+                <p className="text-[12px] leading-relaxed text-amber-800">
+                  This student has assessment history. Permanent deletion may affect historical records. The account will be archived and access will be disabled.
                 </p>
               </div>
             ) : (
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 space-y-1">
-                <p className="font-semibold text-slate-800">This student has no examination history.</p>
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  There are no test attempts or submissions tied to this account. This record will be permanently deleted
-                  from Turso. This action cannot be undone.
+                <p className="font-semibold text-slate-800">No Assessment History Found</p>
+                <p className="text-[12px] leading-relaxed text-slate-600">
+                  Delete this student permanently? This will remove the account and the student will no longer be able to log in.
                 </p>
               </div>
             )}
@@ -1109,8 +1107,8 @@ export default function StudentManagementPage() {
                 {actionLoading
                   ? 'Processing...'
                   : deleteHistoryInfo?.hasHistory
-                  ? 'Archive Student'
-                  : 'Permanently Delete'}
+                  ? 'Archive & Disable'
+                  : 'Delete Permanently'}
               </button>
             </div>
           </div>

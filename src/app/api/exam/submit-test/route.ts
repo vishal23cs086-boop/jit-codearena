@@ -1,9 +1,35 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getTursoClient, recordActivityLogInDb } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
   try {
-    const { attemptId, studentId, studentName, registerNumber, testId, isAutoSubmit = false, finalScores = {} } = await req.json();
+    const body = await req.json();
+    const {
+      attemptId,
+      studentId,
+      studentName,
+      registerNumber,
+      testId,
+      sessionVersion,
+      session_version,
+      isAutoSubmit = false,
+      finalScores = {},
+    } = body;
+
+    if (studentId) {
+      const { validateStudentAccountAndSession } = await import('@/lib/turso');
+      const verVersion = sessionVersion ?? session_version;
+      const validation = await validateStudentAccountAndSession(
+        studentId,
+        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
+      );
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.message, message: validation.message },
+          { status: validation.code || 401 }
+        );
+      }
+    }
 
     const completedAt = new Date().toISOString();
 

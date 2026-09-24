@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { StudentProfile, UserRole } from '@/types';
@@ -47,18 +47,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const logout = useCallback(() => {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+    setUser(null);
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem('jit_ca_students_v2');
+    } catch {}
+  }, []);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(AUTH_STORAGE_KEY);
       if (saved) {
-        setUser(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setUser(parsed);
+
+        // Immediate server verification: ensure student account is still active and valid in Turso
+        if (parsed && parsed.role === 'student' && parsed.id) {
+          fetch('/api/student/session-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              student_id: parsed.id,
+              session_version: parsed.session_version,
+            }),
+          }).then(async (res) => {
+            if (!res.ok) {
+              logout();
+              if (typeof window !== 'undefined' && window.location.pathname.startsWith('/student')) {
+                window.location.href = '/login';
+              }
+            } else {
+              const data = await res.json();
+              if (data.session_version && data.session_version !== parsed.session_version) {
+                const updated = { ...parsed, session_version: data.session_version };
+                setUser(updated);
+                localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated));
+              }
+            }
+          }).catch(() => {});
+        }
       }
     } catch {
       setUser(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [logout]);
 
   const sendPresenceHeartbeat = useCallback(
     async (meta?: {
@@ -71,11 +110,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-        await fetch('/api/presence/heartbeat', {
+        const res = await fetch('/api/presence/heartbeat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             student_id: user.id,
+            session_version: user.session_version,
             register_number: user.register_number,
             full_name: user.full_name,
             department: user.department,
@@ -88,11 +128,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             violation_count: meta?.violation_count || 0,
           }),
         });
+
+        if (res.status === 401 || res.status === 403) {
+          // Account was deleted, archived, disabled, or session invalidated
+          logout();
+          if (typeof window !== 'undefined' && window.location.pathname.startsWith('/student')) {
+            window.location.href = '/login';
+          }
+        }
       } catch (err) {
-        // Silent failure for heartbeat
+        // Silent network failure
       }
     },
-    [user]
+    [user, logout]
   );
 
   // Student heartbeat loop: fires every 25 seconds
@@ -184,15 +232,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       return { success: false, error: err?.message || 'Network error during administrator login.' };
     }
-  };
-
-  const logout = () => {
-    if (heartbeatTimerRef.current) {
-      clearInterval(heartbeatTimerRef.current);
-      heartbeatTimerRef.current = null;
-    }
-    setUser(null);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
   return (

@@ -3,19 +3,29 @@ import { executeJudge0 } from '@/lib/judge0/client';
 
 export async function POST(req: NextRequest) {
   try {
-    const { code, input, timeLimitMs, studentId, questionId, attemptId } = await req.json();
+    const body = await req.json();
+    const { code, input, timeLimitMs, studentId, questionId, attemptId, sessionVersion, session_version } = body;
 
     if (typeof code !== 'string') {
       return NextResponse.json({ error: 'Code is required' }, { status: 400 });
     }
 
-    if (studentId && questionId) {
+    if (studentId) {
       const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
-      const verification = await verifyQuestionForStudentAttempt(studentId, questionId, attemptId);
+      const verVersion = sessionVersion ?? session_version;
+      const verification = await verifyQuestionForStudentAttempt(
+        studentId,
+        questionId,
+        attemptId,
+        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
+      );
       if (!verification.valid) {
         return NextResponse.json(
-          { error: verification.error || 'Execution rejected: question does not belong to your academic year.' },
-          { status: 403 }
+          {
+            error: verification.error || 'Execution rejected.',
+            message: verification.error || 'Execution rejected.',
+          },
+          { status: verification.code || 401 }
         );
       }
     }

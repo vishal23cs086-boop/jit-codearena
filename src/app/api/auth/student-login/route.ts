@@ -15,23 +15,34 @@ export async function POST(req: NextRequest) {
     }
 
     const student = await findStudentByRegNo(cleanRegNo);
-    if (!student) {
+    if (!student || Number(student.account_deleted || 0) === 1) {
       return NextResponse.json(
         {
           success: false,
-          error: `No registered student found with Register Number "${cleanRegNo}". Please register first.`,
+          error: 'Invalid register number or password.',
+          message: 'Invalid register number or password.',
         },
-        { status: 404 }
+        { status: 401 }
       );
     }
 
-    if (student.status === 'disabled' || student.status === 'suspended' || student.status === 'archived') {
+    if (Number(student.is_archived || 0) === 1 || student.status === 'archived') {
       return NextResponse.json(
         {
           success: false,
-          error: student.status === 'disabled'
-            ? 'Your student account has been disabled by the administrator. Please contact the Examination Cell.'
-            : 'Your student account has been archived. Login access is no longer permitted.',
+          error: 'Your student account has been archived. Login access is no longer permitted.',
+          message: 'Your student account has been archived. Login access is no longer permitted.',
+        },
+        { status: 403 }
+      );
+    }
+
+    if (Number(student.is_active ?? 1) === 0 || student.status === 'disabled' || student.status === 'suspended') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Your student account has been disabled by administrator.',
+          message: 'Your student account has been disabled by administrator.',
         },
         { status: 403 }
       );
@@ -41,7 +52,11 @@ export async function POST(req: NextRequest) {
     if (student.password_hash && password) {
       if (student.password_hash !== password) {
         return NextResponse.json(
-          { success: false, error: 'Invalid password. Please check your credentials.' },
+          {
+            success: false,
+            error: 'Invalid register number or password.',
+            message: 'Invalid register number or password.',
+          },
           { status: 401 }
         );
       }
@@ -64,6 +79,7 @@ export async function POST(req: NextRequest) {
     // Update presence
     await updateHeartbeatInDb({
       student_id: student.id,
+      session_version: Number(student.session_version || 1),
       register_number: student.register_number,
       full_name: student.full_name,
       department: student.department,
@@ -85,6 +101,9 @@ export async function POST(req: NextRequest) {
       section: student.section,
       phone: student.phone,
       status: student.status,
+      is_active: Number(student.is_active ?? 1) === 1,
+      is_archived: Number(student.is_archived ?? 0) === 1,
+      session_version: Number(student.session_version || 1),
       created_at: student.created_at,
     };
 

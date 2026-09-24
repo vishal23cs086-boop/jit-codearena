@@ -1,12 +1,28 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { recordActivityLogInDb, getTursoClient } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
   try {
-    const { studentId, studentName, registerNumber, testId, eventType, details } = await req.json();
+    const body = await req.json();
+    const { studentId, studentName, registerNumber, testId, eventType, details, sessionVersion, session_version } = body;
 
     if (!studentId || !eventType) {
       return NextResponse.json({ error: 'studentId and eventType are required' }, { status: 400 });
+    }
+
+    if (studentId) {
+      const { validateStudentAccountAndSession } = await import('@/lib/turso');
+      const verVersion = sessionVersion ?? session_version;
+      const validation = await validateStudentAccountAndSession(
+        studentId,
+        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
+      );
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.message, message: validation.message },
+          { status: validation.code || 401 }
+        );
+      }
     }
 
     const timestamp = new Date().toISOString();

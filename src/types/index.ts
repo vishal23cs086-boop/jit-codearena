@@ -73,6 +73,10 @@ export interface StudentProfile extends Profile {
   section?: string;
   phone?: string;
   status: 'active' | 'disabled' | 'suspended' | 'archived';
+  is_active?: boolean;
+  is_archived?: boolean;
+  account_deleted?: boolean;
+  session_version?: number;
 }
 
 export interface TestCase {
