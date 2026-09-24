@@ -4,12 +4,26 @@ import { findStudentByRegNo, recordLoginActivityInDb, updateHeartbeatInDb } from
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { registerNumber, password } = body;
+    const { registerNumber, password, email } = body;
 
     const cleanRegNo = (registerNumber || '').trim().toUpperCase();
     if (!cleanRegNo) {
       return NextResponse.json(
         { success: false, error: 'Please enter your Register Number.' },
+        { status: 400 }
+      );
+    }
+
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      return NextResponse.json(
+        { success: false, error: 'Please enter your Gmail / College Email ID.' },
+        { status: 400 }
+      );
+    }
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      return NextResponse.json(
+        { success: false, error: 'Please enter a valid Gmail or email address (e.g. name@gmail.com).' },
         { status: 400 }
       );
     }
@@ -60,6 +74,17 @@ export async function POST(req: NextRequest) {
           { status: 401 }
         );
       }
+    }
+
+    // Update candidate email in Turso if different
+    if (cleanEmail && student.email !== cleanEmail) {
+      const { getTursoClient } = await import('@/lib/turso');
+      const client = getTursoClient();
+      await client.execute({
+        sql: 'UPDATE students SET email = ? WHERE id = ?',
+        args: [cleanEmail, student.id],
+      });
+      student.email = cleanEmail;
     }
 
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';

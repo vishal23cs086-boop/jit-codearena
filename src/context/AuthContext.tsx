@@ -8,6 +8,7 @@ interface RegisterData {
   registerNumber: string;
   department: string;
   year: number;
+  email?: string;
   password?: string;
   section?: string;
   phone?: string;
@@ -18,7 +19,7 @@ interface AuthContextType {
   role: UserRole | null;
   isLoading: boolean;
   registerStudent: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
-  loginStudent: (registerNumber: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  loginStudent: (registerNumber: string, password?: string, email?: string) => Promise<{ success: boolean; error?: string }>;
   loginAdmin: (username: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   sendPresenceHeartbeat: (meta?: {
@@ -190,13 +191,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginStudent = async (
     registerNumber: string,
-    password?: string
+    password?: string,
+    email?: string
   ): Promise<{ success: boolean; error?: string }> => {
     try {
       const res = await fetch('/api/auth/student-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ registerNumber, password }),
+        body: JSON.stringify({ registerNumber, password, email }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {

@@ -1,10 +1,10 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { findStudentByRegNo, upsertStudentInDb, recordLoginActivityInDb, updateHeartbeatInDb } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { fullName, registerNumber, department, year, password, section, phone } = body;
+    const { fullName, registerNumber, department, year, password, section, phone, email: customEmail } = body;
 
     const cleanRegNo = (registerNumber || '').trim().toUpperCase();
     if (!cleanRegNo || !fullName || !department || !year) {
@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
     }
 
     const studentId = `std-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const email = `${cleanRegNo.toLowerCase()}@student.jit.edu`;
+    const rawEmail = (customEmail || '').trim().toLowerCase();
+    const email = rawEmail && rawEmail.includes('@') && rawEmail.includes('.')
+      ? rawEmail
+      : `${cleanRegNo.toLowerCase()}@student.jit.edu`;
 
     await upsertStudentInDb({
       id: studentId,

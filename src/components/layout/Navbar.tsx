@@ -364,9 +364,6 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                       <span className="font-extrabold text-base tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700">
                         CodeArena
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-mono font-semibold">
-                        v2.0
-                      </span>
                     </div>
                     <p className="text-[10px] text-slate-500 tracking-wider uppercase font-medium">
                       Jansons Institute of Technology

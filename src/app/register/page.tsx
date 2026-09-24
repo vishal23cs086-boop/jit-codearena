@@ -14,6 +14,7 @@ import {
   EyeOff,
   Check,
   Sparkles,
+  Mail,
 } from 'lucide-react';
 
 const DEPARTMENTS = [
@@ -40,6 +41,7 @@ export default function RegisterPage() {
 
   const [fullName, setFullName] = useState('');
   const [registerNumber, setRegisterNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [department, setDepartment] = useState('CSE');
   const [year, setYear] = useState<number>(2);
   const [password, setPassword] = useState('');
@@ -76,6 +78,12 @@ export default function RegisterPage() {
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('Please enter a valid Gmail / Email address.');
+      return;
+    }
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters long.');
       return;
@@ -94,6 +102,7 @@ export default function RegisterPage() {
         registerNumber: cleanRegNo,
         department,
         year,
+        email: cleanEmail,
         password,
       });
 
@@ -164,6 +173,26 @@ export default function RegisterPage() {
             />
             <span className="text-[10px] text-slate-500 mt-1 block">
               Used as your primary login credential.
+            </span>
+          </div>
+
+          <div>
+            <label className="text-slate-700 font-semibold block mb-1">
+              Gmail / College Email ID
+            </label>
+            <div className="relative">
+              <input
+                type="email"
+                required
+                placeholder="e.g. student@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="glass-input w-full rounded-xl p-3 pl-9 text-slate-900 placeholder-slate-400 text-sm focus:outline-none"
+              />
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Used for assessment reports and official correspondence.
             </span>
           </div>
 

@@ -16,6 +16,7 @@ import {
   Terminal,
   Cpu,
   Sparkles,
+  Mail,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const { loginStudent } = useAuth();
 
   const [registerNumber, setRegisterNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,10 +40,20 @@ export default function LoginPage() {
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Please enter your Gmail / College Email ID.');
+      return;
+    }
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('Please enter a valid Gmail or email address (e.g. name@gmail.com).');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await loginStudent(cleanRegNo, password);
+      const res = await loginStudent(cleanRegNo, password, cleanEmail);
       if (res.success) {
         router.push('/student/dashboard');
       } else {
@@ -163,6 +175,24 @@ export default function LoginPage() {
                 onChange={(e) => setRegisterNumber(e.target.value)}
                 className="w-full glass-input rounded-xl p-3 text-sm font-mono uppercase placeholder:text-slate-400 focus:border-indigo-500"
               />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-semibold block mb-1.5 flex items-center justify-between">
+                <span>Gmail / College Email ID</span>
+                <span className="text-[11px] text-slate-400 font-normal">Active Gmail</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. yourname@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full glass-input rounded-xl p-3 pl-9 text-sm placeholder:text-slate-400 focus:border-indigo-500"
+                />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
 
             <div>
