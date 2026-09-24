@@ -107,21 +107,32 @@ export default function TestResultPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full space-y-8">
       {/* Top Completion Celebration Banner */}
-      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-indigo-950/40 border border-emerald-500/40 rounded-3xl p-8 text-center relative overflow-hidden shadow-2xl">
-        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold mb-4">
-          <CheckCircle2 className="w-4 h-4" />
-          <span>ASSESSMENT COMPLETED & EVALUATED</span>
+      <div className="glass-card rounded-3xl p-8 sm:p-10 text-center relative overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] pointer-events-none rounded-full" />
+        <div className="flex justify-center mb-5 relative z-10">
+          <div className="w-20 h-20 p-2 bg-white/[0.04] rounded-2xl border border-white/10 shadow-inner flex items-center justify-center">
+            <img
+              src="/jit-logo.png"
+              alt="Jansons Institute of Technology Crest"
+              className="w-full h-full object-contain filter drop-shadow-[0_2px_10px_rgba(16,185,129,0.3)]"
+            />
+          </div>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">
+        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold mb-3 backdrop-blur-md relative z-10">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>JANSONS INSTITUTE OF TECHNOLOGY • OFFICIAL EVALUATION SCORECARD</span>
+        </div>
+
+        <h1 className="text-3xl sm:text-4xl font-black text-white mb-2 relative z-10">
           Assessment Report & Scorecard
         </h1>
-        <p className="text-slate-300 text-sm max-w-xl mx-auto mb-6">
+        <p className="text-slate-300 text-sm max-w-xl mx-auto mb-6 relative z-10">
           Congratulations {user?.full_name || 'Candidate'} ({user?.register_number || 'Registered Candidate'})! Your responses were evaluated server-side by the JIT CodeArena scoring engine.
         </p>
 
         {/* First Completion Rank Pill */}
-        <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-bold shadow-lg">
+        <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-sm font-bold shadow-md relative z-10">
           <Award className="w-5 h-5 text-amber-400" />
           <span>Finish Order: Rank #{completionRank} to Complete</span>
         </div>
@@ -129,27 +140,27 @@ export default function TestResultPage() {
 
       {/* KPI Results Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+        <div className="glass-card-hover rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Final Score</span>
           <div className="text-2xl font-black text-emerald-400">{totalScore.toFixed(1)}</div>
           <span className="text-[10px] text-slate-500">out of {maxMarks}</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+        <div className="glass-card-hover rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Percentage</span>
           <div className="text-2xl font-black text-white">{percentage}%</div>
-          <span className="text-[10px] text-emerald-400">
+          <span className="text-[10px] text-emerald-400 font-medium">
             {percentage >= 90 ? 'Grade: O (Outstanding)' : percentage >= 75 ? 'Grade: A+ (Excellent)' : percentage >= 50 ? 'Grade: B (Satisfactory)' : 'Requires Review'}
           </span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+        <div className="glass-card-hover rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Time Taken</span>
           <div className="text-xl font-bold text-white mt-1">{timeTakenFormatted}</div>
           <span className="text-[10px] text-slate-500">of {test?.duration_minutes || 60}m allotted</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+        <div className="glass-card-hover rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Status</span>
           <div className="text-xl font-bold text-indigo-400 capitalize mt-1">
             {attempt?.status?.replace('_', ' ') || 'Submitted'}
@@ -157,13 +168,13 @@ export default function TestResultPage() {
           <span className="text-[10px] text-slate-500">Official Evaluation</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+        <div className="glass-card-hover rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Tab Deviations</span>
-          <div className="text-2xl font-black text-blue-400">{attempt?.tab_switch_count || 0}</div>
+          <div className="text-2xl font-black text-cyan-400">{attempt?.tab_switch_count || 0}</div>
           <span className="text-[10px] text-slate-500">Browser switches</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+        <div className="glass-card-hover rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Violations</span>
           <div className="text-2xl font-black text-purple-400">{attempt?.fullscreen_exit_count || 0}</div>
           <span className="text-[10px] text-slate-500">Fullscreen departures</span>
@@ -172,9 +183,9 @@ export default function TestResultPage() {
 
       {/* Question-Wise Performance Breakdown */}
       {questionsList.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+        <div className="glass-card rounded-3xl p-6 sm:p-7 space-y-4 shadow-2xl">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
               <FileCheck className="w-5 h-5 text-indigo-400" />
               <span>Assessment Questions</span>
             </h2>
@@ -184,7 +195,7 @@ export default function TestResultPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+                <tr className="border-b border-white/10 text-slate-400 font-semibold uppercase tracking-wider bg-white/[0.02]">
                   <th className="py-3 px-3">#</th>
                   <th className="py-3 px-4">Question Title</th>
                   <th className="py-3 px-3">Topic</th>
@@ -192,19 +203,19 @@ export default function TestResultPage() {
                   <th className="py-3 px-4 text-right">Max Marks</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-white/[0.06] font-mono">
                 {questionsList.map((q, idx) => (
-                  <tr key={q.id} className="hover:bg-slate-800/40 transition">
+                  <tr key={q.id} className="hover:bg-white/[0.03] transition">
                     <td className="py-3 px-3 text-slate-500 font-bold">{idx + 1}</td>
                     <td className="py-3 px-4 font-sans font-semibold text-white">
                       <span>{q.title}</span>
                     </td>
                     <td className="py-3 px-3 font-sans text-slate-300">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-white/[0.04] text-slate-300 border border-white/10">
                         {q.topic}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-sans capitalize text-slate-300">
+                    <td className="py-3 px-3 font-sans capitalize text-slate-400">
                       {q.difficulty}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-emerald-400">
@@ -219,16 +230,16 @@ export default function TestResultPage() {
       )}
 
       {/* Security & Integrity Summary */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="glass-card rounded-3xl p-6 sm:p-7 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
             <h4 className="text-sm font-bold text-white">
               Integrity Verification: {attempt?.tab_switch_count === 0 && attempt?.fullscreen_exit_count === 0 ? 'Clean Session' : 'Incident Telemetry Recorded'}
             </h4>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 mt-0.5">
               {attempt?.tab_switch_count || 0} Tab Switches • {attempt?.fullscreen_exit_count || 0} Fullscreen Violations • {attempt?.copy_paste_count || 0} Blocked Clipboard Events
             </p>
           </div>
@@ -237,7 +248,7 @@ export default function TestResultPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/student/dashboard"
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20"
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/30"
           >
             <span>Return to Student Dashboard</span>
             <ArrowRight className="w-3.5 h-3.5" />

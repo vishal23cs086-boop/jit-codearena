@@ -34,29 +34,29 @@ export const PythonMonacoEditor: React.FC<PythonMonacoEditorProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] rounded-xl overflow-hidden border border-slate-800 shadow-xl">
+    <div className="flex flex-col h-full bg-[#0B1020] rounded-2xl overflow-hidden border border-white/10 shadow-xl">
       {/* Editor Header Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#181818] border-b border-slate-800/80 text-xs">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/90 border-b border-white/10 text-xs backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md font-mono font-medium">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 rounded-lg font-mono font-medium">
             <Code2 className="w-3.5 h-3.5" />
             <span>Python 3.8+</span>
           </div>
           <div className="flex items-center gap-1.5 text-slate-400">
             {saveStatus === 'saving' && (
-              <span className="flex items-center gap-1 text-amber-400 animate-pulse">
+              <span className="flex items-center gap-1.5 text-amber-400 animate-pulse font-medium text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                 Saving...
               </span>
             )}
             {saveStatus === 'saved' && (
-              <span className="flex items-center gap-1 text-emerald-400">
+              <span className="flex items-center gap-1.5 text-emerald-400 font-medium text-[11px]">
                 <Check className="w-3.5 h-3.5" />
                 {lastSavedText}
               </span>
             )}
             {saveStatus === 'unsaved' && (
-              <span className="flex items-center gap-1 text-slate-400">
+              <span className="flex items-center gap-1.5 text-slate-500 text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
                 Unsaved changes
               </span>
@@ -66,7 +66,7 @@ export const PythonMonacoEditor: React.FC<PythonMonacoEditorProps> = ({
 
         <div className="flex items-center gap-2">
           {/* Font size zoom */}
-          <div className="flex items-center gap-1 bg-slate-800/60 rounded-md px-1.5 py-0.5 border border-slate-700/50">
+          <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg px-1.5 py-0.5 border border-white/10">
             <button
               onClick={() => setFontSize((s) => Math.max(12, s - 1))}
               className="p-1 text-slate-400 hover:text-white transition"
@@ -88,7 +88,7 @@ export const PythonMonacoEditor: React.FC<PythonMonacoEditorProps> = ({
           {starterCode && !isReadOnly && (
             <button
               onClick={handleReset}
-              className="flex items-center gap-1 px-2.5 py-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-md transition border border-transparent hover:border-slate-700"
+              className="flex items-center gap-1 px-2.5 py-1 text-slate-400 hover:text-white hover:bg-white/[0.06] rounded-lg transition border border-transparent hover:border-white/10 text-xs"
               title="Reset to starter code"
             >
               <RotateCcw className="w-3 h-3" />
@@ -124,8 +124,8 @@ export const PythonMonacoEditor: React.FC<PythonMonacoEditorProps> = ({
             smoothScrolling: true,
           }}
           loading={
-            <div className="flex items-center justify-center h-full text-slate-500 gap-2">
-              <Sparkles className="w-4 h-4 animate-spin" />
+            <div className="flex items-center justify-center h-full text-slate-400 gap-2">
+              <Sparkles className="w-4 h-4 animate-spin text-indigo-400" />
               <span>Loading Monaco Python Engine...</span>
             </div>
           }

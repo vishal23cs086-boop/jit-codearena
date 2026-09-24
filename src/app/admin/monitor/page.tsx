@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   RefreshCw,
   ExternalLink,
+  Radio,
 } from 'lucide-react';
 
 export default function LiveMonitorPage() {
@@ -124,36 +125,36 @@ export default function LiveMonitorPage() {
     switch (status) {
       case 'active':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             Active
           </span>
         );
       case 'warning':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
             <span className="w-2 h-2 rounded-full bg-amber-400" />
             Warning
           </span>
         );
       case 'suspicious':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
             <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
             Suspicious
           </span>
         );
       case 'completed':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
             <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
             Completed
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
-            <span className="w-2 h-2 rounded-full bg-slate-500" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/[0.04] text-slate-400 border border-white/10">
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
             Not Started
           </span>
         );
@@ -171,9 +172,9 @@ export default function LiveMonitorPage() {
       {/* Header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
-            <h1 className="text-2xl font-bold text-white">Live Examination Telemetry Monitor</h1>
+          <div className="flex items-center gap-2.5">
+            <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Live Examination Telemetry Monitor</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Real-time candidate tracking for {activeTest?.title || 'active examinations'}
@@ -184,7 +185,7 @@ export default function LiveMonitorPage() {
           {activeTest && (
             <Link
               href={`/admin/rankings/${activeTest.id}`}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-md shadow-indigo-600/20"
             >
               <span>First Completion Rankings</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -193,7 +194,7 @@ export default function LiveMonitorPage() {
 
           <button
             onClick={loadData}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition border border-slate-700"
+            className="p-2.5 glass-card-hover text-slate-300 hover:text-white rounded-xl transition border border-white/10"
             title="Refresh stream"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -203,108 +204,108 @@ export default function LiveMonitorPage() {
 
       {/* Status Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-          <span className="text-[11px] text-slate-400 block mb-0.5">Total Tracked</span>
-          <span className="text-xl font-bold text-white">{monitorStudents.length}</span>
+        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
+          <span className="text-[11px] text-slate-400 block mb-1">Total Tracked</span>
+          <span className="text-2xl font-bold text-white">{monitorStudents.length}</span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-          <span className="text-[11px] text-emerald-400 block mb-0.5">🟢 Active Now</span>
-          <span className="text-xl font-bold text-emerald-400">
+        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
+          <span className="text-[11px] text-emerald-400 block mb-1">Active Now</span>
+          <span className="text-2xl font-bold text-emerald-400">
             {monitorStudents.filter((s) => s.status === 'active').length}
           </span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-          <span className="text-[11px] text-amber-400 block mb-0.5">🟡 Warnings Flagged</span>
-          <span className="text-xl font-bold text-amber-300">
+        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
+          <span className="text-[11px] text-amber-400 block mb-1">Warnings Flagged</span>
+          <span className="text-2xl font-bold text-amber-400">
             {monitorStudents.filter((s) => s.status === 'warning').length}
           </span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-          <span className="text-[11px] text-rose-400 block mb-0.5">🔴 Suspicious</span>
-          <span className="text-xl font-bold text-rose-300">
+        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
+          <span className="text-[11px] text-rose-400 block mb-1">Suspicious</span>
+          <span className="text-2xl font-bold text-rose-400">
             {monitorStudents.filter((s) => s.status === 'suspicious').length}
           </span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-          <span className="text-[11px] text-blue-400 block mb-0.5">✅ Completed</span>
-          <span className="text-xl font-bold text-blue-300">
+        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
+          <span className="text-[11px] text-blue-400 block mb-1">Completed</span>
+          <span className="text-2xl font-bold text-blue-400">
             {monitorStudents.filter((s) => s.status === 'completed').length}
           </span>
         </div>
       </div>
 
       {/* Filters and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3 rounded-2xl">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-card p-3 rounded-2xl border border-white/10">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search candidate name, reg no..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full pl-9 pr-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-xs text-white placeholder-slate-500 focus:bg-white/[0.08] focus:outline-none focus:border-indigo-500/50"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <span className="text-xs text-slate-400 font-medium">Status Filter:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
+            className="bg-white/[0.04] border border-white/10 text-xs text-slate-200 rounded-xl px-3 py-2 focus:bg-[#0B1020] focus:outline-none focus:border-indigo-500/50"
           >
-            <option value="all">All Candidates</option>
-            <option value="active">Active Now</option>
-            <option value="warning">Warning Issued</option>
-            <option value="suspicious">Suspicious Incident</option>
-            <option value="completed">Completed</option>
+            <option value="all" className="bg-[#0B1020] text-white">All Candidates</option>
+            <option value="active" className="bg-[#0B1020] text-white">Active Now</option>
+            <option value="warning" className="bg-[#0B1020] text-white">Warning Issued</option>
+            <option value="suspicious" className="bg-[#0B1020] text-white">Suspicious Incident</option>
+            <option value="completed" className="bg-[#0B1020] text-white">Completed</option>
           </select>
         </div>
       </div>
 
       {/* Live Candidates Table or Empty State */}
       {filteredStudents.length > 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="glass-card rounded-2xl overflow-hidden border border-white/10">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold">
-                  <th className="py-3.5 px-4">Student</th>
-                  <th className="py-3.5 px-3">Reg Number</th>
-                  <th className="py-3.5 px-3">Dept & Year</th>
-                  <th className="py-3.5 px-3 text-center">Progress</th>
-                  <th className="py-3.5 px-3 text-center">Score</th>
-                  <th className="py-3.5 px-3 text-center">Started</th>
-                  <th className="py-3.5 px-3 text-center">Status</th>
-                  <th className="py-3.5 px-3 text-center">Violations</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
+                <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 uppercase tracking-wider font-semibold">
+                  <th className="py-4 px-4">Student</th>
+                  <th className="py-4 px-3">Reg Number</th>
+                  <th className="py-4 px-3">Dept & Year</th>
+                  <th className="py-4 px-3 text-center">Progress</th>
+                  <th className="py-4 px-3 text-center">Score</th>
+                  <th className="py-4 px-3 text-center">Started</th>
+                  <th className="py-4 px-3 text-center">Status</th>
+                  <th className="py-4 px-3 text-center">Violations</th>
+                  <th className="py-4 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-white/5">
                 {filteredStudents.map((st) => (
                   <tr
                     key={st.id}
                     onClick={() => setSelectedStudent(st)}
-                    className="hover:bg-slate-800/40 transition cursor-pointer group"
+                    className="hover:bg-white/[0.03] transition cursor-pointer group"
                   >
-                    <td className="py-3.5 px-4 font-semibold text-white group-hover:text-indigo-300 transition">
+                    <td className="py-4 px-4 font-semibold text-white group-hover:text-indigo-400 transition">
                       {st.student_name}
                     </td>
-                    <td className="py-3.5 px-3 font-mono text-slate-300">{st.register_number}</td>
-                    <td className="py-3.5 px-3 text-slate-400">
+                    <td className="py-4 px-3 font-mono text-slate-300">{st.register_number}</td>
+                    <td className="py-4 px-3 text-slate-400">
                       {st.department} • Year {st.year}
                     </td>
-                    <td className="py-3.5 px-3 text-center font-bold text-slate-200">
+                    <td className="py-4 px-3 text-center font-bold text-slate-300">
                       {st.progress}
                     </td>
-                    <td className="py-3.5 px-3 text-center font-mono font-bold text-emerald-400">
+                    <td className="py-4 px-3 text-center font-mono font-bold text-emerald-400">
                       {st.current_score} pts
                     </td>
-                    <td className="py-3.5 px-3 text-center font-mono text-slate-400">
+                    <td className="py-4 px-3 text-center font-mono text-slate-400">
                       {st.started_time}
                     </td>
-                    <td className="py-3.5 px-3 text-center">{getStatusBadge(st.status)}</td>
-                    <td className="py-3.5 px-3 text-center">
+                    <td className="py-4 px-3 text-center">{getStatusBadge(st.status)}</td>
+                    <td className="py-4 px-3 text-center">
                       {st.warnings_count > 0 ? (
                         <span
                           className={`inline-flex items-center gap-1 font-bold ${
@@ -318,13 +319,13 @@ export default function LiveMonitorPage() {
                         <span className="text-slate-500 font-mono">0</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-4 px-4 text-right">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedStudent(st);
                         }}
-                        className="px-2.5 py-1 bg-slate-800 group-hover:bg-indigo-600/30 text-slate-300 group-hover:text-indigo-200 rounded-lg text-[11px] font-medium transition border border-slate-700"
+                        className="px-3 py-1.5 glass-card-hover group-hover:border-indigo-500/40 text-slate-300 group-hover:text-indigo-300 rounded-lg text-[11px] font-medium transition border border-white/10"
                       >
                         Inspect Logs
                       </button>
@@ -337,7 +338,7 @@ export default function LiveMonitorPage() {
         </div>
       ) : (
         <EmptyState
-          title="No candidates currently active in an assessment."
+          title="No candidates currently active in an assessment"
           description="Live telemetry, tab switch violations, and progress will appear in real-time as students attempt active tests."
         />
       )}

@@ -11,6 +11,7 @@ import {
   Clock,
   Download,
   AlertCircle,
+  Trophy,
 } from 'lucide-react';
 
 interface CompletionRow {
@@ -147,9 +148,9 @@ export default function FirstCompletionTrackingPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <Award className="w-6 h-6 text-amber-400" />
-            <h1 className="text-2xl font-bold text-white">First Completion Tracking & Ranking</h1>
+          <div className="flex items-center gap-2.5">
+            <Trophy className="w-7 h-7 text-amber-400" />
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">First Completion Tracking & Ranking</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Official server-recorded completion timestamps for {test?.title || 'Assessment'}
@@ -159,33 +160,33 @@ export default function FirstCompletionTrackingPage() {
         {rows.length > 0 && (
           <button
             onClick={handleExportCSV}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-md shadow-emerald-600/20"
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-lg shadow-emerald-500/20"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-4 h-4" />
             <span>Export Leaderboard CSV</span>
           </button>
         )}
       </div>
 
       {/* Distinction notice */}
-      <div className="p-3.5 bg-indigo-950/30 border border-indigo-500/30 rounded-2xl text-xs text-indigo-200 flex items-start gap-2.5">
-        <AlertCircle className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+      <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-xs text-indigo-300 flex items-start gap-3 backdrop-blur-md">
+        <AlertCircle className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
         <div>
-          <strong>Server-Side First-Completion Audit:</strong> Completion order reflects the exact timestamp when the candidate submitted their assessment. Score rank reflects total marks scored across test cases.
+          <strong className="text-white">Server-Side First-Completion Audit:</strong> Completion order reflects the exact timestamp when the candidate submitted their assessment. Score rank reflects total marks scored across test cases.
         </div>
       </div>
 
       {/* Sorting Tabs Bar */}
       {rows.length > 0 && (
-        <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-2.5 rounded-2xl">
-          <span className="text-xs text-slate-400 font-medium pl-2">Sort Leaderboard by:</span>
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 glass-card p-2 rounded-2xl border border-white/10">
+          <span className="text-xs text-slate-400 font-medium pl-3">Sort Leaderboard by:</span>
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => setSortMode('completion')}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${
                 sortMode === 'completion'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-slate-950/60 text-slate-400 hover:bg-slate-800'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'glass-card-hover text-slate-400 hover:text-white'
               }`}
             >
               1. Completion Order (1st, 2nd...)
@@ -194,8 +195,8 @@ export default function FirstCompletionTrackingPage() {
               onClick={() => setSortMode('score')}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${
                 sortMode === 'score'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-slate-950/60 text-slate-400 hover:bg-slate-800'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'glass-card-hover text-slate-400 hover:text-white'
               }`}
             >
               2. Highest Score
@@ -204,8 +205,8 @@ export default function FirstCompletionTrackingPage() {
               onClick={() => setSortMode('time')}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${
                 sortMode === 'time'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-slate-950/60 text-slate-400 hover:bg-slate-800'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'glass-card-hover text-slate-400 hover:text-white'
               }`}
             >
               3. Fastest Completion Time
@@ -214,8 +215,8 @@ export default function FirstCompletionTrackingPage() {
               onClick={() => setSortMode('name')}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${
                 sortMode === 'name'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-slate-950/60 text-slate-400 hover:bg-slate-800'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'glass-card-hover text-slate-400 hover:text-white'
               }`}
             >
               4. Student Name
@@ -226,50 +227,52 @@ export default function FirstCompletionTrackingPage() {
 
       {/* Leaderboard Table or Empty State */}
       {sortedRows.length > 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="glass-card rounded-2xl overflow-hidden border border-white/10">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold">
-                  <th className="py-3.5 px-4 text-center">Completion Order</th>
-                  <th className="py-3.5 px-3 text-center">Score Rank</th>
-                  <th className="py-3.5 px-4">Student Name</th>
-                  <th className="py-3.5 px-3">Reg Number</th>
-                  <th className="py-3.5 px-3">Department</th>
-                  <th className="py-3.5 px-3 text-center">Completed At</th>
-                  <th className="py-3.5 px-3 text-center">Time Taken</th>
-                  <th className="py-3.5 px-4 text-right">Final Marks</th>
+                <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 uppercase tracking-wider font-semibold">
+                  <th className="py-4 px-4 text-center">Completion Order</th>
+                  <th className="py-4 px-3 text-center">Score Rank</th>
+                  <th className="py-4 px-4">Student Name</th>
+                  <th className="py-4 px-3">Reg Number</th>
+                  <th className="py-4 px-3">Department</th>
+                  <th className="py-4 px-3 text-center">Completed At</th>
+                  <th className="py-4 px-3 text-center">Time Taken</th>
+                  <th className="py-4 px-4 text-right">Final Marks</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-white/5 font-mono">
                 {sortedRows.map((row) => (
-                  <tr key={row.registerNumber} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3.5 px-4 text-center">
+                  <tr key={row.registerNumber} className="hover:bg-white/[0.03] transition">
+                    <td className="py-4 px-4 text-center">
                       <span
-                        className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                        className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold border ${
                           row.completionOrder === 1
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-md shadow-amber-500/10'
                             : row.completionOrder === 2
-                            ? 'bg-slate-300/20 text-slate-200 border border-slate-400/30'
-                            : 'bg-indigo-950/50 text-indigo-300 border border-indigo-800'
+                            ? 'bg-slate-300/10 text-slate-300 border-slate-300/20'
+                            : row.completionOrder === 3
+                            ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                            : 'bg-white/[0.03] text-indigo-400 border-white/10'
                         }`}
                       >
                         #{row.completionOrder} to Finish
                       </span>
                     </td>
-                    <td className="py-3.5 px-3 text-center text-slate-300 font-bold">
+                    <td className="py-4 px-3 text-center text-slate-300 font-bold">
                       #{row.rankByScore}
                     </td>
-                    <td className="py-3.5 px-4 font-sans font-semibold text-white">
+                    <td className="py-4 px-4 font-sans font-semibold text-white">
                       {row.studentName}
                     </td>
-                    <td className="py-3.5 px-3 text-slate-300">{row.registerNumber}</td>
-                    <td className="py-3.5 px-3 font-sans text-slate-400">
+                    <td className="py-4 px-3 text-indigo-400">{row.registerNumber}</td>
+                    <td className="py-4 px-3 font-sans text-slate-400">
                       {row.department} (Yr {row.year})
                     </td>
-                    <td className="py-3.5 px-3 text-center text-slate-300">{row.completedAt}</td>
-                    <td className="py-3.5 px-3 text-center text-slate-300">{row.timeTakenDisplay}</td>
-                    <td className="py-3.5 px-4 text-right text-sm font-bold text-emerald-400">
+                    <td className="py-4 px-3 text-center text-slate-400">{row.completedAt}</td>
+                    <td className="py-4 px-3 text-center text-slate-300">{row.timeTakenDisplay}</td>
+                    <td className="py-4 px-4 text-right text-sm font-bold text-emerald-400">
                       {row.score} pts
                     </td>
                   </tr>
@@ -280,7 +283,7 @@ export default function FirstCompletionTrackingPage() {
         </div>
       ) : (
         <EmptyState
-          title="No assessment results available yet."
+          title="No assessment results available yet"
           description="Candidates who finalize and submit this assessment will be ranked by exact finish timestamp here."
         />
       )}

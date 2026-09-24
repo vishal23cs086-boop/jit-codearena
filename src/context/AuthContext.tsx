@@ -163,12 +163,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginAdmin = async (
-    email: string,
+    emailOrId: string,
     password?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) {
-      return { success: false, error: 'Please enter your institutional email.' };
+    const cleanId = emailOrId.trim();
+    if (!cleanId) {
+      return { success: false, error: 'Please enter your Administrator ID.' };
+    }
+
+    // Direct institutional examination admin credentials: ID: ADMIN, Password: Admin_Jansons
+    const isAdminId =
+      cleanId.toUpperCase() === 'ADMIN' ||
+      cleanId.toLowerCase() === 'admin@jit.edu' ||
+      cleanId.toLowerCase() === 'examcell@jit.edu.in';
+
+    if (isAdminId) {
+      if (password === 'Admin_Jansons') {
+        const adminUser: StudentProfile = {
+          id: 'admin-controller',
+          email: 'admin@jit.edu.in',
+          full_name: 'Examination Controller (Jansons)',
+          role: 'admin',
+          register_number: 'ADMIN',
+          department: 'EXAM_CELL',
+          year: 0,
+          status: 'active',
+        };
+        setUser(adminUser);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminUser));
+        return { success: true };
+      } else {
+        return { success: false, error: 'Invalid password. Please enter the correct password for ADMIN.' };
+      }
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -176,7 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const supabase = createClient();
         const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
+          email: cleanId.toLowerCase(),
           password: password || '',
         });
         if (authErr) {
@@ -199,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const adminUser: StudentProfile = {
             id: authData.user.id,
-            email: authData.user.email || cleanEmail,
+            email: authData.user.email || cleanId.toLowerCase(),
             full_name: prof.full_name || 'Examination Controller',
             role: 'admin',
             register_number: 'ADMIN',
@@ -216,21 +242,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Default admin session handler when using environment credentials
-    const adminUser: StudentProfile = {
-      id: 'admin-controller',
-      email: cleanEmail,
-      full_name: 'Institutional Examination Controller',
-      role: 'admin',
-      register_number: 'ADMIN',
-      department: 'EXAM_CELL',
-      year: 0,
-      status: 'active',
+    return {
+      success: false,
+      error: 'Invalid Administrator ID or password. Use ID: ADMIN with the authorized password.',
     };
-
-    setUser(adminUser);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminUser));
-    return { success: true };
   };
 
   const logout = () => {

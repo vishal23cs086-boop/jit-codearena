@@ -57,16 +57,16 @@ export default function StudentProfilePage() {
         </p>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
+      <div className="glass-card rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
         {/* Profile Card Header */}
-        <div className="flex items-center gap-4 pb-6 border-b border-slate-800">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black text-2xl shadow-inner">
+        <div className="flex items-center gap-4 pb-6 border-b border-white/[0.08]">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-black text-2xl shadow-inner">
             {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <h2 className="text-xl font-bold text-white">{user.full_name}</h2>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 {user.status ? user.status.toUpperCase() : 'ACTIVE'}
               </span>
             </div>
@@ -76,8 +76,8 @@ export default function StudentProfilePage() {
 
         {/* Read-Only Academic Attributes */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-1">
-            <span className="text-slate-400 block flex items-center justify-between">
+          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.08] space-y-1">
+            <span className="text-slate-400 flex items-center justify-between">
               <span>Register Number</span>
               <Lock className="w-3 h-3 text-slate-500" />
             </span>
@@ -85,8 +85,8 @@ export default function StudentProfilePage() {
             <span className="text-[10px] text-slate-500">Official college registration key</span>
           </div>
 
-          <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-1">
-            <span className="text-slate-400 block flex items-center justify-between">
+          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.08] space-y-1">
+            <span className="text-slate-400 flex items-center justify-between">
               <span>Department</span>
               <Lock className="w-3 h-3 text-slate-500" />
             </span>
@@ -94,8 +94,8 @@ export default function StudentProfilePage() {
             <span className="text-[10px] text-slate-500">School of Engineering</span>
           </div>
 
-          <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-1">
-            <span className="text-slate-400 block flex items-center justify-between">
+          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.08] space-y-1">
+            <span className="text-slate-400 flex items-center justify-between">
               <span>Enrolled Academic Year</span>
               <Lock className="w-3 h-3 text-slate-500" />
             </span>
@@ -103,14 +103,14 @@ export default function StudentProfilePage() {
             <span className="text-[10px] text-slate-500">B.E / B.Tech Degree Programme</span>
           </div>
 
-          <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-1">
+          <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/[0.08] space-y-1">
             <span className="text-slate-400 block">Section</span>
             <div className="text-sm font-bold text-white">{user.section || 'A'}</div>
             <span className="text-[10px] text-slate-500">Cohort Division</span>
           </div>
         </div>
 
-        <div className="p-4 bg-indigo-950/20 border border-indigo-900/40 rounded-2xl text-xs text-indigo-300 leading-relaxed flex items-start gap-2.5">
+        <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-xs text-indigo-300 leading-relaxed flex items-start gap-2.5 backdrop-blur-md">
           <Shield className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
           <p>
             <strong>Examination Integrity Policy:</strong> Register Number, Department, and Academic Year are verified academic identifiers and cannot be altered by students. If your details require correction, please submit an official request to the Exam Cell.

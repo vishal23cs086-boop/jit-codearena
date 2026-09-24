@@ -87,33 +87,42 @@ export default function StudentDashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
       {/* Student Greeting & Profile Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-xl">
+      <div className="glass-card rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 blur-[100px] pointer-events-none rounded-full" />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative z-10">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black text-2xl shadow-inner">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-black text-2xl shadow-inner">
               {studentName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <h1 className="text-2xl font-bold text-white">
                   {getGreeting()}, {studentName}
                 </h1>
                 {user?.register_number && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
                     {user.register_number}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-300 mt-1 font-medium">
+              <p className="text-xs text-slate-400 mt-1 font-medium">
                 Department of {user?.department || 'Engineering'} • Year {user?.year || 'Candidate'} • Section {user?.section || 'A'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 bg-white/[0.04] border border-white/10 rounded-xl backdrop-blur-md">
+              <img
+                src="/jit-logo.png"
+                alt="Jansons Institute of Technology"
+                className="w-7 h-7 object-contain"
+              />
+              <span className="text-[11px] font-semibold text-slate-300">Jansons Institute of Technology</span>
+            </div>
             <Link
               href="/student/profile"
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition"
+              className="px-4 py-2 bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 text-xs font-semibold rounded-xl border border-white/10 transition backdrop-blur-md"
             >
               Academic Profile
             </Link>
@@ -123,13 +132,13 @@ export default function StudentDashboardPage() {
 
       {/* Performance Section (Real Database Metrics) */}
       <div className="space-y-3">
-        <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-indigo-400" />
           <span>Performance Overview</span>
         </h2>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="glass-card-hover rounded-2xl p-5">
             <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block mb-1">
               Tests Completed
             </span>
@@ -137,7 +146,7 @@ export default function StudentDashboardPage() {
             <span className="text-[11px] text-slate-500">Evaluated assessments</span>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="glass-card-hover rounded-2xl p-5">
             <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block mb-1">
               Average Score
             </span>
@@ -149,7 +158,7 @@ export default function StudentDashboardPage() {
             </span>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="glass-card-hover rounded-2xl p-5">
             <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block mb-1">
               Problems Solved
             </span>
@@ -159,7 +168,7 @@ export default function StudentDashboardPage() {
             <span className="text-[11px] text-slate-500">Test problems cleared</span>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="glass-card-hover rounded-2xl p-5">
             <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block mb-1">
               Average Time
             </span>
@@ -175,7 +184,7 @@ export default function StudentDashboardPage() {
 
       {/* Available Assessments Section */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <FileCode className="w-4 h-4 text-emerald-400" />
             <span>Available Assessments</span>
@@ -190,10 +199,10 @@ export default function StudentDashboardPage() {
             {availableTests.map((t) => (
               <div
                 key={t.id}
-                className="bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-900 border-2 border-indigo-500/40 rounded-2xl p-6 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+                className="glass-card rounded-3xl p-6 sm:p-7 border border-indigo-500/30 hover:border-indigo-500/50 shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 transition-all duration-300"
               >
                 <div className="space-y-2 max-w-2xl">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                     <span>ACTIVE ASSESSMENT</span>
                   </div>
@@ -218,7 +227,7 @@ export default function StudentDashboardPage() {
                 <div className="flex-shrink-0">
                   <Link
                     href={`/student/test/${t.id}/instructions`}
-                    className="inline-flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30 text-xs uppercase tracking-wider"
+                    className="inline-flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30 text-xs uppercase tracking-wider hover:scale-[1.02]"
                   >
                     <span>Read Instructions & Begin</span>
                     <ArrowRight className="w-4 h-4" />
@@ -238,8 +247,8 @@ export default function StudentDashboardPage() {
       {/* Upcoming & Completed Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Upcoming Assessments */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Calendar className="w-4 h-4 text-indigo-400" />
               <span>Upcoming Scheduled Assessments</span>
@@ -252,7 +261,7 @@ export default function StudentDashboardPage() {
               {upcomingTests.map((t) => (
                 <div
                   key={t.id}
-                  className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-2"
+                  className="bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.06] rounded-2xl p-4 space-y-2 transition"
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -263,7 +272,7 @@ export default function StudentDashboardPage() {
                       Scheduled
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-500 pt-2 border-t border-slate-800 font-mono">
+                  <div className="flex items-center gap-4 text-xs text-slate-400 pt-2 border-t border-white/[0.06] font-mono">
                     <span>Duration: {t.duration_minutes}m</span>
                     <span>Marks: {t.total_marks}</span>
                   </div>
@@ -279,8 +288,8 @@ export default function StudentDashboardPage() {
         </div>
 
         {/* Completed Assessments */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>Completed Assessment Results</span>
@@ -293,7 +302,7 @@ export default function StudentDashboardPage() {
               {completedAttempts.map((att) => (
                 <div
                   key={att.id}
-                  className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 flex items-center justify-between"
+                  className="bg-white/[0.03] border border-white/[0.08] hover:bg-white/[0.06] rounded-2xl p-4 flex items-center justify-between transition"
                 >
                   <div>
                     <h4 className="font-semibold text-white text-sm">
@@ -307,7 +316,7 @@ export default function StudentDashboardPage() {
                     <div className="text-lg font-bold text-emerald-400">{att.score} pts</div>
                     <Link
                       href={`/student/test/${att.test_id}/result`}
-                      className="text-[11px] text-indigo-400 hover:underline"
+                      className="text-[11px] text-indigo-400 hover:underline font-medium"
                     >
                       View Result →
                     </Link>

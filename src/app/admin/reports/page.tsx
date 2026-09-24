@@ -102,7 +102,7 @@ export default function AdminReportsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
       </div>
     );
   }
@@ -112,8 +112,8 @@ export default function AdminReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <FileSpreadsheet className="w-7 h-7 text-emerald-400" />
             <span>Examination Reports & Data Export Center</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
@@ -125,77 +125,78 @@ export default function AdminReportsPage() {
           <button
             onClick={handleExportAllResults}
             disabled={reportRows.length === 0}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-lg shadow-emerald-500/20"
           >
             <Download className="w-4 h-4" />
-            <span>Export Complete Student Results CSV</span>
+            <span>Export Complete Results CSV</span>
           </button>
         </div>
       </div>
 
       {reportRows.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12">
+        <div className="glass-card rounded-3xl p-12 border border-white/10">
           <EmptyState
-            icon={FileSpreadsheet}
             title="No assessment results available yet"
             description="Assessment results will appear here once candidates complete their tests."
-            actionText="Manage Tests"
-            actionHref="/admin/tests"
+            action={{
+              label: "Manage Tests",
+              href: "/admin/tests",
+            }}
           />
         </div>
       ) : (
         <>
           {/* Export Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="glass-card glass-card-hover rounded-3xl p-6 space-y-4 border border-white/10">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Comprehensive Assessment CSV</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <h3 className="font-bold text-white text-base">Comprehensive Assessment CSV</h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   Includes candidate details, scores, percentage, completion times, and test breakdown.
                 </p>
               </div>
               <button
                 onClick={handleExportAllResults}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition"
+                className="w-full py-2.5 glass-card-hover rounded-xl text-xs font-semibold text-slate-200 hover:text-white transition border border-white/10"
               >
                 Download CSV Report
               </button>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <div className="glass-card glass-card-hover rounded-3xl p-6 space-y-4 border border-white/10">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Anti-Cheating Audit Incident Report</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <h3 className="font-bold text-white text-base">Anti-Cheating Audit Incident Report</h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   Filtered log of all tab switches, window deviations, and blocked clipboard events.
                 </p>
               </div>
               <button
                 onClick={handleExportProctoringIncidents}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition"
+                className="w-full py-2.5 glass-card-hover rounded-xl text-xs font-semibold text-amber-400 hover:text-amber-300 transition border border-white/10"
               >
                 Export Security Incidents
               </button>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <div className="glass-card glass-card-hover rounded-3xl p-6 space-y-4 border border-white/10">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
                 <Users className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Department Performance Summary</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <h3 className="font-bold text-white text-base">Department Performance Summary</h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   Aggregated GPA, pass rate, and topic averages formatted for college HOD review.
                 </p>
               </div>
               <button
                 onClick={handleExportAllResults}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition"
+                className="w-full py-2.5 glass-card-hover rounded-xl text-xs font-semibold text-slate-200 hover:text-white transition border border-white/10"
               >
                 Download Department Summary
               </button>
@@ -203,50 +204,50 @@ export default function AdminReportsPage() {
           </div>
 
           {/* Live Preview Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl space-y-2 p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="glass-card rounded-3xl overflow-hidden border border-white/10 p-6 space-y-4">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <h2 className="text-base font-bold text-white flex items-center gap-2.5">
                 <FileText className="w-4 h-4 text-indigo-400" />
                 <span>Export Table Preview (Live Synchronized)</span>
               </h2>
-              <span className="text-xs text-slate-400">Showing {reportRows.length} Candidates</span>
+              <span className="text-xs text-slate-400 font-mono">Showing {reportRows.length} Candidates</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
-                    <th className="py-3 px-3">Reg No</th>
-                    <th className="py-3 px-3">Name</th>
-                    <th className="py-3 px-2">Dept</th>
-                    <th className="py-3 px-2 text-center">Year</th>
-                    <th className="py-3 px-3 text-right">Score</th>
-                    <th className="py-3 px-3 text-center">Percentage</th>
-                    <th className="py-3 px-3 text-center">Time Taken</th>
-                    <th className="py-3 px-3 text-center">Violations</th>
-                    <th className="py-3 px-4">Status</th>
+                  <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 uppercase tracking-wider font-semibold">
+                    <th className="py-3.5 px-3">Reg No</th>
+                    <th className="py-3.5 px-3">Name</th>
+                    <th className="py-3.5 px-2">Dept</th>
+                    <th className="py-3.5 px-2 text-center">Year</th>
+                    <th className="py-3.5 px-3 text-right">Score</th>
+                    <th className="py-3.5 px-3 text-center">Percentage</th>
+                    <th className="py-3.5 px-3 text-center">Time Taken</th>
+                    <th className="py-3.5 px-3 text-center">Violations</th>
+                    <th className="py-3.5 px-4">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-white/5 font-mono">
                   {reportRows.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3 px-3 font-bold text-white">{r.registerNumber}</td>
-                      <td className="py-3 px-3 font-sans text-slate-200">{r.name}</td>
-                      <td className="py-3 px-2 text-slate-300">{r.department}</td>
-                      <td className="py-3 px-2 text-center text-slate-400">{r.year}</td>
-                      <td className="py-3 px-3 text-right font-bold text-emerald-400">{r.score}</td>
-                      <td className="py-3 px-3 text-center text-slate-300">{r.percentage}</td>
-                      <td className="py-3 px-3 text-center text-slate-400">{r.timeTaken}</td>
-                      <td className="py-3 px-3 text-center">
+                    <tr key={r.id} className="hover:bg-white/[0.03] transition">
+                      <td className="py-3.5 px-3 font-bold text-indigo-400">{r.registerNumber}</td>
+                      <td className="py-3.5 px-3 font-sans text-white">{r.name}</td>
+                      <td className="py-3.5 px-2 text-slate-400">{r.department}</td>
+                      <td className="py-3.5 px-2 text-center text-slate-500">{r.year}</td>
+                      <td className="py-3.5 px-3 text-right font-bold text-emerald-400">{r.score}</td>
+                      <td className="py-3.5 px-3 text-center text-slate-300">{r.percentage}</td>
+                      <td className="py-3.5 px-3 text-center text-slate-400">{r.timeTaken}</td>
+                      <td className="py-3.5 px-3 text-center">
                         {r.tabSwitches + r.fullscreenExits > 0 ? (
                           <span className="text-rose-400 font-bold">
                             {r.tabSwitches + r.fullscreenExits} ({r.tabSwitches} tabs)
                           </span>
                         ) : (
-                          <span className="text-emerald-400">Clean</span>
+                          <span className="text-emerald-400 font-semibold">Clean</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 font-sans text-xs text-slate-300">{r.status}</td>
+                      <td className="py-3.5 px-4 font-sans text-xs text-slate-300">{r.status}</td>
                     </tr>
                   ))}
                 </tbody>

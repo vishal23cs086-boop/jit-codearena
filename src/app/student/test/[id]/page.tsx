@@ -336,7 +336,7 @@ export default function CodingTestPage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
+      <div className="fixed inset-0 bg-[#070A12] flex flex-col items-center justify-center text-white space-y-4">
         <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
         <p className="text-sm font-semibold text-slate-300">Loading Assessment Environment...</p>
       </div>
@@ -361,7 +361,7 @@ export default function CodingTestPage() {
   const progressPercent = Math.round((solvedCount / questions.length) * 100);
 
   return (
-    <div className="fixed inset-0 bg-slate-950 flex flex-col z-30 select-none overflow-hidden font-sans">
+    <div className="fixed inset-0 bg-[#070A12] flex flex-col z-30 select-none overflow-hidden font-sans">
       {/* Anti-Cheating Fullscreen Enforcement and Warning Modals */}
       <ExamGuardModal
         isFullscreen={examGuard.isFullscreen}
@@ -375,14 +375,18 @@ export default function CodingTestPage() {
       />
 
       {/* TOP NAVIGATION BAR */}
-      <header className="h-14 bg-slate-950/90 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
+      <header className="h-14 bg-slate-900/90 border-b border-white/10 px-4 flex items-center justify-between flex-shrink-0 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
-              <Code2 className="w-4 h-4" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center p-1 shrink-0">
+              <img
+                src="/jit-logo.png"
+                alt="Jansons Institute of Technology Crest"
+                className="w-full h-full object-contain filter drop-shadow-[0_2px_6px_rgba(99,102,241,0.3)]"
+              />
             </div>
             <div>
-              <span className="font-extrabold text-sm text-white">{test?.title || 'JIT Assessment'}</span>
+              <span className="font-black text-sm text-white">{test?.title || 'JIT Assessment'}</span>
               <p className="text-[10px] text-slate-400 font-mono">
                 {user?.register_number} • {user?.full_name}
               </p>
@@ -390,7 +394,7 @@ export default function CodingTestPage() {
           </div>
 
           {/* Question Selector Bubbles */}
-          <div className="hidden md:flex items-center gap-1.5 pl-4 border-l border-slate-800">
+          <div className="hidden md:flex items-center gap-1.5 pl-4 border-l border-white/10">
             {questions.map((q, idx) => {
               const isCurrent = currentQIndex === idx;
               const isSolved = solvedQuestions[q.id];
@@ -402,12 +406,12 @@ export default function CodingTestPage() {
                   onClick={() => handleSelectQuestion(idx)}
                   className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition flex items-center justify-center ${
                     isCurrent
-                      ? 'ring-2 ring-indigo-400 bg-indigo-600 text-white shadow-md'
+                      ? 'ring-2 ring-indigo-400 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                       : isSolved
-                      ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/40'
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                       : isAttempted
-                      ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40'
-                      : 'bg-slate-900 text-slate-400 hover:bg-slate-800 border border-slate-800'
+                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      : 'bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white border border-white/10'
                   }`}
                   title={`Question ${idx + 1}: ${q.title}`}
                 >
@@ -421,7 +425,7 @@ export default function CodingTestPage() {
         {/* Center / Progress bar */}
         <div className="hidden lg:flex items-center gap-3">
           <span className="text-xs text-slate-400">Progress: {solvedCount}/{questions.length} Solved</span>
-          <div className="w-32 bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div className="w-32 bg-white/10 rounded-full h-2 overflow-hidden">
             <div
               className="bg-emerald-500 h-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
@@ -438,7 +442,7 @@ export default function CodingTestPage() {
 
           <button
             onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold transition"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold transition"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Finish Test</span>
@@ -447,7 +451,7 @@ export default function CodingTestPage() {
       </header>
 
       {/* MAIN TWO-PANE WORKSPACE */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 overflow-hidden bg-[#070A12]">
         {/* LEFT PANE: Question Problem Specs (5 cols on desktop) */}
         <div className="lg:col-span-5 h-full overflow-hidden">
           <QuestionPanel
@@ -486,12 +490,12 @@ export default function CodingTestPage() {
       </div>
 
       {/* FOOTER BAR: Next / Prev Question Navigator & Autosave */}
-      <footer className="h-10 bg-slate-950/90 border-t border-slate-800 px-4 flex items-center justify-between text-xs flex-shrink-0">
+      <footer className="h-10 bg-slate-900/90 border-t border-white/10 px-4 flex items-center justify-between text-xs flex-shrink-0 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleSelectQuestion(Math.max(0, currentQIndex - 1))}
             disabled={currentQIndex === 0}
-            className="flex items-center gap-1 px-3 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-30 text-slate-300 rounded border border-slate-800 transition"
+            className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 text-slate-300 rounded-lg border border-white/10 transition text-xs"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
             <span>Previous Problem</span>
@@ -500,7 +504,7 @@ export default function CodingTestPage() {
           <button
             onClick={() => handleSelectQuestion(Math.min(questions.length - 1, currentQIndex + 1))}
             disabled={currentQIndex === questions.length - 1}
-            className="flex items-center gap-1 px-3 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-30 text-slate-300 rounded border border-slate-800 transition"
+            className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 text-slate-300 rounded-lg border border-white/10 transition text-xs"
           >
             <span>Next Problem</span>
             <ChevronRight className="w-3.5 h-3.5" />
@@ -516,17 +520,17 @@ export default function CodingTestPage() {
 
       {/* Confirmation modal before final submit */}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-lg flex items-center justify-center p-4">
+          <div className="glass-card rounded-3xl max-w-md w-full p-7 space-y-4 shadow-2xl border border-white/10">
             <h3 className="text-lg font-bold text-white">Finalize & Submit Assessment?</h3>
             <p className="text-xs text-slate-300 leading-relaxed">
               Are you sure you want to submit? You have answered <strong>{solvedCount} of {questions.length}</strong> questions.
               Once submitted, your answers will be locked, your server completion timestamp will be recorded, and you cannot re-attempt.
             </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.06]">
               <button
                 onClick={() => setShowExitConfirm(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition"
+                className="px-4 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 rounded-xl text-xs font-medium transition border border-white/10"
               >
                 Return to Test
               </button>

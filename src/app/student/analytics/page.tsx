@@ -117,7 +117,7 @@ export default function StudentAnalyticsPage() {
 
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div className="glass-card-hover rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Average Score
           </span>
@@ -125,15 +125,15 @@ export default function StudentAnalyticsPage() {
           <span className="text-[11px] text-slate-500">Across {completedAttempts.length} completed assessments</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div className="glass-card-hover rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Avg Completion Time
           </span>
           <div className="text-2xl font-bold text-white">{avgTimeMinutes}m</div>
-          <span className="text-[11px] text-indigo-400">Recorded test duration</span>
+          <span className="text-[11px] text-indigo-400 font-medium">Recorded test duration</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div className="glass-card-hover rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Assessments Completed
           </span>
@@ -141,7 +141,7 @@ export default function StudentAnalyticsPage() {
           <span className="text-[11px] text-slate-500">Verified official submissions</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div className="glass-card-hover rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Highest Score
           </span>
@@ -153,8 +153,8 @@ export default function StudentAnalyticsPage() {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Score History Line Chart */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Award className="w-4 h-4 text-indigo-400" />
               <span>Assessment Score History</span>
@@ -164,11 +164,17 @@ export default function StudentAnalyticsPage() {
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={scoreHistoryData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="test" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={11} domain={[0, 100]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="test" stroke="#64748b" fontSize={11} tickLine={false} />
+                <YAxis stroke="#64748b" fontSize={11} domain={[0, 100]} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
+                  contentStyle={{
+                    backgroundColor: '#0B1020',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    color: '#f8fafc',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                  }}
                 />
                 <Line
                   type="monotone"
@@ -176,7 +182,7 @@ export default function StudentAnalyticsPage() {
                   name="Score (%)"
                   stroke="#6366f1"
                   strokeWidth={3}
-                  dot={{ r: 5 }}
+                  dot={{ r: 5, fill: '#6366f1' }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -184,8 +190,8 @@ export default function StudentAnalyticsPage() {
         </div>
 
         {/* Assessment Marks Bar Chart */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <BarChart2 className="w-4 h-4 text-emerald-400" />
               <span>Marks Obtained per Assessment</span>
@@ -195,13 +201,19 @@ export default function StudentAnalyticsPage() {
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={scoreHistoryData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="test" stroke="#94a3b8" fontSize={11} />
-                <YAxis stroke="#94a3b8" fontSize={11} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="test" stroke="#64748b" fontSize={11} />
+                <YAxis stroke="#64748b" fontSize={11} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
+                  contentStyle={{
+                    backgroundColor: '#0B1020',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    color: '#f8fafc',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                  }}
                 />
-                <Bar dataKey="score" name="Marks" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="score" name="Marks" fill="#10b981" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

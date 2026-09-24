@@ -67,35 +67,35 @@ export default function StudentAssessmentsPage() {
     switch (status) {
       case 'Available':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             Available Now
           </span>
         );
       case 'In Progress':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
             <span className="w-2 h-2 rounded-full bg-amber-400" />
             In Progress
           </span>
         );
       case 'Completed':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
             <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
             Completed
           </span>
         );
       case 'Upcoming':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
             <Calendar className="w-3.5 h-3.5 text-indigo-400" />
             Upcoming
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/[0.04] text-slate-400 border border-white/10">
             Expired
           </span>
         );
@@ -134,22 +134,22 @@ export default function StudentAssessmentsPage() {
             return (
               <div
                 key={test.id}
-                className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-4 shadow-xl"
+                className="glass-card-hover rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-4 shadow-xl"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center justify-between gap-3 mb-3">
                     {getStatusBadge(status)}
                     <span className="text-xs text-slate-400 font-mono">
                       {test.questions?.length || 0} Questions
                     </span>
                   </div>
 
-                  <h3 className="text-lg font-bold text-white mb-1.5">{test.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+                  <h3 className="text-lg font-bold text-white mb-2">{test.title}</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
                     {test.description}
                   </p>
 
-                  <div className="grid grid-cols-2 gap-2 mt-4 text-xs font-mono bg-slate-950/70 p-3 rounded-2xl border border-slate-800 text-slate-300">
+                  <div className="grid grid-cols-2 gap-2 mt-4 text-xs font-mono bg-white/[0.03] p-3.5 rounded-2xl border border-white/[0.08] text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-indigo-400" />
                       Duration: {test.duration_minutes}m
@@ -165,10 +165,10 @@ export default function StudentAssessmentsPage() {
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-500">
+                <div className="pt-4 border-t border-white/[0.06] flex items-center justify-between">
+                  <div className="text-[11px] text-slate-400">
                     {eligible ? (
-                      <span className="text-emerald-400">✓ Eligible Candidate</span>
+                      <span className="text-emerald-400 font-medium">✓ Eligible Candidate</span>
                     ) : (
                       <span className="text-rose-400">✕ Department / Year Restriction</span>
                     )}
@@ -177,7 +177,7 @@ export default function StudentAssessmentsPage() {
                   {status === 'Completed' ? (
                     <Link
                       href={`/student/test/${test.id}/result`}
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition"
+                      className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 rounded-xl text-xs font-semibold transition border border-white/10"
                     >
                       View Result →
                     </Link>
@@ -192,7 +192,7 @@ export default function StudentAssessmentsPage() {
                   ) : (
                     <button
                       disabled
-                      className="px-4 py-2 bg-slate-800/50 text-slate-500 rounded-xl text-xs font-semibold cursor-not-allowed"
+                      className="px-4 py-2 bg-white/[0.03] text-slate-500 rounded-xl text-xs font-semibold cursor-not-allowed border border-white/[0.06]"
                     >
                       {status === 'Upcoming' ? 'Not Started Yet' : status === 'Expired' ? 'Assessment Closed' : 'Ineligible'}
                     </button>
@@ -204,8 +204,8 @@ export default function StudentAssessmentsPage() {
         </div>
       ) : (
         <EmptyState
-          title="No assessments available"
-          description="There are currently no active assessments published by the examination committee."
+          title="No institutional assessments found"
+          description="Your scheduled tests will appear here once published by the examination coordinator."
         />
       )}
     </div>

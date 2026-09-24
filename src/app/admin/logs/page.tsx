@@ -93,18 +93,18 @@ export default function AdminAuditLogsPage() {
 
   const getBadgeStyle = (eventType: ActivityEventType, severity: AuditRow['severity']) => {
     if (severity === 'alert') {
-      return 'bg-rose-500/10 text-rose-300 border-rose-500/30';
+      return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
     }
     if (severity === 'warning') {
-      return 'bg-amber-500/10 text-amber-300 border-amber-500/30';
+      return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
     }
-    return 'bg-slate-800 text-slate-300 border-slate-700';
+    return 'bg-white/[0.04] text-slate-300 border-white/10';
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
       </div>
     );
   }
@@ -113,8 +113,8 @@ export default function AdminAuditLogsPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Activity className="w-6 h-6 text-indigo-400" />
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+          <Activity className="w-7 h-7 text-indigo-400" />
           <span>Institutional Examination Audit Log Stream</span>
         </h1>
         <p className="text-xs text-slate-400 mt-1">
@@ -123,75 +123,76 @@ export default function AdminAuditLogsPage() {
       </div>
 
       {auditRows.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12">
+        <div className="glass-card rounded-3xl p-12 border border-white/10">
           <EmptyState
-            icon={Activity}
             title="No activity recorded"
             description="Assessment and security events will appear here as candidates interact with the testing environment."
-            actionText="View Live Monitor"
-            actionHref="/admin/monitor"
+            action={{
+              label: "View Live Monitor",
+              href: "/admin/monitor",
+            }}
           />
         </div>
       ) : (
         <>
           {/* Filter and Search Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3 rounded-2xl">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-card p-3 rounded-2xl border border-white/10">
             <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search candidate name, reg no, details..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full pl-9 pr-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-xs text-white placeholder-slate-500 focus:bg-white/[0.08] focus:outline-none focus:border-indigo-500/50"
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
               <span className="text-xs text-slate-400 font-medium">Event Type:</span>
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
+                className="bg-white/[0.04] border border-white/10 text-xs text-slate-200 rounded-xl px-3 py-2 focus:bg-[#0B1020] focus:outline-none focus:border-indigo-500/50"
               >
-                <option value="all">All Events</option>
-                <option value="TAB_SWITCH">Tab Switches</option>
-                <option value="FULLSCREEN_EXIT">Fullscreen Exits</option>
-                <option value="PASTE_ATTEMPT">Paste Attempts</option>
-                <option value="CODE_SUBMITTED">Code Submissions</option>
-                <option value="CODE_SAVED">Code Saved</option>
-                <option value="TEST_STARTED">Test Started</option>
-                <option value="TEST_COMPLETED">Test Completed</option>
+                <option value="all" className="bg-[#0B1020] text-white">All Events</option>
+                <option value="TAB_SWITCH" className="bg-[#0B1020] text-white">Tab Switches</option>
+                <option value="FULLSCREEN_EXIT" className="bg-[#0B1020] text-white">Fullscreen Exits</option>
+                <option value="PASTE_ATTEMPT" className="bg-[#0B1020] text-white">Paste Attempts</option>
+                <option value="CODE_SUBMITTED" className="bg-[#0B1020] text-white">Code Submissions</option>
+                <option value="CODE_SAVED" className="bg-[#0B1020] text-white">Code Saved</option>
+                <option value="TEST_STARTED" className="bg-[#0B1020] text-white">Test Started</option>
+                <option value="TEST_COMPLETED" className="bg-[#0B1020] text-white">Test Completed</option>
               </select>
             </div>
           </div>
 
           {/* Logs Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div className="glass-card rounded-2xl overflow-hidden border border-white/10">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold font-sans">
-                    <th className="py-3.5 px-4">Timestamp</th>
-                    <th className="py-3.5 px-3">Candidate</th>
-                    <th className="py-3.5 px-3">Reg No</th>
-                    <th className="py-3.5 px-3">Event Type</th>
-                    <th className="py-3.5 px-4">Audit Details</th>
+                  <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 uppercase tracking-wider font-semibold font-sans">
+                    <th className="py-4 px-4">Timestamp</th>
+                    <th className="py-4 px-3">Candidate</th>
+                    <th className="py-4 px-3">Reg No</th>
+                    <th className="py-4 px-3">Event Type</th>
+                    <th className="py-4 px-4">Audit Details</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-white/5">
                   {filteredLogs.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3.5 px-4 text-slate-400 text-[11px] whitespace-nowrap">
+                    <tr key={row.id} className="hover:bg-white/[0.03] transition">
+                      <td className="py-4 px-4 text-slate-400 text-[11px] whitespace-nowrap">
                         {row.timestamp}
                       </td>
-                      <td className="py-3.5 px-3 font-sans font-semibold text-white">
+                      <td className="py-4 px-3 font-sans font-semibold text-white">
                         {row.studentName}
                       </td>
-                      <td className="py-3.5 px-3 text-slate-300 font-bold">{row.registerNumber}</td>
-                      <td className="py-3.5 px-3">
+                      <td className="py-4 px-3 text-indigo-400 font-bold">{row.registerNumber}</td>
+                      <td className="py-4 px-3">
                         <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getBadgeStyle(
+                          className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${getBadgeStyle(
                             row.eventType,
                             row.severity
                           )}`}
@@ -199,7 +200,7 @@ export default function AdminAuditLogsPage() {
                           {row.eventType}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300 font-sans text-xs">
+                      <td className="py-4 px-4 text-slate-300 font-sans text-xs">
                         {row.details}
                       </td>
                     </tr>

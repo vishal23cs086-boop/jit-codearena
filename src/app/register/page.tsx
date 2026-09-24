@@ -4,7 +4,17 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Code2, ArrowRight, ShieldCheck, GraduationCap, AlertCircle } from 'lucide-react';
+import {
+  Code2,
+  ArrowRight,
+  ShieldCheck,
+  GraduationCap,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Check,
+  Sparkles,
+} from 'lucide-react';
 
 const DEPARTMENTS = [
   'CSE',
@@ -34,8 +44,27 @@ export default function RegisterPage() {
   const [year, setYear] = useState<number>(2);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Compute password strength
+  const getPasswordStrength = () => {
+    if (!password) return { score: 0, label: '', color: 'bg-transparent' };
+    let score = 0;
+    if (password.length >= 6) score += 1;
+    if (password.length >= 8) score += 1;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+    if (/[0-9]/.test(password) || /[^A-Za-z0-9]/.test(password)) score += 1;
+
+    if (score <= 1) return { score: 25, label: 'Weak', color: 'bg-rose-500' };
+    if (score === 2) return { score: 50, label: 'Fair', color: 'bg-amber-500' };
+    if (score === 3) return { score: 75, label: 'Good', color: 'bg-blue-500' };
+    return { score: 100, label: 'Strong', color: 'bg-emerald-500' };
+  };
+
+  const strength = getPasswordStrength();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,22 +111,26 @@ export default function RegisterPage() {
 
   return (
     <div className="flex-1 flex items-center justify-center p-4 py-12">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 sm:p-10 shadow-2xl space-y-6">
+      <div className="w-full max-w-lg glass-card rounded-3xl p-8 sm:p-10 shadow-2xl space-y-6">
         {/* Brand Header */}
-        <div className="text-center space-y-1.5">
-          <div className="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-blue-600 rounded-2xl flex items-center justify-center mx-auto text-white shadow-lg shadow-indigo-600/30">
-            <GraduationCap className="w-6 h-6" />
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 p-2 bg-white/[0.04] border border-white/10 rounded-2xl mx-auto shadow-inner flex items-center justify-center">
+            <img
+              src="/jit-logo.png"
+              alt="Jansons Institute of Technology Crest"
+              className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(99,102,241,0.3)]"
+            />
           </div>
           <h1 className="text-2xl font-black text-white">JIT CodeArena</h1>
           <p className="text-xs text-indigo-400 font-semibold uppercase tracking-wider">
-            Institutional Online Coding Assessment Platform
+            Jansons Institute of Technology
           </p>
-          <h2 className="text-base font-bold text-slate-200 pt-2">Create Student Account</h2>
+          <h2 className="text-xs font-semibold text-slate-400 pt-1">Candidate Registration Portal</h2>
         </div>
 
         {error && (
-          <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
         )}
@@ -113,7 +146,7 @@ export default function RegisterPage() {
               placeholder="e.g. Harish Kumar S"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 text-sm"
+              className="glass-input w-full rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"
             />
           </div>
 
@@ -127,7 +160,7 @@ export default function RegisterPage() {
               placeholder="e.g. 22CS084"
               value={registerNumber}
               onChange={(e) => setRegisterNumber(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono text-sm uppercase"
+              className="glass-input w-full rounded-xl p-3 text-white placeholder-slate-500 font-mono text-sm uppercase focus:outline-none"
             />
             <span className="text-[10px] text-slate-500 mt-1 block">
               Used as your primary login credential.
@@ -142,10 +175,10 @@ export default function RegisterPage() {
               <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-indigo-500 text-sm"
+                className="glass-input w-full rounded-xl p-3 text-slate-200 text-sm focus:outline-none bg-[#0B1020]"
               >
                 {DEPARTMENTS.map((d) => (
-                  <option key={d} value={d}>
+                  <option key={d} value={d} className="bg-[#0B1020] text-slate-200">
                     {d}
                   </option>
                 ))}
@@ -159,10 +192,10 @@ export default function RegisterPage() {
               <select
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-indigo-500 text-sm"
+                className="glass-input w-full rounded-xl p-3 text-slate-200 text-sm focus:outline-none bg-[#0B1020]"
               >
                 {YEARS.map((y) => (
-                  <option key={y.value} value={y.value}>
+                  <option key={y.value} value={y.value} className="bg-[#0B1020] text-slate-200">
                     {y.label}
                   </option>
                 ))}
@@ -174,28 +207,61 @@ export default function RegisterPage() {
             <label className="text-slate-300 font-semibold block mb-1">
               Create Password
             </label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 text-sm"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="glass-input w-full rounded-xl p-3 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {password && (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-slate-400">Strength:</span>
+                  <span className="font-semibold text-slate-300">{strength.label}</span>
+                </div>
+                <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${strength.color}`}
+                    style={{ width: `${strength.score}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
             <label className="text-slate-300 font-semibold block mb-1">
               Confirm Password
             </label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 text-sm"
-            />
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                required
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="glass-input w-full rounded-xl p-3 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition"
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -208,7 +274,7 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <div className="text-center pt-2 border-t border-slate-800 text-xs text-slate-400">
+        <div className="text-center pt-3 border-t border-white/[0.06] text-xs text-slate-400">
           Already registered?{' '}
           <Link href="/login" className="text-indigo-400 font-semibold hover:underline">
             Sign In with Register Number

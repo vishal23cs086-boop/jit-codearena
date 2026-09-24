@@ -43,22 +43,22 @@ export const TimerBadge: React.FC<TimerBadgeProps> = ({
 
   return (
     <div
-      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-mono text-sm font-semibold transition shadow-sm border ${
+      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-mono text-xs font-semibold transition backdrop-blur-md border ${
         isCritical
-          ? 'bg-red-500/20 text-red-400 border-red-500/50 animate-bounce'
+          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-bounce shadow-lg shadow-rose-500/20'
           : isLowTime
-          ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 animate-pulse'
-          : 'bg-slate-800/80 text-slate-200 border-slate-700/60'
+          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 animate-pulse shadow-md shadow-amber-500/10'
+          : 'bg-white/[0.06] text-white border-white/10'
       }`}
       title="Server-synchronized assessment countdown"
     >
       {isCritical ? (
-        <AlertCircle className="w-4 h-4 text-red-400 animate-spin" />
+        <AlertCircle className="w-3.5 h-3.5 text-rose-400 animate-spin" />
       ) : (
-        <Clock className={`w-4 h-4 ${isLowTime ? 'text-amber-400' : 'text-indigo-400'}`} />
+        <Clock className={`w-3.5 h-3.5 ${isLowTime ? 'text-amber-400' : 'text-indigo-400'}`} />
       )}
       <span>{formatTimeSeconds(secondsRemaining)}</span>
-      <span className="text-[10px] uppercase font-sans tracking-wider opacity-70">Remaining</span>
+      <span className="text-[10px] uppercase font-sans tracking-wider text-slate-400">Left</span>
     </div>
   );
 };
