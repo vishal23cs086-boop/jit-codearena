@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { findStudentByRegNo, recordLoginActivityInDb, updateHeartbeatInDb } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
@@ -25,11 +25,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (student.status === 'disabled' || student.status === 'suspended') {
+    if (student.status === 'disabled' || student.status === 'suspended' || student.status === 'archived') {
       return NextResponse.json(
         {
           success: false,
-          error: 'Your student account is currently suspended. Please contact the Examination Cell.',
+          error: student.status === 'disabled'
+            ? 'Your student account has been disabled by the administrator. Please contact the Examination Cell.'
+            : 'Your student account has been archived. Login access is no longer permitted.',
         },
         { status: 403 }
       );

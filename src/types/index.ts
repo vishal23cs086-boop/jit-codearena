@@ -72,7 +72,7 @@ export interface StudentProfile extends Profile {
   year: number; // 1, 2, 3, 4
   section?: string;
   phone?: string;
-  status: 'active' | 'disabled' | 'suspended';
+  status: 'active' | 'disabled' | 'suspended' | 'archived';
 }
 
 export interface TestCase {
