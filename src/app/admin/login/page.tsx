@@ -60,11 +60,6 @@ export default function AdminLoginPage() {
           <h2 className="text-xs font-semibold text-slate-500 pt-0.5">Faculty & Administrator Login</h2>
         </div>
 
-        {/* Credentials guidance badge */}
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center gap-2.5">
-          <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Institutional Access • <strong>ID:</strong> ADMIN • <strong>Password:</strong> Admin_Jansons</span>
-        </div>
 
         {error && (
           <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">

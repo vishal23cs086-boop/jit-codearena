@@ -1,9 +1,7 @@
-'use client';
+﻿'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { StudentProfile, UserRole } from '@/types';
-import { createClient } from '@/lib/supabase/client';
-import { fetchStudents, saveStudent } from '@/lib/db';
 
 interface RegisterData {
   fullName: string;
@@ -11,6 +9,8 @@ interface RegisterData {
   department: string;
   year: number;
   password?: string;
+  section?: string;
+  phone?: string;
 }
 
 interface AuthContextType {
@@ -19,8 +19,14 @@ interface AuthContextType {
   isLoading: boolean;
   registerStudent: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   loginStudent: (registerNumber: string, password?: string) => Promise<{ success: boolean; error?: string }>;
-  loginAdmin: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  loginAdmin: (username: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  sendPresenceHeartbeat: (meta?: {
+    active_assessment_id?: string;
+    current_question_index?: number;
+    total_questions?: number;
+    violation_count?: number;
+  }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -31,6 +37,7 @@ const AuthContext = createContext<AuthContextType>({
   loginStudent: async () => ({ success: false }),
   loginAdmin: async () => ({ success: false }),
   logout: () => {},
+  sendPresenceHeartbeat: async () => {},
 });
 
 const AUTH_STORAGE_KEY = 'jit_codearena_auth_session';
@@ -38,6 +45,7 @@ const AUTH_STORAGE_KEY = 'jit_codearena_auth_session';
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<StudentProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     try {
@@ -52,214 +60,139 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const registerStudent = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
-    const regNo = data.registerNumber.trim().toUpperCase();
+  const sendPresenceHeartbeat = useCallback(
+    async (meta?: {
+      active_assessment_id?: string;
+      current_question_index?: number;
+      total_questions?: number;
+      violation_count?: number;
+    }) => {
+      if (!user || user.role !== 'student') return;
 
-    // Check if student already exists in database
-    const allStudents = await fetchStudents();
-    const exists = allStudents.find((s) => s.register_number.toUpperCase() === regNo);
-    if (exists) {
-      return { success: false, error: `Student with Register Number ${regNo} is already registered.` };
-    }
-
-    const email = `${regNo.toLowerCase()}@student.jit.edu`;
-    const newStudent: StudentProfile = {
-      id: `std-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      email,
-      full_name: data.fullName,
-      role: 'student',
-      register_number: regNo,
-      department: data.department,
-      year: data.year,
-      section: 'A',
-      status: 'active',
-      created_at: new Date().toISOString(),
-    };
-
-    // If Supabase Auth is live, register user with auth
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('mock-') && !supabaseUrl.includes('your-project')) {
       try {
-        const supabase = createClient();
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
-          password: data.password || 'Student@12345',
-          options: {
-            data: {
-              full_name: data.fullName,
-              register_number: regNo,
-              department: data.department,
-              year: data.year,
-              role: 'student',
-            },
-          },
+        const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+        await fetch('/api/presence/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_id: user.id,
+            register_number: user.register_number,
+            full_name: user.full_name,
+            department: user.department,
+            year: user.year,
+            section: user.section || 'A',
+            current_page: pathname,
+            active_assessment_id: meta?.active_assessment_id || null,
+            current_question_index: meta?.current_question_index || 0,
+            total_questions: meta?.total_questions || 0,
+            violation_count: meta?.violation_count || 0,
+          }),
         });
-        if (authError) {
-          return { success: false, error: authError.message };
-        }
-        if (authData.user) {
-          newStudent.id = authData.user.id;
-        }
-      } catch (e: any) {
-        console.warn('Supabase Auth signup error:', e);
+      } catch (err) {
+        // Silent failure for heartbeat
       }
+    },
+    [user]
+  );
+
+  // Student heartbeat loop: fires every 25 seconds
+  useEffect(() => {
+    if (!user || user.role !== 'student') {
+      if (heartbeatTimerRef.current) {
+        clearInterval(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+      return;
     }
 
-    // Save profile to database
-    await saveStudent(newStudent);
+    // Fire immediately upon authentication
+    sendPresenceHeartbeat();
 
-    setUser(newStudent);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newStudent));
-    return { success: true };
+    heartbeatTimerRef.current = setInterval(() => {
+      sendPresenceHeartbeat();
+    }, 25000);
+
+    return () => {
+      if (heartbeatTimerRef.current) {
+        clearInterval(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+    };
+  }, [user, sendPresenceHeartbeat]);
+
+  const registerStudent = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Registration failed.' };
+      }
+
+      setUser(json.user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(json.user));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error during registration.' };
+    }
   };
 
   const loginStudent = async (
     registerNumber: string,
     password?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const regNo = registerNumber.trim().toUpperCase();
-    if (!regNo) {
-      return { success: false, error: 'Please enter your Register Number.' };
-    }
-
-    // Query database for student
-    const allStudents = await fetchStudents();
-    const student = allStudents.find((s) => s.register_number.toUpperCase() === regNo);
-
-    if (!student) {
-      return {
-        success: false,
-        error: `No registered student found with Register Number "${regNo}". Please create an account first.`,
-      };
-    }
-
-    if (student.status === 'disabled' || student.status === 'suspended') {
-      return {
-        success: false,
-        error: 'Your student account is currently suspended. Please contact the exam cell coordinator.',
-      };
-    }
-
-    // If Supabase Auth is active, authenticate password
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (password && supabaseUrl && !supabaseUrl.includes('mock-') && !supabaseUrl.includes('your-project')) {
-      try {
-        const supabase = createClient();
-        const { error: authErr } = await supabase.auth.signInWithPassword({
-          email: student.email || `${regNo.toLowerCase()}@student.jit.edu`,
-          password,
-        });
-        if (authErr) {
-          return { success: false, error: authErr.message };
-        }
-      } catch (e: any) {
-        console.warn('Supabase Auth login error:', e);
+    try {
+      const res = await fetch('/api/auth/student-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registerNumber, password }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Invalid credentials.' };
       }
-    }
 
-    setUser(student);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(student));
-    return { success: true };
+      setUser(json.user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(json.user));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error during student login.' };
+    }
   };
 
   const loginAdmin = async (
-    emailOrId: string,
+    username: string,
     password?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const cleanId = emailOrId.trim();
-    if (!cleanId) {
-      return { success: false, error: 'Please enter your Administrator ID.' };
-    }
-
-    // Direct institutional examination admin credentials: ID: ADMIN, Password: Admin_Jansons
-    const isAdminId =
-      cleanId.toUpperCase() === 'ADMIN' ||
-      cleanId.toLowerCase() === 'admin@jit.edu' ||
-      cleanId.toLowerCase() === 'examcell@jit.edu.in';
-
-    if (isAdminId) {
-      if (password === 'Admin_Jansons') {
-        const adminUser: StudentProfile = {
-          id: 'admin-controller',
-          email: 'admin@jit.edu.in',
-          full_name: 'Examination Controller (Jansons)',
-          role: 'admin',
-          register_number: 'ADMIN',
-          department: 'EXAM_CELL',
-          year: 0,
-          status: 'active',
-        };
-        setUser(adminUser);
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminUser));
-        return { success: true };
-      } else {
-        return { success: false, error: 'Invalid password. Please enter the correct password for ADMIN.' };
+    try {
+      const res = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Invalid Administrator credentials.' };
       }
+
+      setUser(json.user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(json.user));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error during administrator login.' };
     }
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('mock-') && !supabaseUrl.includes('your-project')) {
-      try {
-        const supabase = createClient();
-        const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
-          email: cleanId.toLowerCase(),
-          password: password || '',
-        });
-        if (authErr) {
-          return { success: false, error: authErr.message };
-        }
-        // Verify role in profile
-        if (authData.user) {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authData.user.id)
-            .single();
-
-          if (!prof || prof.role !== 'admin') {
-            return {
-              success: false,
-              error: 'Access Denied: This account does not possess institutional examination administrator privileges.',
-            };
-          }
-
-          const adminUser: StudentProfile = {
-            id: authData.user.id,
-            email: authData.user.email || cleanId.toLowerCase(),
-            full_name: prof.full_name || 'Examination Controller',
-            role: 'admin',
-            register_number: 'ADMIN',
-            department: 'EXAM_CELL',
-            year: 0,
-            status: 'active',
-          };
-          setUser(adminUser);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminUser));
-          return { success: true };
-        }
-      } catch (e: any) {
-        return { success: false, error: e?.message || 'Admin authentication failed.' };
-      }
-    }
-
-    return {
-      success: false,
-      error: 'Invalid Administrator ID or password. Use ID: ADMIN with the authorized password.',
-    };
   };
 
   const logout = () => {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
     setUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('mock-')) {
-      try {
-        const supabase = createClient();
-        supabase.auth.signOut().catch(() => {});
-      } catch {
-        // safe
-      }
-    }
   };
 
   return (
@@ -272,6 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginStudent,
         loginAdmin,
         logout,
+        sendPresenceHeartbeat,
       }}
     >
       {children}

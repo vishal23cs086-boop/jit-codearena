@@ -1,9 +1,8 @@
 // ==============================================================================
 // JIT CodeArena - Institutional Database & Repository Service
-// Connects directly to Supabase with real tables and strict empty states
+// Turso LibSQL integrated data layer with local fallback
 // ==============================================================================
 
-import { createClient } from '@/lib/supabase/client';
 import {
   StudentProfile,
   Test,
@@ -15,13 +14,7 @@ import {
   LeaderboardEntry,
 } from '@/types';
 
-const isSupabaseConfigured = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes('mock-') && !url.includes('your-project'));
-};
-
-// Client-side persistent cache keys (for session persistence when Supabase credentials are local)
+// Client-side persistent cache keys (for session persistence when offline)
 const STORAGE_KEYS = {
   STUDENTS: 'jit_ca_students_v2',
   QUESTIONS: 'jit_ca_questions_v2',
@@ -55,82 +48,55 @@ function setLocalStore<T>(key: string, items: T[]) {
 // ==============================================================================
 
 export async function fetchStudents(): Promise<StudentProfile[]> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('students')
-        .select(`
-          id,
-          register_number,
-          department,
-          year,
-          section,
-          phone,
-          status,
-          created_at,
-          profiles (
-            id,
-            email,
-            full_name,
-            role,
-            avatar_url
-          )
-        `);
-
-      if (!error && data) {
-        return data.map((item: any) => ({
-          id: item.id,
-          email: item.profiles?.email || `${item.register_number.toLowerCase()}@student.jit.edu`,
-          full_name: item.profiles?.full_name || item.register_number,
-          role: 'student',
-          register_number: item.register_number,
-          department: item.department,
-          year: item.year,
-          section: item.section || 'A',
-          phone: item.phone,
-          status: item.status || 'active',
-          created_at: item.created_at,
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/presence');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.students) && data.students.length > 0) {
+        return data.students.map((s: any) => ({
+          id: s.student_id,
+          email: `${s.register_number.toLowerCase()}@student.jit.edu`,
+          full_name: s.full_name,
+          role: 'student' as const,
+          register_number: s.register_number,
+          department: s.department,
+          year: s.year,
+          section: s.section || 'A',
+          status: 'active' as const,
+          created_at: new Date(s.last_seen || Date.now()).toISOString(),
         }));
       }
-    } catch (e) {
-      console.warn('Failed to query Supabase students:', e);
     }
+  } catch (err) {
+    console.warn('API fetchStudents error:', err);
   }
 
-  // Real local storage (starts empty if no one has registered)
   return getLocalStore<StudentProfile>(STORAGE_KEYS.STUDENTS);
 }
 
 export async function saveStudent(student: StudentProfile): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      // Insert profile
-      await supabase.from('profiles').upsert({
-        id: student.id,
-        email: student.email,
-        full_name: student.full_name,
-        role: 'student',
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: student.full_name,
+          registerNumber: student.register_number,
+          department: student.department,
+          year: student.year,
+          section: student.section,
+          phone: student.phone,
+        }),
       });
-      // Insert student record
-      const { error } = await supabase.from('students').upsert({
-        id: student.id,
-        register_number: student.register_number.toUpperCase(),
-        department: student.department,
-        year: student.year,
-        section: student.section || 'A',
-        phone: student.phone,
-        status: student.status || 'active',
-      });
-      if (!error) return true;
-    } catch (e) {
-      console.warn('Supabase save student error:', e);
+      if (res.ok) return true;
     }
+  } catch (err) {
+    console.warn('API saveStudent error:', err);
   }
 
   const existing = getLocalStore<StudentProfile>(STORAGE_KEYS.STUDENTS);
-  const updated = existing.filter((s) => s.register_number !== student.register_number);
+  const updated = existing.filter((s) => s.id !== student.id && s.register_number !== student.register_number);
   updated.push(student);
   setLocalStore(STORAGE_KEYS.STUDENTS, updated);
   return true;
@@ -141,70 +107,10 @@ export async function saveStudent(student: StudentProfile): Promise<boolean> {
 // ==============================================================================
 
 export async function fetchQuestions(): Promise<Question[]> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('questions')
-        .select(`
-          *,
-          test_cases (*)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        return data as Question[];
-      }
-    } catch (e) {
-      console.warn('Failed to query Supabase questions:', e);
-    }
-  }
-
-  // Real local storage questions (empty by default)
   return getLocalStore<Question>(STORAGE_KEYS.QUESTIONS);
 }
 
 export async function saveQuestion(question: Question): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('questions').upsert({
-        id: question.id,
-        title: question.title,
-        slug: question.slug,
-        description: question.description,
-        input_format: question.input_format,
-        output_format: question.output_format,
-        constraints: question.constraints,
-        sample_explanation: question.sample_explanation,
-        difficulty: question.difficulty,
-        topic: question.topic,
-        starter_code: question.starter_code,
-        marks: question.marks,
-        time_limit_ms: question.time_limit_ms,
-        memory_limit_kb: question.memory_limit_kb,
-        is_active: question.is_active,
-      });
-
-      if (!error && question.test_cases?.length) {
-        for (const tc of question.test_cases) {
-          await supabase.from('test_cases').upsert({
-            id: tc.id,
-            question_id: question.id,
-            input: tc.input,
-            expected_output: tc.expected_output,
-            is_hidden: tc.is_hidden,
-            weight: tc.weight || 1,
-            explanation: tc.explanation,
-          });
-        }
-      }
-      if (!error) return true;
-    } catch (e) {
-      console.warn('Supabase save question error:', e);
-    }
-  }
-
   const existing = getLocalStore<Question>(STORAGE_KEYS.QUESTIONS);
   const updated = existing.filter((q) => q.id !== question.id);
   updated.unshift(question);
@@ -213,16 +119,6 @@ export async function saveQuestion(question: Question): Promise<boolean> {
 }
 
 export async function deleteQuestionById(id: string): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('questions').delete().eq('id', id);
-      if (!error) return true;
-    } catch (e) {
-      console.warn('Supabase delete question error:', e);
-    }
-  }
-
   const existing = getLocalStore<Question>(STORAGE_KEYS.QUESTIONS);
   setLocalStore(
     STORAGE_KEYS.QUESTIONS,
@@ -236,77 +132,108 @@ export async function deleteQuestionById(id: string): Promise<boolean> {
 // ==============================================================================
 
 export async function fetchTests(): Promise<Test[]> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('tests')
-        .select(`
-          *,
-          test_questions (
-            id,
-            order_index,
-            marks,
-            questions (
-              *,
-              test_cases (*)
-            )
-          )
-        `)
-        .order('start_time', { ascending: false });
-
-      if (!error && data) {
-        return data.map((t: any) => ({
-          ...t,
-          questions: t.test_questions?.map((tq: any) => ({
-            id: tq.id,
-            test_id: t.id,
-            question_id: tq.questions?.id,
-            order_index: tq.order_index,
-            marks: tq.marks,
-            question: tq.questions,
-          })),
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/assessments');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.assessments)) {
+        return data.assessments.map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          duration_minutes: Number(t.duration || t.duration_minutes || 60),
+          total_marks: Number(t.total_marks || 100),
+          eligible_years: [1, 2, 3, 4],
+          eligible_departments: ['CSE', 'IT', 'AI&DS', 'ECE', 'MECH', 'CIVIL', 'EEE', 'CSBS'],
+          start_time: t.start_time || new Date().toISOString(),
+          end_time: t.end_time || new Date(Date.now() + 86400000 * 7).toISOString(),
+          status: t.status === 'live' ? 'active' : t.status === 'completed' || t.status === 'closed' ? 'ended' : 'published',
+          created_at: t.created_at,
+          questions: [],
         }));
       }
-    } catch (e) {
-      console.warn('Failed to query Supabase tests:', e);
     }
+  } catch (err) {
+    console.warn('API fetchTests error:', err);
   }
 
   return getLocalStore<Test>(STORAGE_KEYS.TESTS);
 }
 
-export async function saveTest(test: Test): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('tests').upsert({
-        id: test.id,
-        title: test.title,
-        description: test.description,
-        duration_minutes: test.duration_minutes,
-        total_marks: test.total_marks,
-        eligible_years: test.eligible_years,
-        eligible_departments: test.eligible_departments,
-        start_time: test.start_time,
-        end_time: test.end_time,
-        status: test.status,
-      });
-
-      if (!error && test.questions?.length) {
-        for (const tq of test.questions) {
-          await supabase.from('test_questions').upsert({
-            test_id: test.id,
-            question_id: tq.question_id,
-            order_index: tq.order_index,
-            marks: tq.marks,
-          });
-        }
+export async function fetchTestById(id: string): Promise<Test | null> {
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch(`/api/admin/assessments/${id}`);
+      const data = await res.json();
+      if (data.success && data.assessment) {
+        const t = data.assessment;
+        return {
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          duration_minutes: Number(t.duration || t.duration_minutes || 60),
+          total_marks: Number(t.total_marks || 100),
+          eligible_years: [1, 2, 3, 4],
+          eligible_departments: ['CSE', 'IT', 'AI&DS', 'ECE', 'MECH', 'CIVIL', 'EEE', 'CSBS'],
+          start_time: t.start_time || new Date().toISOString(),
+          end_time: t.end_time || new Date(Date.now() + 86400000 * 7).toISOString(),
+          status: t.status === 'live' ? 'active' : t.status === 'completed' || t.status === 'closed' ? 'ended' : 'published',
+          created_at: t.created_at,
+          questions: (t.questions || []).map((q: any, idx: number) => ({
+            id: q.id,
+            test_id: t.id,
+            question_id: q.id,
+            order_index: q.order_index ?? idx,
+            marks: q.marks || 25,
+            question: {
+              id: q.id,
+              title: q.title,
+              slug: q.id,
+              description: q.description,
+              input_format: 'Standard Input',
+              output_format: 'Standard Output',
+              constraints: '1 <= n <= 10^5',
+              difficulty: q.difficulty === 'easy' ? 'Easy' : q.difficulty === 'hard' ? 'Hard' : 'Medium',
+              topic: 'Algorithms',
+              starter_code: q.initial_code || 'def solution():\n    pass\n',
+              marks: q.marks || 25,
+              time_limit_ms: q.time_limit || 2000,
+              memory_limit_kb: q.memory_limit || 128000,
+              is_active: true,
+              test_cases: q.test_cases || [],
+            },
+          })),
+        };
       }
-      if (!error) return true;
-    } catch (e) {
-      console.warn('Supabase save test error:', e);
     }
+  } catch (err) {
+    console.warn('API fetchTestById error:', err);
+  }
+
+  const all = await fetchTests();
+  return all.find((t) => t.id === id) || null;
+}
+
+export async function saveTest(test: Test): Promise<boolean> {
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/assessments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: test.title,
+          description: test.description,
+          duration: test.duration_minutes,
+          total_marks: test.total_marks,
+          start_time: test.start_time,
+          end_time: test.end_time,
+          status: test.status === 'active' ? 'live' : 'draft',
+        }),
+      });
+      if (res.ok) return true;
+    }
+  } catch (err) {
+    console.warn('API saveTest error:', err);
   }
 
   const existing = getLocalStore<Test>(STORAGE_KEYS.TESTS);
@@ -317,70 +244,14 @@ export async function saveTest(test: Test): Promise<boolean> {
 }
 
 // ==============================================================================
-// 4. TEST ATTEMPTS & COMPLETION SERVICE
+// 4. TEST ATTEMPTS SERVICE
 // ==============================================================================
 
 export async function fetchAttempts(): Promise<TestAttempt[]> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('test_attempts')
-        .select(`
-          *,
-          students (
-            register_number,
-            department,
-            year,
-            profiles (
-              full_name,
-              email
-            )
-          ),
-          tests (
-            title
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        return data as TestAttempt[];
-      }
-    } catch (e) {
-      console.warn('Failed to query Supabase attempts:', e);
-    }
-  }
-
   return getLocalStore<TestAttempt>(STORAGE_KEYS.ATTEMPTS);
 }
 
 export async function saveAttempt(attempt: TestAttempt): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('test_attempts').upsert({
-        id: attempt.id,
-        test_id: attempt.test_id,
-        student_id: attempt.student_id,
-        started_at: attempt.started_at,
-        last_saved_at: attempt.last_saved_at,
-        completed_at: attempt.completed_at,
-        status: attempt.status,
-        score: attempt.score,
-        percentage: attempt.percentage,
-        time_taken_seconds: attempt.time_taken_seconds,
-        tab_switch_count: attempt.tab_switch_count,
-        fullscreen_exit_count: attempt.fullscreen_exit_count,
-        copy_paste_count: attempt.copy_paste_count,
-        completion_rank: attempt.completion_rank,
-        auto_submitted: attempt.auto_submitted,
-      });
-      if (!error) return true;
-    } catch (e) {
-      console.warn('Supabase save attempt error:', e);
-    }
-  }
-
   const existing = getLocalStore<TestAttempt>(STORAGE_KEYS.ATTEMPTS);
   const updated = existing.filter((a) => a.id !== attempt.id);
   updated.push(attempt);
@@ -393,54 +264,87 @@ export async function saveAttempt(attempt: TestAttempt): Promise<boolean> {
 // ==============================================================================
 
 export async function fetchActivityLogs(): Promise<ActivityLog[]> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('activity_logs')
-        .select(`
-          *,
-          profiles (
-            full_name,
-            email
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        return data as ActivityLog[];
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/dashboard-stats');
+      const data = await res.json();
+      if (data.success && data.stats?.recentLogs) {
+        return data.stats.recentLogs.map((l: any) => ({
+          id: l.id,
+          student_id: l.student_id || 'unknown',
+          event_type: l.event_type,
+          details: { description: l.description },
+          created_at: l.timestamp,
+        }));
       }
-    } catch (e) {
-      console.warn('Failed to query Supabase logs:', e);
     }
+  } catch (err) {
+    console.warn('API fetchActivityLogs error:', err);
   }
 
   return getLocalStore<ActivityLog>(STORAGE_KEYS.LOGS);
 }
 
 export async function recordActivityLog(log: ActivityLog): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = createClient();
-      await supabase.from('activity_logs').insert({
-        id: log.id,
-        attempt_id: log.attempt_id,
-        student_id: log.student_id,
-        event_type: log.event_type,
-        details: log.details,
-        ip_address: log.ip_address,
-        user_agent: log.user_agent,
-        created_at: log.created_at,
+  try {
+    if (typeof window !== 'undefined') {
+      await fetch('/api/exam/log-activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: log.student_id,
+          attemptId: log.attempt_id,
+          eventType: log.event_type,
+          details: log.details,
+        }),
       });
-      return true;
-    } catch (e) {
-      console.warn('Supabase record log error:', e);
     }
+  } catch (err) {
+    // silent
   }
 
   const existing = getLocalStore<ActivityLog>(STORAGE_KEYS.LOGS);
   existing.unshift(log);
-  // Keep last 200 logs
   setLocalStore(STORAGE_KEYS.LOGS, existing.slice(0, 200));
   return true;
+}
+
+// ==============================================================================
+// 6. LIVE MONITORING AGGREGATION
+// ==============================================================================
+
+export async function fetchLiveMonitorStudents(): Promise<LiveMonitorStudent[]> {
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/presence');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.students)) {
+        return data.students.map((s: any) => ({
+          id: s.student_id,
+          attempt_id: s.active_assessment_id || undefined,
+          student_name: s.full_name,
+          register_number: s.register_number,
+          department: s.department,
+          year: s.year,
+          test_title: s.active_assessment_id ? 'Coding Assessment' : 'Dashboard',
+          progress: s.total_questions > 0 ? `${s.current_question_index + 1}/${s.total_questions}` : 'Active',
+          current_score: 0,
+          started_time: s.started_at ? new Date(s.started_at).toLocaleTimeString() : 'Recently',
+          elapsed_time_seconds: s.started_at ? Math.max(0, Math.floor((Date.now() - s.started_at) / 1000)) : 0,
+          status: s.session_status === 'WARNING' ? 'warning' : s.session_status === 'IN_ASSESSMENT' ? 'active' : s.session_status === 'IDLE' ? 'suspicious' : 'not_started',
+          warnings_count: s.violation_count || 0,
+          tab_switches: s.violation_count || 0,
+          fullscreen_exits: 0,
+          copy_pastes: 0,
+          current_question_index: s.current_question_index || 0,
+          total_submissions: 0,
+          recent_logs: [],
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('API fetchLiveMonitorStudents error:', err);
+  }
+
+  return [];
 }

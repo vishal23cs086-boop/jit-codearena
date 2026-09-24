@@ -1,15 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-// In-memory counter for completion ranking across current session
-let completionCounter = 0;
+﻿import { NextRequest, NextResponse } from 'next/server';
+import { getTursoClient, recordActivityLogInDb } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
   try {
-    const { attemptId, studentId, testId, isAutoSubmit = false, finalScores = {} } = await req.json();
+    const { attemptId, studentId, studentName, registerNumber, testId, isAutoSubmit = false, finalScores = {} } = await req.json();
 
     const completedAt = new Date().toISOString();
-    completionCounter += 1;
-    const completionRank = completionCounter;
 
     // Calculate total score from submitted questions
     let totalScore = 0;
@@ -19,20 +15,60 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // In a production Supabase setup:
-    // UPDATE test_attempts
-    // SET status = isAutoSubmit ? 'auto_submitted' : 'submitted',
-    //     completed_at = NOW(),
-    //     completion_rank = completionRank,
-    //     score = totalScore,
-    //     auto_submitted = isAutoSubmit
-    // WHERE id = attemptId
+    const client = getTursoClient();
+
+    // Count existing completed attempts to determine completion rank
+    const countRes = await client.execute({
+      sql: "SELECT COUNT(*) as count FROM test_attempts WHERE test_id = ? AND (status = 'submitted' OR status = 'completed' OR status = 'auto_submitted')",
+      args: [testId || ''],
+    });
+    const completionRank = Number(countRes.rows[0]?.count || 0) + 1;
+
+    // Upsert or update attempt record in Turso
+    const attId = attemptId || `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    await client.execute({
+      sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, end_time, score, max_score, status, answers, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 100, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              end_time = excluded.end_time,
+              score = excluded.score,
+              status = excluded.status,
+              answers = excluded.answers`,
+      args: [
+        attId,
+        testId || 'general',
+        studentId,
+        completedAt,
+        completedAt,
+        totalScore,
+        isAutoSubmit ? 'auto_submitted' : 'completed',
+        JSON.stringify(finalScores),
+        completedAt,
+      ],
+    });
+
+    // Clear active assessment from presence
+    await client.execute({
+      sql: "UPDATE student_presence SET active_assessment_id = null, session_status = 'ONLINE' WHERE student_id = ?",
+      args: [studentId],
+    });
+
+    // Record activity log
+    await recordActivityLogInDb({
+      test_id: testId || null,
+      student_id: studentId,
+      student_name: studentName,
+      register_number: registerNumber,
+      event_type: isAutoSubmit ? 'AUTO_SUBMISSION' : 'TEST_COMPLETED',
+      description: `Assessment submitted with score ${totalScore}/100. Completion Rank: #${completionRank}`,
+      metadata: { finalScores, completionRank, isAutoSubmit },
+    });
 
     return NextResponse.json({
       success: true,
       completedAt,
       completionRank,
-      status: isAutoSubmit ? 'auto_submitted' : 'submitted',
+      status: isAutoSubmit ? 'auto_submitted' : 'completed',
       totalScore,
       message: isAutoSubmit
         ? 'Time expired. Assessment automatically finalized and submitted.'

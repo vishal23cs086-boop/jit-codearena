@@ -1,14 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { runTestCases } from '@/lib/judge0/client';
 import { calculateSubmissionScore } from '@/lib/scoring';
-import { createClient } from '@/lib/supabase/client';
+import { getTursoClient } from '@/lib/turso';
 import { TestCase } from '@/types';
-
-const isSupabaseConfigured = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes('mock-') && !url.includes('your-project'));
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,24 +25,21 @@ export async function POST(req: NextRequest) {
     let timeLimitMs = typeof clientTimeLimit === 'number' ? clientTimeLimit : 2000;
     let questionMarks = typeof clientMarks === 'number' ? clientMarks : 25;
 
-    // 1. Fetch Question and Test Cases securely on server from Supabase if configured
-    if (isSupabaseConfigured()) {
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from('questions')
-          .select('*, test_cases (*)')
-          .eq('id', questionId)
-          .single();
-
-        if (!error && data) {
-          allTestCases = data.test_cases || [];
-          timeLimitMs = data.time_limit_ms || timeLimitMs;
-          questionMarks = data.marks || questionMarks;
-        }
-      } catch (err) {
-        console.warn('Supabase testcase lookup warning:', err);
+    // 1. Fetch Question and Test Cases from Turso DB
+    try {
+      const client = getTursoClient();
+      const qRes = await client.execute({
+        sql: 'SELECT * FROM questions WHERE id = ?',
+        args: [questionId],
+      });
+      if (qRes.rows.length > 0) {
+        const row: any = qRes.rows[0];
+        allTestCases = row.test_cases ? JSON.parse(String(row.test_cases)) : [];
+        timeLimitMs = Number(row.time_limit || 2000);
+        questionMarks = Number(row.marks || 25);
       }
+    } catch (err) {
+      console.warn('Turso question lookup notice:', err);
     }
 
     // Fallback to client-provided test cases if server database query returned empty
@@ -78,7 +69,32 @@ export async function POST(req: NextRequest) {
       questionMaxMarks: questionMarks,
     });
 
-    // 4. Sanitize test case results before returning to client (NEVER expose hidden test cases inputs/expected outputs)
+    // 4. Record submission in Turso
+    try {
+      const client = getTursoClient();
+      await client.execute({
+        sql: `INSERT INTO submissions (id, test_id, question_id, student_id, code, language, status, execution_time, memory_used, passed_test_cases, total_test_cases, score, created_at)
+              VALUES (?, ?, ?, ?, ?, 'python', ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          attemptId || 'general',
+          questionId,
+          studentId || 'unknown',
+          code,
+          execSummary.overallStatus,
+          execSummary.averageTimeMs,
+          execSummary.maxMemoryKb,
+          execSummary.testCasesPassed,
+          execSummary.totalTestCases,
+          scoreResult.finalMarks,
+          new Date().toISOString(),
+        ],
+      });
+    } catch (err) {
+      // Safe non-blocking
+    }
+
+    // 5. Sanitize test case results before returning to client (NEVER expose hidden test cases inputs/expected outputs)
     const sanitizedResults = execSummary.results.map((r) => {
       if (r.is_hidden) {
         return {

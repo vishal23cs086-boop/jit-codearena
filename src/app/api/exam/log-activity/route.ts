@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
+import { recordActivityLogInDb, getTursoClient } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
   try {
-    const { studentId, attemptId, eventType, details } = await req.json();
+    const { studentId, studentName, registerNumber, testId, eventType, details } = await req.json();
 
     if (!studentId || !eventType) {
       return NextResponse.json({ error: 'studentId and eventType are required' }, { status: 400 });
@@ -13,9 +14,30 @@ export async function POST(req: NextRequest) {
     const forwardedFor = req.headers.get('x-forwarded-for');
     const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : '127.0.0.1';
 
-    // In a live Supabase production setup:
-    // INSERT INTO activity_logs (student_id, attempt_id, event_type, details, ip_address, user_agent, created_at)
-    // VALUES (studentId, attemptId, eventType, details, ipAddress, userAgent, NOW())
+    const desc = typeof details === 'string' ? details : (details?.description || `${eventType} detected`);
+
+    await recordActivityLogInDb({
+      test_id: testId || null,
+      student_id: studentId,
+      student_name: studentName,
+      register_number: registerNumber,
+      event_type: eventType,
+      description: desc,
+      metadata: { ...details, ipAddress, userAgent },
+    });
+
+    // If it is a violation (TAB_SWITCH, FULLSCREEN_EXIT), increment violation count in student_presence
+    if (eventType === 'TAB_SWITCH' || eventType === 'FULLSCREEN_EXIT' || eventType === 'WARNING_TRIGGERED') {
+      try {
+        const client = getTursoClient();
+        await client.execute({
+          sql: 'UPDATE student_presence SET violation_count = violation_count + 1 WHERE student_id = ?',
+          args: [studentId],
+        });
+      } catch (err) {
+        // silent
+      }
+    }
 
     return NextResponse.json({
       success: true,

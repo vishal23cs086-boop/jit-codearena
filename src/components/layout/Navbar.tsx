@@ -76,6 +76,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
     if (pathname === '/admin/students') return { title: 'Candidate Directory', category: 'Student Records' };
     if (pathname === '/admin/tests') return { title: 'Assessments Management', category: 'Examination Scheduling' };
     if (pathname === '/admin/questions') return { title: 'Question Bank', category: 'Problem Authoring' };
+    if (pathname === '/admin/login-activity') return { title: 'Login & Session Audit Trail', category: 'Authentication Security' };
     if (pathname.startsWith('/admin/rankings')) return { title: 'First Completion Rankings', category: 'Leaderboard' };
     if (pathname === '/admin/analytics') return { title: 'Cohort Analytics', category: 'Intelligence' };
     if (pathname === '/admin/reports') return { title: 'Reports & Export Center', category: 'Grade Sheets' };
@@ -106,6 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
     { label: 'Students', href: '/admin/students', icon: Users },
     { label: 'Assessments', href: '/admin/tests', icon: Layers },
     { label: 'Question Bank', href: '/admin/questions', icon: BookOpen },
+    { label: 'Login Activity', href: '/admin/login-activity', icon: ShieldCheck },
     { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
     { label: 'Reports', href: '/admin/reports', icon: FileSpreadsheet },
     { label: 'Audit Logs', href: '/admin/logs', icon: ShieldAlert },
