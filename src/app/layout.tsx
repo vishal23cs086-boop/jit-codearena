@@ -8,7 +8,12 @@ export const metadata: Metadata = {
   description:
     'Institutional Python coding assessment and evaluation platform for Jansons Institute of Technology students.',
   icons: {
-    icon: '/jit-logo.png',
+    icon: [
+      { url: '/jit-logo.png', sizes: 'any', type: 'image/png' },
+      { url: '/icon.png', type: 'image/png' },
+      { url: '/favicon.ico' },
+    ],
+    shortcut: '/jit-logo.png',
     apple: '/jit-logo.png',
   },
 };
@@ -20,6 +25,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" href="/jit-logo.png" type="image/png" sizes="any" />
+        <link rel="shortcut icon" href="/jit-logo.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/jit-logo.png" />
+      </head>
       <body className="bg-[#F7F9FC] text-slate-900 min-h-screen antialiased flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-800 relative">
         {/* Ambient background lighting */}
         <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
