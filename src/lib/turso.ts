@@ -355,7 +355,7 @@ export async function getStudentProfileDetails(studentId: string) {
 
   // 3. Submissions summary
   const subRes = await client.execute({
-    sql: 'SELECT COUNT(*) as total_sub, SUM(CASE WHEN status = "Accepted" THEN 1 ELSE 0 END) as accepted_sub FROM submissions WHERE student_id = ?',
+    sql: "SELECT COUNT(*) as total_sub, SUM(CASE WHEN status = 'Accepted' THEN 1 ELSE 0 END) as accepted_sub FROM submissions WHERE student_id = ?",
     args: [studentId],
   });
   const totalSubmissions = Number(subRes.rows[0]?.total_sub || 0);
@@ -571,7 +571,7 @@ export async function setStudentStatus(
 
   if (newStatus === 'disabled' || newStatus === 'archived') {
     await client.execute({
-      sql: 'UPDATE student_presence SET session_status = "OFFLINE", active_assessment_id = null WHERE student_id = ?',
+      sql: "UPDATE student_presence SET session_status = 'OFFLINE', active_assessment_id = null WHERE student_id = ?",
       args: [studentId],
     });
   }
