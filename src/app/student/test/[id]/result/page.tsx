@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import confetti from 'canvas-confetti';
 import { useAuth } from '@/context/AuthContext';
-import { MOCK_TESTS, MOCK_QUESTIONS } from '@/lib/mockData';
+import { fetchAttempts, fetchTests } from '@/lib/db';
+import { Test, TestAttempt } from '@/types';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   Award,
   CheckCircle2,
@@ -16,36 +18,91 @@ import {
   ShieldCheck,
   ArrowRight,
   RotateCcw,
+  Loader2,
+  FileX,
 } from 'lucide-react';
 
 export default function TestResultPage() {
   const params = useParams();
   const { user } = useAuth();
 
-  const testId = typeof params?.id === 'string' ? params.id : 'test-jit-py-2026';
-  const test = MOCK_TESTS.find((t) => t.id === testId) || MOCK_TESTS[0];
+  const testId = typeof params?.id === 'string' ? params.id : '';
+
+  const [loading, setLoading] = useState(true);
+  const [test, setTest] = useState<Test | null>(null);
+  const [attempt, setAttempt] = useState<TestAttempt | null>(null);
 
   useEffect(() => {
-    // Fire celebratory confetti on mounting the result scorecard
-    try {
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-      });
-    } catch {
-      // safe fallback
-    }
-  }, []);
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [tests, attempts] = await Promise.all([fetchTests(), fetchAttempts()]);
 
-  const totalScore = 96.0;
-  const percentage = 96.0;
-  const timeTaken = '34m 12s';
-  const solvedCount = 4;
-  const totalQuestions = 4;
-  const accuracy = '92.5%';
-  const totalSubmissions = 5;
-  const completionRank = 1; // 1st completed!
+        const currentTest = tests.find((t) => t.id === testId) || tests[0] || null;
+        setTest(currentTest);
+
+        // Find candidate's attempt
+        const userAttempt = attempts.find(
+          (a) =>
+            a.test_id === testId &&
+            (a.student_id === user?.id ||
+              a.students?.register_number === user?.register_number ||
+              a.id.includes(user?.register_number || ''))
+        ) || attempts.find((a) => a.test_id === testId) || null;
+
+        setAttempt(userAttempt);
+
+        if (userAttempt) {
+          try {
+            confetti({
+              particleCount: 80,
+              spread: 60,
+              origin: { y: 0.6 },
+            });
+          } catch {
+            // safe fallback
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load result:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [testId, user?.id, user?.register_number]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!attempt && !test) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <EmptyState
+          icon={FileX}
+          title="No assessment results available"
+          description="No completed evaluation records were found for this assessment session."
+          actionText="Return to Student Dashboard"
+          actionHref="/student/dashboard"
+        />
+      </div>
+    );
+  }
+
+  const totalScore = attempt?.score ?? 0;
+  const maxMarks = test?.total_marks || 100;
+  const percentage = attempt?.percentage ?? Math.round((totalScore / maxMarks) * 100);
+  const timeTakenMinutes = Math.floor((attempt?.time_taken_seconds || 0) / 60);
+  const timeTakenSeconds = (attempt?.time_taken_seconds || 0) % 60;
+  const timeTakenFormatted = `${timeTakenMinutes}m ${timeTakenSeconds}s`;
+  const completionRank = attempt?.completion_rank || 1;
+  const questionsList = test?.questions?.map((tq) => tq.question!).filter(Boolean) || [];
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full space-y-8">
@@ -60,13 +117,13 @@ export default function TestResultPage() {
           Assessment Report & Scorecard
         </h1>
         <p className="text-slate-300 text-sm max-w-xl mx-auto mb-6">
-          Congratulations {user?.full_name || 'Candidate'} ({user?.register_number || '22CS084'})! Your responses were evaluated server-side by the JIT CodeArena scoring engine.
+          Congratulations {user?.full_name || 'Candidate'} ({user?.register_number || 'Registered Candidate'})! Your responses were evaluated server-side by the JIT CodeArena scoring engine.
         </p>
 
         {/* First Completion Rank Pill */}
         <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-bold shadow-lg">
           <Award className="w-5 h-5 text-amber-400" />
-          <span>Finish Order: {completionRank}st Candidate to Complete</span>
+          <span>Finish Order: Rank #{completionRank} to Complete</span>
         </div>
       </div>
 
@@ -74,96 +131,92 @@ export default function TestResultPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Final Score</span>
-          <div className="text-2xl font-black text-emerald-400">{totalScore}</div>
-          <span className="text-[10px] text-slate-500">out of {test.total_marks}</span>
+          <div className="text-2xl font-black text-emerald-400">{totalScore.toFixed(1)}</div>
+          <span className="text-[10px] text-slate-500">out of {maxMarks}</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Percentage</span>
           <div className="text-2xl font-black text-white">{percentage}%</div>
-          <span className="text-[10px] text-emerald-400">Grade: O (Outstanding)</span>
+          <span className="text-[10px] text-emerald-400">
+            {percentage >= 90 ? 'Grade: O (Outstanding)' : percentage >= 75 ? 'Grade: A+ (Excellent)' : percentage >= 50 ? 'Grade: B (Satisfactory)' : 'Requires Review'}
+          </span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
           <span className="text-[11px] text-slate-400 font-medium block mb-1">Time Taken</span>
-          <div className="text-xl font-bold text-white mt-1">{timeTaken}</div>
-          <span className="text-[10px] text-slate-500">of 60m allotted</span>
+          <div className="text-xl font-bold text-white mt-1">{timeTakenFormatted}</div>
+          <span className="text-[10px] text-slate-500">of {test?.duration_minutes || 60}m allotted</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Problems Solved</span>
-          <div className="text-2xl font-black text-indigo-400">{solvedCount} / {totalQuestions}</div>
-          <span className="text-[10px] text-slate-500">100% Solved</span>
+          <span className="text-[11px] text-slate-400 font-medium block mb-1">Status</span>
+          <div className="text-xl font-bold text-indigo-400 capitalize mt-1">
+            {attempt?.status?.replace('_', ' ') || 'Submitted'}
+          </div>
+          <span className="text-[10px] text-slate-500">Official Evaluation</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Accuracy</span>
-          <div className="text-2xl font-black text-blue-400">{accuracy}</div>
-          <span className="text-[10px] text-slate-500">High efficiency</span>
+          <span className="text-[11px] text-slate-400 font-medium block mb-1">Tab Deviations</span>
+          <div className="text-2xl font-black text-blue-400">{attempt?.tab_switch_count || 0}</div>
+          <span className="text-[10px] text-slate-500">Browser switches</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Submissions</span>
-          <div className="text-2xl font-black text-purple-400">{totalSubmissions}</div>
-          <span className="text-[10px] text-slate-500">Total attempts</span>
+          <span className="text-[11px] text-slate-400 font-medium block mb-1">Violations</span>
+          <div className="text-2xl font-black text-purple-400">{attempt?.fullscreen_exit_count || 0}</div>
+          <span className="text-[10px] text-slate-500">Fullscreen departures</span>
         </div>
       </div>
 
       {/* Question-Wise Performance Breakdown */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <FileCheck className="w-5 h-5 text-indigo-400" />
-            <span>Question-by-Question Evaluation</span>
-          </h2>
-          <span className="text-xs text-slate-400 font-mono">Scoring Model: Default Weighted</span>
-        </div>
+      {questionsList.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <FileCheck className="w-5 h-5 text-indigo-400" />
+              <span>Assessment Questions</span>
+            </h2>
+            <span className="text-xs text-slate-400 font-mono">Scoring Model: Server-Side Unit Tests</span>
+          </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
-                <th className="py-3 px-3">#</th>
-                <th className="py-3 px-4">Question Title</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3 text-center">Test Cases</th>
-                <th className="py-3 px-3 text-center">Attempts</th>
-                <th className="py-3 px-3 text-center">Exec Time</th>
-                <th className="py-3 px-4 text-right">Marks Scored</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
-              {MOCK_QUESTIONS.map((q, idx) => (
-                <tr key={q.id} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3 px-3 text-slate-500 font-bold">{idx + 1}</td>
-                  <td className="py-3 px-4 font-sans font-semibold text-white">
-                    <div className="flex items-center gap-2">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+                  <th className="py-3 px-3">#</th>
+                  <th className="py-3 px-4">Question Title</th>
+                  <th className="py-3 px-3">Topic</th>
+                  <th className="py-3 px-3">Difficulty</th>
+                  <th className="py-3 px-4 text-right">Max Marks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono">
+                {questionsList.map((q, idx) => (
+                  <tr key={q.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-3 text-slate-500 font-bold">{idx + 1}</td>
+                    <td className="py-3 px-4 font-sans font-semibold text-white">
                       <span>{q.title}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-sans">
+                    </td>
+                    <td className="py-3 px-3 font-sans text-slate-300">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
                         {q.topic}
                       </span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3">
-                    <span className="inline-flex items-center gap-1 text-emerald-400 font-sans font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Accepted
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-center text-slate-300">
-                    {q.test_cases?.length || 5} / {q.test_cases?.length || 5} Passed
-                  </td>
-                  <td className="py-3 px-3 text-center text-slate-400">1</td>
-                  <td className="py-3 px-3 text-center text-slate-300">38 ms</td>
-                  <td className="py-3 px-4 text-right font-bold text-emerald-400">
-                    {q.marks}.00 / {q.marks}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </td>
+                    <td className="py-3 px-3 font-sans capitalize text-slate-300">
+                      {q.difficulty}
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold text-emerald-400">
+                      {q.marks} Marks
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Security & Integrity Summary */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -172,9 +225,11 @@ export default function TestResultPage() {
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-white">Integrity Verification: Clean Session</h4>
+            <h4 className="text-sm font-bold text-white">
+              Integrity Verification: {attempt?.tab_switch_count === 0 && attempt?.fullscreen_exit_count === 0 ? 'Clean Session' : 'Incident Telemetry Recorded'}
+            </h4>
             <p className="text-xs text-slate-400">
-              0 Tab Switches • 0 Fullscreen Violations • 0 Unauthorized Clipboard Events
+              {attempt?.tab_switch_count || 0} Tab Switches • {attempt?.fullscreen_exit_count || 0} Fullscreen Violations • {attempt?.copy_paste_count || 0} Blocked Clipboard Events
             </p>
           </div>
         </div>

@@ -3,14 +3,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { MOCK_TESTS, MOCK_QUESTIONS } from '@/lib/mockData';
-import { Question, TestCaseResult } from '@/types';
+import { fetchTests, fetchQuestions, saveAttempt, recordActivityLog } from '@/lib/db';
+import { Test, Question, TestCaseResult, TestAttempt } from '@/types';
 import { useExamGuard } from '@/hooks/useExamGuard';
 import { ExamGuardModal } from '@/components/exam/ExamGuard';
 import { QuestionPanel } from '@/components/exam/QuestionPanel';
 import { PythonMonacoEditor } from '@/components/editor/PythonMonacoEditor';
 import { ConsolePanel } from '@/components/exam/ConsolePanel';
 import { TimerBadge } from '@/components/exam/TimerBadge';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   Code2,
   ChevronLeft,
@@ -21,6 +22,8 @@ import {
   Shield,
   LogOut,
   Maximize2,
+  Loader2,
+  FileCode,
 } from 'lucide-react';
 
 export default function CodingTestPage() {
@@ -28,21 +31,15 @@ export default function CodingTestPage() {
   const router = useRouter();
   const { user } = useAuth();
 
-  const testId = typeof params?.id === 'string' ? params.id : 'test-jit-py-2026';
-  const test = MOCK_TESTS.find((t) => t.id === testId) || MOCK_TESTS[0];
-  const questions: Question[] = test.questions?.map((tq) => tq.question!).filter(Boolean) || MOCK_QUESTIONS;
+  const testId = typeof params?.id === 'string' ? params.id : '';
 
+  const [loading, setLoading] = useState<boolean>(true);
+  const [test, setTest] = useState<Test | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
-  const currentQuestion = questions[currentQIndex] || questions[0];
 
   // Map of student's current code per questionId
-  const [studentCodeMap, setStudentCodeMap] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    questions.forEach((q) => {
-      initial[q.id] = q.starter_code;
-    });
-    return initial;
-  });
+  const [studentCodeMap, setStudentCodeMap] = useState<Record<string, string>>({});
 
   // Track status of questions: solved, attempted, unattempted
   const [questionScores, setQuestionScores] = useState<Record<string, number>>({});
@@ -50,7 +47,8 @@ export default function CodingTestPage() {
 
   // Auto-save state
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
-  const [lastSavedTime, setLastSavedTime] = useState<string>('Just now');
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number>(Date.now());
+  const [lastSavedText, setLastSavedText] = useState<string>('● Saved just now');
 
   // Execution states
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -70,12 +68,68 @@ export default function CodingTestPage() {
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+  // Load Test and its Questions from Database
+  useEffect(() => {
+    async function loadAssessmentData() {
+      setLoading(true);
+      try {
+        const tests = await fetchTests();
+        const foundTest = tests.find((t) => t.id === testId) || tests[0] || null;
+        setTest(foundTest);
+
+        let activeQuestions: Question[] = [];
+        if (foundTest?.questions && foundTest.questions.length > 0) {
+          activeQuestions = foundTest.questions.map((tq) => tq.question!).filter(Boolean);
+        }
+
+        if (activeQuestions.length === 0) {
+          const allDbQuestions = await fetchQuestions();
+          activeQuestions = allDbQuestions.filter((q) => q.is_active);
+        }
+
+        setQuestions(activeQuestions);
+
+        // Initialize code map with starter codes
+        const initialMap: Record<string, string> = {};
+        activeQuestions.forEach((q) => {
+          initialMap[q.id] = q.starter_code || 'def solution():\n    pass\n';
+        });
+        setStudentCodeMap(initialMap);
+      } catch (err) {
+        console.error('Failed to load assessment data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadAssessmentData();
+  }, [testId]);
+
+  const currentQuestion = questions[currentQIndex] || null;
+
   // Anti-cheating guard integration
   const examGuard = useExamGuard({
-    enabled: true,
+    enabled: Boolean(test && questions.length > 0),
     studentId: user?.id || 'candidate',
     attemptId: `att-${testId}`,
   });
+
+  // Relative autosave time label updater
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (saveStatus === 'saving') {
+        setLastSavedText('Saving...');
+        return;
+      }
+      const elapsedSeconds = Math.floor((Date.now() - lastSavedTimestamp) / 1000);
+      if (elapsedSeconds <= 3) {
+        setLastSavedText('● Saved just now');
+      } else {
+        setLastSavedText(`● Saved ${elapsedSeconds} seconds ago`);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [lastSavedTimestamp, saveStatus]);
 
   // Helper to persist draft code to server
   const saveCodeToServer = useCallback(
@@ -93,7 +147,7 @@ export default function CodingTestPage() {
           }),
         });
         setSaveStatus('saved');
-        setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setLastSavedTimestamp(Date.now());
       } catch {
         setSaveStatus('saved');
       }
@@ -101,18 +155,19 @@ export default function CodingTestPage() {
     [testId, user?.id]
   );
 
-  // Periodic Auto-save every 25 seconds
+  // Periodic Auto-save every 20 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       if (currentQuestion && studentCodeMap[currentQuestion.id]) {
         saveCodeToServer(currentQuestion.id, studentCodeMap[currentQuestion.id]);
       }
-    }, 25000);
+    }, 20000);
     return () => clearInterval(interval);
   }, [currentQuestion, studentCodeMap, saveCodeToServer]);
 
   // Code editor change
   const handleCodeChange = (newCode: string) => {
+    if (!currentQuestion) return;
     setStudentCodeMap((prev) => ({
       ...prev,
       [currentQuestion.id]: newCode,
@@ -122,7 +177,6 @@ export default function CodingTestPage() {
 
   // Change question handler
   const handleSelectQuestion = (index: number) => {
-    // Save current code before switching
     if (currentQuestion && studentCodeMap[currentQuestion.id]) {
       saveCodeToServer(currentQuestion.id, studentCodeMap[currentQuestion.id]);
     }
@@ -132,6 +186,7 @@ export default function CodingTestPage() {
 
   // Run Code (runs on sample test cases or custom input)
   const handleRunCode = async (customInput?: string) => {
+    if (!currentQuestion) return;
     setIsRunning(true);
     const code = studentCodeMap[currentQuestion.id] || '';
 
@@ -148,6 +203,7 @@ export default function CodingTestPage() {
       });
 
       const data = await res.json();
+
       setLastRunResult({
         status: data.status || 'Executed',
         stdout: data.stdout || '',
@@ -166,8 +222,9 @@ export default function CodingTestPage() {
     }
   };
 
-  // Submit Code (evaluates against hidden test cases on server and assigns score)
+  // Submit Code (evaluates against test cases on server and assigns score)
   const handleSubmitCode = async () => {
+    if (!currentQuestion) return;
     setIsSubmitting(true);
     const code = studentCodeMap[currentQuestion.id] || '';
 
@@ -181,6 +238,9 @@ export default function CodingTestPage() {
           attemptId: `att-${testId}`,
           studentId: user?.id || 'candidate',
           attemptNumber: 1,
+          testCases: currentQuestion.test_cases || [],
+          timeLimitMs: currentQuestion.time_limit_ms,
+          marks: currentQuestion.marks,
         }),
       });
 
@@ -215,12 +275,52 @@ export default function CodingTestPage() {
 
   // Finalize & Submit Test (manual or when timer expires)
   const handleFinalizeTest = async (isAutoSubmit = false) => {
+    const completedAt = new Date().toISOString();
+    let totalScore = 0;
+    Object.values(questionScores).forEach((val) => {
+      if (typeof val === 'number') totalScore += val;
+    });
+
+    const maxMarks = test?.total_marks || 100;
+    const percentage = Math.round((totalScore / maxMarks) * 100);
+
+    const attemptRecord: TestAttempt = {
+      id: `att-${testId}-${user?.register_number || 'guest'}`,
+      test_id: testId,
+      student_id: user?.id || 'candidate',
+      started_at: new Date(Date.now() - 1800000).toISOString(),
+      last_saved_at: completedAt,
+      completed_at: completedAt,
+      status: isAutoSubmit ? 'auto_submitted' : 'submitted',
+      score: totalScore,
+      percentage,
+      time_taken_seconds: 1800,
+      tab_switch_count: examGuard.tabSwitchCount,
+      fullscreen_exit_count: examGuard.fullscreenExitCount,
+      copy_paste_count: examGuard.copyPasteCount,
+      completion_rank: 1,
+      auto_submitted: isAutoSubmit,
+      students: user ? {
+        register_number: user.register_number,
+        department: user.department,
+        year: user.year,
+        profiles: {
+          full_name: user.full_name,
+          email: user.email,
+        },
+      } : undefined,
+      tests: test ? {
+        title: test.title,
+      } : undefined,
+    };
+
     try {
+      await saveAttempt(attemptRecord);
       await fetch('/api/exam/submit-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          attemptId: `att-${testId}`,
+          attemptId: attemptRecord.id,
           studentId: user?.id || 'candidate',
           testId,
           isAutoSubmit,
@@ -228,11 +328,34 @@ export default function CodingTestPage() {
         }),
       });
     } catch (err) {
-      console.warn('Finalize test API warning:', err);
+      console.warn('Finalize test warning:', err);
     }
 
     router.push(`/student/test/${testId}/result`);
   };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
+        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+        <p className="text-sm font-semibold text-slate-300">Loading Assessment Environment...</p>
+      </div>
+    );
+  }
+
+  if (questions.length === 0 || !currentQuestion) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <EmptyState
+          icon={FileCode}
+          title="No questions available for this assessment"
+          description="The examination coordinator has not linked any questions to this assessment yet. Please contact the invigilator."
+          actionText="Return to Assessments"
+          actionHref="/student/assessments"
+        />
+      </div>
+    );
+  }
 
   const solvedCount = Object.values(solvedQuestions).filter(Boolean).length;
   const progressPercent = Math.round((solvedCount / questions.length) * 100);
@@ -259,7 +382,7 @@ export default function CodingTestPage() {
               <Code2 className="w-4 h-4" />
             </div>
             <div>
-              <span className="font-extrabold text-sm text-white">{test.title}</span>
+              <span className="font-extrabold text-sm text-white">{test?.title || 'JIT Assessment'}</span>
               <p className="text-[10px] text-slate-400 font-mono">
                 {user?.register_number} • {user?.full_name}
               </p>
@@ -309,7 +432,7 @@ export default function CodingTestPage() {
         {/* Right side: Countdown Timer & End Test */}
         <div className="flex items-center gap-3">
           <TimerBadge
-            initialSeconds={test.duration_minutes * 60}
+            initialSeconds={(test?.duration_minutes || 60) * 60}
             onTimeExpire={() => handleFinalizeTest(true)}
           />
 
@@ -344,7 +467,7 @@ export default function CodingTestPage() {
               onChange={handleCodeChange}
               starterCode={currentQuestion.starter_code}
               saveStatus={saveStatus}
-              lastSavedText={`Saved at ${lastSavedTime}`}
+              lastSavedText={lastSavedText}
             />
           </div>
 
@@ -362,7 +485,7 @@ export default function CodingTestPage() {
         </div>
       </div>
 
-      {/* FOOTER BAR: Next / Prev Question Navigator */}
+      {/* FOOTER BAR: Next / Prev Question Navigator & Autosave */}
       <footer className="h-10 bg-slate-950/90 border-t border-slate-800 px-4 flex items-center justify-between text-xs flex-shrink-0">
         <div className="flex items-center gap-2">
           <button
@@ -384,20 +507,21 @@ export default function CodingTestPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-slate-500 font-mono text-[11px]">
-          <span>Security Audit Active</span>
+        <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
+          <span className="text-emerald-400 font-medium">{lastSavedText}</span>
           <span>•</span>
-          <span>Auto-save Synced</span>
+          <span>Security Audit Active</span>
         </div>
       </footer>
 
-      {/* Confirm Final Submission Modal */}
+      {/* Confirmation modal before final submit */}
       {showExitConfirm && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Finalize & Submit Assessment?</h3>
             <p className="text-xs text-slate-300 leading-relaxed">
-              You have completed <strong>{solvedCount} of {questions.length}</strong> problems. Once submitted, your answers will be locked, your server completion timestamp will be recorded, and you cannot re-attempt.
+              Are you sure you want to submit? You have answered <strong>{solvedCount} of {questions.length}</strong> questions.
+              Once submitted, your answers will be locked, your server completion timestamp will be recorded, and you cannot re-attempt.
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
               <button

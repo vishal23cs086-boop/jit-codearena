@@ -1,15 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MOCK_STUDENTS, MOCK_TESTS, MOCK_LIVE_MONITOR } from '@/lib/mockData';
+import { fetchStudents, fetchTests, fetchAttempts, fetchActivityLogs } from '@/lib/db';
+import { StudentProfile, Test, TestAttempt, ActivityLog } from '@/types';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   Users,
   Activity,
   Play,
   CheckCircle2,
   Clock,
-  Award,
   TrendingUp,
   ShieldAlert,
   ArrowRight,
@@ -19,14 +20,49 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
-  const totalStudents = 120;
-  const activeStudents = 1;
-  const testsRunning = 1;
-  const completedTests = 2;
-  const notStarted = 1;
-  const averageScore = 79.4;
-  const highestScore = 96.5;
-  const averageCompletionTime = '37m 45s';
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [tests, setTests] = useState<Test[]>([]);
+  const [attempts, setAttempts] = useState<TestAttempt[]>([]);
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [stData, testData, attData, logData] = await Promise.all([
+          fetchStudents(),
+          fetchTests(),
+          fetchAttempts(),
+          fetchActivityLogs(),
+        ]);
+        setStudents(stData);
+        setTests(testData);
+        setAttempts(attData);
+        setLogs(logData);
+      } catch (err) {
+        console.warn('Dashboard load error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const totalStudents = students.length;
+  const activeTests = tests.filter((t) => t.status === 'active');
+  const activeAssessmentsCount = activeTests.length;
+  const inProgressAttempts = attempts.filter((a) => a.status === 'in_progress').length;
+  const completedAttempts = attempts.filter(
+    (a) => a.status === 'submitted' || a.status === 'auto_submitted'
+  );
+  const completedAttemptsCount = completedAttempts.length;
+
+  const avgScore =
+    completedAttemptsCount > 0
+      ? (
+          completedAttempts.reduce((acc, a) => acc + (a.score || 0), 0) / completedAttemptsCount
+        ).toFixed(1)
+      : null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
@@ -35,13 +71,13 @@ export default function AdminDashboardPage() {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-semibold mb-2">
             <Activity className="w-3.5 h-3.5" />
-            <span>EXAMINATION CONTROL CENTER • ACADEMIC YEAR 2025-2026</span>
+            <span>EXAMINATION CONTROL CENTER • INSTITUTIONAL PORTAL</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-            Department Assessment Controller
+            Administration Control Center
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time assessment invigilation, score compilation, and security telemetry
+            Real-time assessment invigilation, score compilation, and candidate management
           </p>
         </div>
 
@@ -58,94 +94,71 @@ export default function AdminDashboardPage() {
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition border border-slate-700"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>Export CSV</span>
+            <span>Export Reports</span>
           </Link>
         </div>
       </div>
 
-      {/* Main KPI Statistics Grid (Requirement #8) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* Main KPI Statistics Grid (Requirement #11) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Candidates</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Total Students</span>
             <Users className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-2xl font-black text-white">{totalStudents}</div>
-          <span className="text-[11px] text-slate-400">2nd & 3rd Year Engineers</span>
+          <span className="text-[11px] text-slate-500">Registered candidates</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <div className="flex items-center justify-between text-emerald-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Active in Exam</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-xs font-semibold uppercase tracking-wider">Active Tests</span>
+            <Play className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-black text-emerald-400">{activeStudents}</div>
-          <span className="text-[11px] text-emerald-400/90 font-medium">Currently writing code</span>
+          <div className="text-2xl font-black text-emerald-400">{activeAssessmentsCount}</div>
+          <span className="text-[11px] text-slate-500">Live examinations</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center justify-between text-amber-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">In-Progress</span>
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          </div>
+          <div className="text-2xl font-black text-amber-300">{inProgressAttempts}</div>
+          <span className="text-[11px] text-slate-500">Writing code now</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center justify-between text-blue-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Completed</span>
+            <CheckCircle2 className="w-4 h-4 text-blue-400" />
+          </div>
+          <div className="text-2xl font-black text-blue-300">{completedAttemptsCount}</div>
+          <span className="text-[11px] text-slate-500">Submitted attempts</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Tests Running</span>
-            <Play className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-2xl font-black text-white">{testsRunning} Active</div>
-          <span className="text-[11px] text-slate-400">1 Upcoming scheduled</span>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Completed Tests</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-2xl font-black text-white">{completedTests} Finished</div>
-          <span className="text-[11px] text-slate-400">Recorded on server</span>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Not Started</span>
-            <Clock className="w-4 h-4 text-slate-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-300">{notStarted}</div>
-          <span className="text-[11px] text-slate-500">Pending login</span>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Class Average</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Average Score</span>
             <TrendingUp className="w-4 h-4 text-indigo-400" />
           </div>
-          <div className="text-2xl font-black text-white">{averageScore}%</div>
-          <span className="text-[11px] text-emerald-400 font-medium">Above college benchmark</span>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Highest Score</span>
-            <Award className="w-4 h-4 text-amber-400" />
+          <div className="text-2xl font-black text-white">
+            {avgScore !== null ? `${avgScore} pts` : '—'}
           </div>
-          <div className="text-2xl font-black text-amber-300">{highestScore} pts</div>
-          <span className="text-[11px] text-slate-400">Harish Kumar (22CS084)</span>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Avg Completion Time</span>
-            <Clock className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-2xl font-black text-white">{averageCompletionTime}</div>
-          <span className="text-[11px] text-slate-400">Limit: 60m 00s</span>
+          <span className="text-[11px] text-slate-500">
+            {avgScore !== null ? 'Institutional cohort avg' : 'No submissions yet'}
+          </span>
         </div>
       </div>
 
-      {/* Middle Grid: Running Test Card & Anti-Cheating Alerts */}
+      {/* Middle Section: Active Test Overview & Security Log Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Test Card */}
-        <div className="lg:col-span-2 bg-gradient-to-br from-indigo-950/30 to-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+        <div className="lg:col-span-2 bg-gradient-to-br from-indigo-950/30 to-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-              <h3 className="font-bold text-white text-base">Current Active Examination</h3>
+              <h3 className="font-bold text-white text-base">Active Examination Overview</h3>
             </div>
             <Link
               href="/admin/monitor"
@@ -156,83 +169,87 @@ export default function AdminDashboardPage() {
             </Link>
           </div>
 
-          <div>
-            <h4 className="text-lg font-bold text-white">JIT Python Assessment 2026 - Cycle 1</h4>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              Official assessment for 2nd and 3rd year engineering students (CSE, IT, AI&DS, ECE). Covers 4 algorithmic challenges (Lists, DSA Stack, Palindromes, Kadane).
-            </p>
-          </div>
+          {activeTests.length > 0 ? (
+            <div className="space-y-4">
+              {activeTests.map((t) => (
+                <div key={t.id} className="space-y-3">
+                  <div>
+                    <h4 className="text-lg font-bold text-white">{t.title}</h4>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">{t.description}</p>
+                  </div>
 
-          <div className="grid grid-cols-3 gap-3 text-xs font-mono bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
-            <div>
-              <span className="text-slate-400 block mb-0.5">Enrolled Candidates</span>
-              <span className="font-bold text-white text-sm">5 Candidates</span>
-            </div>
-            <div>
-              <span className="text-slate-400 block mb-0.5">Submissions Today</span>
-              <span className="font-bold text-emerald-400 text-sm">16 Evaluated</span>
-            </div>
-            <div>
-              <span className="text-slate-400 block mb-0.5">Time Allotted</span>
-              <span className="font-bold text-white text-sm">60 Minutes</span>
-            </div>
-          </div>
+                  <div className="grid grid-cols-3 gap-3 text-xs font-mono bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Duration</span>
+                      <span className="font-bold text-white">{t.duration_minutes} Minutes</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Total Marks</span>
+                      <span className="font-bold text-emerald-400">{t.total_marks} Marks</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Eligible Cohorts</span>
+                      <span className="font-bold text-indigo-300">
+                        {t.eligible_departments?.join(', ')}
+                      </span>
+                    </div>
+                  </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>Judge0 Python 3 Runner: Healthy & Online</span>
+                  <div className="flex items-center justify-between pt-2">
+                    <Link
+                      href={`/admin/rankings/${t.id}`}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition"
+                    >
+                      View Completion Rankings
+                    </Link>
+                  </div>
+                </div>
+              ))}
             </div>
-            <Link
-              href="/admin/rankings/test-jit-py-2026"
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition"
-            >
-              View First-Completion Leaderboard
-            </Link>
-          </div>
+          ) : (
+            <EmptyState
+              title="No active examination right now"
+              description="Scheduled examinations can be published or started from the Assessments tab."
+              action={{
+                label: "View Assessments",
+                href: "/admin/tests",
+              }}
+            />
+          )}
         </div>
 
         {/* Security Incident Highlights */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <h3 className="font-bold text-white text-base flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-amber-400" />
-              <span>Security Event Stream</span>
+              <span>Real-Time Security Feed</span>
             </h3>
-            <span className="text-xs text-amber-400 font-mono">Live Logs</span>
+            <span className="text-xs text-slate-400 font-mono">Live</span>
           </div>
 
-          <div className="space-y-3 font-mono text-xs">
-            <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-amber-300">Vignesh Raman (22AD012)</span>
-                <span className="text-[10px] text-slate-500">10:32 AM</span>
-              </div>
-              <p className="text-[11px] text-slate-300 font-sans">
-                Fullscreen exit recorded (Warning #4 issued)
-              </p>
+          {logs.length > 0 ? (
+            <div className="space-y-3 font-mono text-xs max-h-72 overflow-y-auto">
+              {logs.slice(0, 5).map((l) => (
+                <div key={l.id} className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-300 text-[11px]">{l.event_type}</span>
+                    <span className="text-[10px] text-slate-500">
+                      {new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 font-sans">
+                    {typeof l.details === 'object' ? JSON.stringify(l.details) : 'Event recorded'}
+                  </p>
+                </div>
+              ))}
             </div>
-
-            <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-amber-300">Priya Sundaram (23IT045)</span>
-                <span className="text-[10px] text-slate-500">10:28 AM</span>
-              </div>
-              <p className="text-[11px] text-slate-300 font-sans">
-                Tab switched away for 4 seconds
-              </p>
-            </div>
-
-            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-400">Harish Kumar (22CS084)</span>
-                <span className="text-[10px] text-slate-500">10:36 AM</span>
-              </div>
-              <p className="text-[11px] text-slate-300 font-sans">
-                Finished 1st with score 96.5 (Clean audit)
-              </p>
-            </div>
-          </div>
+          ) : (
+            <EmptyState
+              title="No activity recorded."
+              description="Anti-cheating deterrent events, submissions, and session alerts will be captured here."
+            />
+          )}
         </div>
       </div>
     </div>

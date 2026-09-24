@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart,
   Bar,
@@ -9,45 +9,125 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
 } from 'recharts';
 import {
   BarChart3,
   TrendingUp,
-  PieChart as PieIcon,
   AlertTriangle,
-  Award,
   Users,
   Clock,
+  Loader2,
 } from 'lucide-react';
-
-const SCORE_DISTRIBUTION = [
-  { range: '0 - 40%', count: 1 },
-  { range: '41 - 60%', count: 3 },
-  { range: '61 - 80%', count: 8 },
-  { range: '81 - 90%', count: 14 },
-  { range: '91 - 100%', count: 18 },
-];
-
-const QUESTION_FAIL_RATES = [
-  { question: 'Longest Palindrome', failureRate: 42, attempts: 48 },
-  { question: 'Max Subarray (Kadane)', failureRate: 35, attempts: 44 },
-  { question: 'Valid Parentheses', failureRate: 18, attempts: 52 },
-  { question: 'Two Sum', failureRate: 8, attempts: 56 },
-];
-
-const DEPT_PERFORMANCE = [
-  { department: 'CSE (Year 3)', avgScore: 84.5, students: 45 },
-  { department: 'AI&DS (Year 3)', avgScore: 81.2, students: 30 },
-  { department: 'IT (Year 2)', avgScore: 78.0, students: 25 },
-  { department: 'ECE (Year 2)', avgScore: 74.8, students: 20 },
-];
+import { fetchAttempts, fetchStudents } from '@/lib/db';
+import { TestAttempt, StudentProfile } from '@/types';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function AdminAnalyticsPage() {
+  const [loading, setLoading] = useState(true);
+  const [attempts, setAttempts] = useState<TestAttempt[]>([]);
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [allAttempts, allStudents] = await Promise.all([
+          fetchAttempts(),
+          fetchStudents(),
+        ]);
+        setAttempts(allAttempts);
+        setStudents(allStudents);
+      } catch (err) {
+        console.error('Failed to load admin analytics:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (attempts.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16">
+        <EmptyState
+          icon={BarChart3}
+          title="No assessment data available yet"
+          description="Analytics will appear after assessment activity is recorded."
+          actionText="View Assessments"
+          actionHref="/admin/tests"
+        />
+      </div>
+    );
+  }
+
+  // Real calculations
+  const totalAttempts = attempts.length;
+  const totalStudents = students.length || totalAttempts;
+  const participationRate = totalStudents > 0
+    ? Math.min(100, Math.round((totalAttempts / totalStudents) * 100))
+    : 100;
+
+  const totalScoreSum = attempts.reduce((acc, a) => acc + (a.score || 0), 0);
+  const cohortAverage = (totalScoreSum / totalAttempts).toFixed(1);
+
+  const fastestAttempt = attempts.reduce((fastest, a) => {
+    if (!a.time_taken_seconds) return fastest;
+    if (!fastest || a.time_taken_seconds < (fastest.time_taken_seconds || 999999)) return a;
+    return fastest;
+  }, null as TestAttempt | null);
+
+  const fastestMinutes = fastestAttempt ? Math.floor((fastestAttempt.time_taken_seconds || 0) / 60) : 0;
+  const fastestSeconds = fastestAttempt ? (fastestAttempt.time_taken_seconds || 0) % 60 : 0;
+  const fastestTimeText = fastestAttempt ? `${fastestMinutes}m ${fastestSeconds}s` : 'N/A';
+
+  // Real Score Distribution Histogram
+  const distributionMap: Record<string, number> = {
+    '0 - 40%': 0,
+    '41 - 60%': 0,
+    '61 - 80%': 0,
+    '81 - 90%': 0,
+    '91 - 100%': 0,
+  };
+
+  attempts.forEach((a) => {
+    const p = a.percentage || 0;
+    if (p <= 40) distributionMap['0 - 40%'] += 1;
+    else if (p <= 60) distributionMap['41 - 60%'] += 1;
+    else if (p <= 80) distributionMap['61 - 80%'] += 1;
+    else if (p <= 90) distributionMap['81 - 90%'] += 1;
+    else distributionMap['91 - 100%'] += 1;
+  });
+
+  const scoreDistributionData = Object.entries(distributionMap).map(([range, count]) => ({
+    range,
+    count,
+  }));
+
+  // Real Department-wise Performance
+  const deptMap: Record<string, { totalScore: number; count: number }> = {};
+  attempts.forEach((a) => {
+    const dept = a.students?.department || 'General';
+    if (!deptMap[dept]) {
+      deptMap[dept] = { totalScore: 0, count: 0 };
+    }
+    deptMap[dept].totalScore += a.score || 0;
+    deptMap[dept].count += 1;
+  });
+
+  const deptPerformanceData = Object.entries(deptMap).map(([department, data]) => ({
+    department,
+    avgScore: Math.round(data.totalScore / data.count),
+    students: data.count,
+  }));
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
       {/* Header */}
@@ -57,7 +137,7 @@ export default function AdminAnalyticsPage() {
           <span>Institutional Examination Analytics</span>
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Aggregated cohort intelligence, difficulty analysis, and candidate failure points
+          Aggregated cohort intelligence, score distribution, and department averages
         </p>
       </div>
 
@@ -67,32 +147,34 @@ export default function AdminAnalyticsPage() {
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Participation Rate
           </span>
-          <div className="text-2xl font-bold text-emerald-400">96.8%</div>
-          <span className="text-[11px] text-slate-500">116 of 120 participated</span>
+          <div className="text-2xl font-bold text-emerald-400">{participationRate}%</div>
+          <span className="text-[11px] text-slate-500">{totalAttempts} candidates participated</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Cohort Average
           </span>
-          <div className="text-2xl font-bold text-white">79.4 / 100</div>
-          <span className="text-[11px] text-indigo-400">+4.2% vs last cycle</span>
+          <div className="text-2xl font-bold text-white">{cohortAverage} Marks</div>
+          <span className="text-[11px] text-indigo-400">Mean assessment score</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
-            Most Challenging Question
+            Active Candidates
           </span>
-          <div className="text-xl font-bold text-amber-300">Longest Palindrome</div>
-          <span className="text-[11px] text-rose-400">42% fail rate on hidden cases</span>
+          <div className="text-xl font-bold text-amber-300">{totalAttempts} Recorded</div>
+          <span className="text-[11px] text-slate-500">Total sessions tracked</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
             Fastest Finish Time
           </span>
-          <div className="text-2xl font-bold text-blue-400">34m 00s</div>
-          <span className="text-[11px] text-slate-500">Candidate 22CS084</span>
+          <div className="text-2xl font-bold text-blue-400">{fastestTimeText}</div>
+          <span className="text-[11px] text-slate-500">
+            {fastestAttempt?.students?.register_number || 'Earliest completion'}
+          </span>
         </div>
       </div>
 
@@ -106,7 +188,7 @@ export default function AdminAnalyticsPage() {
           </h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={SCORE_DISTRIBUTION}>
+              <BarChart data={scoreDistributionData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="range" stroke="#94a3b8" fontSize={11} />
                 <YAxis stroke="#94a3b8" fontSize={11} />
@@ -119,36 +201,15 @@ export default function AdminAnalyticsPage() {
           </div>
         </div>
 
-        {/* Most Failed Questions */}
+        {/* Department vs Performance */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
-            <span>Most Failed Questions (% Hidden Test Cases Failed)</span>
-          </h3>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={QUESTION_FAIL_RATES} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis type="number" stroke="#94a3b8" domain={[0, 50]} fontSize={11} />
-                <YAxis dataKey="question" type="category" stroke="#94a3b8" fontSize={11} width={130} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
-                />
-                <Bar dataKey="failureRate" name="Failure %" fill="#f43f5e" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Department vs Performance */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 lg:col-span-2">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <Users className="w-4 h-4 text-emerald-400" />
-            <span>Department & Year Comparative Performance</span>
+            <span>Department Comparative Performance</span>
           </h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={DEPT_PERFORMANCE}>
+              <BarChart data={deptPerformanceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="department" stroke="#94a3b8" fontSize={11} />
                 <YAxis stroke="#94a3b8" fontSize={11} domain={[0, 100]} />

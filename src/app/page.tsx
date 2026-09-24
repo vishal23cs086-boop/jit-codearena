@@ -4,7 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { MOCK_STUDENTS } from '@/lib/mockData';
 import {
   Code2,
   Terminal,
@@ -17,21 +16,15 @@ import {
   GraduationCap,
   Sparkles,
   Cpu,
+  UserCheck,
+  Lock,
+  Layers,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function HomePage() {
-  const { loginAsStudent, loginAsAdmin } = useAuth();
+  const { user, role } = useAuth();
   const router = useRouter();
-
-  const handleQuickStudentLogin = (regNo: string) => {
-    loginAsStudent(regNo);
-    router.push('/student/dashboard');
-  };
-
-  const handleAdminLogin = () => {
-    loginAsAdmin();
-    router.push('/admin/dashboard');
-  };
 
   return (
     <div className="flex-1 flex flex-col justify-between">
@@ -41,103 +34,171 @@ export default function HomePage() {
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-indigo-600/15 blur-[120px] rounded-full pointer-events-none -z-10" />
 
         <div className="text-center max-w-3xl mx-auto mb-12">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-medium mb-6">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold mb-6">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
             <span>Academic Year 2025-2026 • 2nd & 3rd Year Assessment Portal</span>
           </div>
 
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight sm:leading-none mb-6">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight sm:leading-none mb-3">
             JIT <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-blue-400 to-cyan-400">CodeArena</span>
           </h1>
 
-          <p className="text-lg text-slate-300 leading-relaxed max-w-2xl mx-auto mb-8">
-            The next-generation college-specific Python assessment platform. Featuring an integrated LeetCode-style Monaco editor, secure server-isolated Judge0 execution, real-time proctoring telemetry, and automated multi-metric grading.
+          <p className="text-sm sm:text-base font-semibold text-indigo-300 uppercase tracking-widest mb-6">
+            Institutional Online Coding Assessment Platform
+          </p>
+
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto mb-8">
+            The official institutional online coding assessment platform of JIT. Equipped with server-isolated Python execution, real-time invigilation audit telemetry, and automated completion-order rank tracking.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href="/student/test/test-jit-py-2026/instructions"
-              className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30 text-sm"
-            >
-              <Terminal className="w-4 h-4" />
-              <span>Launch Live Test Arena</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            {user ? (
+              role === 'student' ? (
+                <Link
+                  href="/student/dashboard"
+                  className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30 text-sm"
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Open Student Dashboard</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <Link
+                  href="/admin/dashboard"
+                  className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30 text-sm"
+                >
+                  <Shield className="w-4 h-4 text-amber-300" />
+                  <span>Open Admin Control Center</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              )
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30 text-sm"
+                >
+                  <Terminal className="w-4 h-4" />
+                  <span>Candidate Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
 
-            <button
-              onClick={handleAdminLogin}
-              className="flex items-center gap-2 px-6 py-3.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl border border-slate-700 transition text-sm shadow-md"
-            >
-              <Shield className="w-4 h-4 text-amber-400" />
-              <span>Invigilator & Admin Center</span>
-            </button>
+                <Link
+                  href="/register"
+                  className="flex items-center gap-2 px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold rounded-xl border border-slate-700 transition text-sm shadow-md"
+                >
+                  <UserCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Student Registration</span>
+                </Link>
+
+                <Link
+                  href="/admin/login"
+                  className="flex items-center gap-2 px-6 py-3.5 bg-slate-900/90 hover:bg-slate-800 text-slate-300 font-semibold rounded-xl border border-slate-700 transition text-sm shadow-md"
+                >
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  <span>Exam Cell Login</span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Quick Student Login Selector */}
-        <div className="max-w-4xl mx-auto bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 backdrop-blur-sm shadow-2xl">
-          <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-800">
-            <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <GraduationCap className="w-5 h-5 text-indigo-400" />
-                <span>Select Registered Student Demo Profile</span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Pre-configured 2nd and 3rd year engineering candidates for testing
-              </p>
+        {/* Institutional Portal Access Cards */}
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Student Access Portal */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-7 backdrop-blur-sm shadow-xl flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                  <GraduationCap className="w-6 h-6" />
+                </div>
+                <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  Candidate Portal
+                </span>
+              </div>
+
+              <div>
+                <h2 className="text-xl font-bold text-white mb-1">Student Assessment Portal</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Access scheduled assessments, launch the Monaco Python editor, and view instant performance scorecards.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-800/80 text-xs text-slate-300">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Register Number + Academic Password sign-in</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Mandatory fullscreen & proctoring telemetry</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Automated testcase evaluation & score breakdown</span>
+                </div>
+              </div>
             </div>
-            <Link
-              href="/student/dashboard"
-              className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition"
-            >
-              Go to Dashboard →
-            </Link>
+
+            <div className="pt-6 mt-6 border-t border-slate-800 flex items-center gap-3">
+              <Link
+                href="/login"
+                className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-center text-xs transition shadow-md shadow-indigo-600/20"
+              >
+                Sign In to Test
+              </Link>
+              <Link
+                href="/register"
+                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-center text-xs border border-slate-700 transition"
+              >
+                New Registration
+              </Link>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {MOCK_STUDENTS.map((st) => (
-              <button
-                key={st.id}
-                onClick={() => handleQuickStudentLogin(st.register_number)}
-                className="text-left p-3.5 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 hover:border-indigo-500/40 transition group flex items-start justify-between"
-              >
-                <div>
-                  <div className="font-semibold text-white text-sm group-hover:text-indigo-300 transition">
-                    {st.full_name}
-                  </div>
-                  <div className="text-xs text-slate-400 font-mono mt-0.5">
-                    Reg: {st.register_number}
-                  </div>
-                  <div className="text-[11px] text-indigo-400/90 font-medium mt-1">
-                    {st.department} • Year {st.year} (Sec {st.section})
-                  </div>
+          {/* Exam Cell / Faculty Portal */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-7 backdrop-blur-sm shadow-xl flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Shield className="w-6 h-6" />
                 </div>
-                <div className="w-7 h-7 rounded-lg bg-slate-800 group-hover:bg-indigo-600/20 text-slate-400 group-hover:text-indigo-400 flex items-center justify-center transition">
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </button>
-            ))}
+                <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  Staff & Invigilation
+                </span>
+              </div>
 
-            {/* Admin option card */}
-            <button
-              onClick={handleAdminLogin}
-              className="text-left p-3.5 rounded-xl bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/30 hover:border-indigo-400 transition group flex items-start justify-between"
-            >
               <div>
-                <div className="font-semibold text-amber-300 text-sm">
-                  Dr. M. Murugan
+                <h2 className="text-xl font-bold text-white mb-1">Examination Control Center</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Authorized portal for Examination Coordinators, HODs, and Invigilators to monitor live tests and evaluate results.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-800/80 text-xs text-slate-300">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Real-time Live Monitor with live status badges</span>
                 </div>
-                <div className="text-xs text-slate-400 font-mono mt-0.5">
-                  FAC-CSE-01 (Admin)
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Question Bank with hidden test cases management</span>
                 </div>
-                <div className="text-[11px] text-amber-400/90 font-medium mt-1">
-                  HOD / Chief Invigilator
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>First Completion Rankings & CSV Grade Sheet Export</span>
                 </div>
               </div>
-              <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center transition">
-                <Shield className="w-3.5 h-3.5" />
-              </div>
-            </button>
+            </div>
+
+            <div className="pt-6 mt-6 border-t border-slate-800 flex items-center gap-3">
+              <Link
+                href="/admin/login"
+                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-semibold rounded-xl text-center text-xs transition shadow-md"
+              >
+                Enter Examination Cell Portal →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -179,7 +240,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
-        <p>© 2026 JIT CodeArena • Department of Computer Science & Engineering • All rights reserved</p>
+        <p>© 2026 JIT CodeArena • Institutional Online Coding Assessment Platform • Department of Computer Science & Engineering</p>
       </footer>
     </div>
   );

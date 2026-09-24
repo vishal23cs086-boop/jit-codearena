@@ -1,25 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runTestCases } from '@/lib/judge0/client';
 import { calculateSubmissionScore } from '@/lib/scoring';
-import { MOCK_QUESTIONS } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
 import { TestCase } from '@/types';
+
+const isSupabaseConfigured = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  return Boolean(url && key && !url.includes('mock-') && !url.includes('your-project'));
+};
 
 export async function POST(req: NextRequest) {
   try {
-    const { questionId, code, attemptId, studentId, attemptNumber = 1 } = await req.json();
+    const {
+      questionId,
+      code,
+      attemptId,
+      studentId,
+      attemptNumber = 1,
+      testCases: clientTestCases,
+      timeLimitMs: clientTimeLimit,
+      marks: clientMarks,
+    } = await req.json();
 
     if (!questionId || typeof code !== 'string') {
       return NextResponse.json({ error: 'Question ID and code are required' }, { status: 400 });
     }
 
-    // 1. Fetch Question and Test Cases securely on server
-    // (In production with Supabase, query public.test_cases with service role key)
-    const question = MOCK_QUESTIONS.find((q) => q.id === questionId);
-    if (!question) {
-      return NextResponse.json({ error: 'Question not found' }, { status: 404 });
+    let allTestCases: TestCase[] = [];
+    let timeLimitMs = typeof clientTimeLimit === 'number' ? clientTimeLimit : 2000;
+    let questionMarks = typeof clientMarks === 'number' ? clientMarks : 25;
+
+    // 1. Fetch Question and Test Cases securely on server from Supabase if configured
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('questions')
+          .select('*, test_cases (*)')
+          .eq('id', questionId)
+          .single();
+
+        if (!error && data) {
+          allTestCases = data.test_cases || [];
+          timeLimitMs = data.time_limit_ms || timeLimitMs;
+          questionMarks = data.marks || questionMarks;
+        }
+      } catch (err) {
+        console.warn('Supabase testcase lookup warning:', err);
+      }
     }
 
-    const allTestCases: TestCase[] = question.test_cases || [];
+    // Fallback to client-provided test cases if server database query returned empty
+    if (allTestCases.length === 0 && Array.isArray(clientTestCases) && clientTestCases.length > 0) {
+      allTestCases = clientTestCases;
+    }
+
+    if (allTestCases.length === 0) {
+      return NextResponse.json(
+        { error: 'No test cases found for the specified question in database' },
+        { status: 404 }
+      );
+    }
 
     // 2. Execute code on all test cases (both public and hidden)
     const execSummary = await runTestCases(code, allTestCases, true);
@@ -29,11 +71,11 @@ export async function POST(req: NextRequest) {
       totalTestCases: execSummary.totalTestCases,
       testCasesPassed: execSummary.testCasesPassed,
       executionTimeMs: execSummary.averageTimeMs,
-      timeLimitMs: question.time_limit_ms,
+      timeLimitMs,
       codeLength: code.length,
       code,
       attemptNumber,
-      questionMaxMarks: question.marks,
+      questionMaxMarks: questionMarks,
     });
 
     // 4. Sanitize test case results before returning to client (NEVER expose hidden test cases inputs/expected outputs)

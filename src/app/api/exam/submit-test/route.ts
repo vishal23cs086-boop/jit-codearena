@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // In-memory counter for completion ranking across current session
-let completionCounter = 2; // (Harish was 1st, Ananya was 2nd in mock data)
+let completionCounter = 0;
 
 export async function POST(req: NextRequest) {
   try {

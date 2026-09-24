@@ -15,11 +15,12 @@ import {
   LogOut,
   ShieldCheck,
   GraduationCap,
-  Sparkles,
+  Users,
+  BookOpen,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { user, role, loginAsAdmin, loginAsStudent, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -30,14 +31,9 @@ export const Navbar: React.FC = () => {
     return null;
   }
 
-  const handleRoleToggle = () => {
-    if (role === 'admin') {
-      loginAsStudent('22CS084');
-      router.push('/student/dashboard');
-    } else {
-      loginAsAdmin();
-      router.push('/admin/dashboard');
-    }
+  const handleLogout = () => {
+    logout();
+    router.push('/');
   };
 
   return (
@@ -61,7 +57,7 @@ export const Navbar: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 tracking-wider uppercase font-medium">
-                  College Coding Assessment Platform
+                  Institutional Online Coding Assessment Platform
                 </p>
               </div>
             </Link>
@@ -81,6 +77,16 @@ export const Navbar: React.FC = () => {
                     Dashboard
                   </Link>
                   <Link
+                    href="/student/assessments"
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      pathname === '/student/assessments'
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Assessments
+                  </Link>
+                  <Link
                     href="/student/analytics"
                     className={`px-3 py-1.5 rounded-lg transition ${
                       pathname === '/student/analytics'
@@ -90,8 +96,18 @@ export const Navbar: React.FC = () => {
                   >
                     My Analytics
                   </Link>
+                  <Link
+                    href="/student/profile"
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      pathname === '/student/profile'
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Profile
+                  </Link>
                 </>
-              ) : (
+              ) : role === 'admin' ? (
                 <>
                   <Link
                     href="/admin/dashboard"
@@ -115,6 +131,16 @@ export const Navbar: React.FC = () => {
                     <span>Live Monitor</span>
                   </Link>
                   <Link
+                    href="/admin/students"
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      pathname === '/admin/students'
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Students
+                  </Link>
+                  <Link
                     href="/admin/questions"
                     className={`px-3 py-1.5 rounded-lg transition ${
                       pathname === '/admin/questions'
@@ -122,7 +148,7 @@ export const Navbar: React.FC = () => {
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Question Bank
+                    Questions
                   </Link>
                   <Link
                     href="/admin/tests"
@@ -152,7 +178,7 @@ export const Navbar: React.FC = () => {
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Reports & CSV
+                    Reports
                   </Link>
                   <Link
                     href="/admin/logs"
@@ -165,31 +191,23 @@ export const Navbar: React.FC = () => {
                     Audit Logs
                   </Link>
                 </>
-              )}
+              ) : null}
             </nav>
           </div>
 
           {/* Right Action Bar */}
           <div className="flex items-center gap-3">
-            {/* Quick Demo Switcher */}
-            <button
-              onClick={handleRoleToggle}
-              className="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-medium transition"
-              title="Toggle role between Student and Admin"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Switch to {role === 'admin' ? 'Student View' : 'Admin / Exam Cell'}</span>
-            </button>
-
-            {/* Profile Info Badge */}
             {user ? (
-              <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
-                <div className="text-right hidden sm:block">
+              <div className="flex items-center gap-3 pl-3">
+                <Link
+                  href={role === 'student' ? '/student/profile' : '/admin/dashboard'}
+                  className="text-right hidden sm:block hover:opacity-80 transition"
+                >
                   <div className="text-xs font-semibold text-white flex items-center justify-end gap-1.5">
                     <span>{user.full_name}</span>
                     {role === 'admin' ? (
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        Admin
+                        Exam Cell
                       </span>
                     ) : (
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 font-mono">
@@ -198,21 +216,43 @@ export const Navbar: React.FC = () => {
                     )}
                   </div>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    {user.department} • Year {user.year}
+                    {user.department} {user.year ? `• Year ${user.year}` : ''}
                   </p>
-                </div>
+                </Link>
 
                 <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shadow-sm">
                   {role === 'admin' ? <ShieldCheck className="w-5 h-5 text-indigo-400" /> : <GraduationCap className="w-5 h-5 text-blue-400" />}
                 </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
             ) : (
-              <Link
-                href="/login"
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition"
-              >
-                Sign In
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/login"
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition shadow-md shadow-indigo-600/20"
+                >
+                  Student Login
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition"
+                >
+                  Register
+                </Link>
+                <Link
+                  href="/admin/login"
+                  className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-semibold rounded-lg border border-amber-500/30 transition"
+                >
+                  Admin Portal
+                </Link>
+              </div>
             )}
           </div>
         </div>

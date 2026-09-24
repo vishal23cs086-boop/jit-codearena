@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MOCK_LIVE_MONITOR } from '@/lib/mockData';
-import { LiveMonitorStudent } from '@/types';
+import { fetchAttempts, fetchStudents, fetchActivityLogs, fetchTests } from '@/lib/db';
+import { LiveMonitorStudent, TestAttempt, StudentProfile, ActivityLog, Test } from '@/types';
 import { StudentDetailModal } from '@/components/admin/StudentDetailModal';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   Activity,
   Search,
@@ -13,30 +14,107 @@ import {
   CheckCircle2,
   Clock,
   ShieldAlert,
-  ArrowUpDown,
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
 
 export default function LiveMonitorPage() {
-  const [students, setStudents] = useState<LiveMonitorStudent[]>(MOCK_LIVE_MONITOR);
+  const [monitorStudents, setMonitorStudents] = useState<LiveMonitorStudent[]>([]);
+  const [activeTest, setActiveTest] = useState<Test | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedStudent, setSelectedStudent] = useState<LiveMonitorStudent | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleRefresh = () => {
+  const loadData = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
+    try {
+      const [tests, attempts, students, logs] = await Promise.all([
+        fetchTests(),
+        fetchAttempts(),
+        fetchStudents(),
+        fetchActivityLogs(),
+      ]);
+
+      const currentActive = tests.find((t) => t.status === 'active') || tests[0] || null;
+      setActiveTest(currentActive);
+
+      // Map real attempts to LiveMonitorStudent records
+      const studentMap = new Map<string, StudentProfile>();
+      students.forEach((s) => studentMap.set(s.id, s));
+
+      const monitorList: LiveMonitorStudent[] = attempts.map((att) => {
+        const student = studentMap.get(att.student_id);
+        const studentLogs = logs.filter((l) => l.student_id === att.student_id);
+        const warningCount = (att.tab_switch_count || 0) + (att.fullscreen_exit_count || 0);
+
+        let status: LiveMonitorStudent['status'] = 'not_started';
+        if (att.status === 'submitted' || att.status === 'auto_submitted') {
+          status = 'completed';
+        } else if (att.status === 'in_progress') {
+          if (warningCount >= 3) {
+            status = 'suspicious';
+          } else if (warningCount >= 1) {
+            status = 'warning';
+          } else {
+            status = 'active';
+          }
+        }
+
+        const elapsedSec = att.started_at
+          ? Math.max(0, Math.floor((Date.now() - new Date(att.started_at).getTime()) / 1000))
+          : 0;
+
+        return {
+          id: student?.id || att.student_id,
+          attempt_id: att.id,
+          student_name: student?.full_name || student?.register_number || 'Candidate',
+          register_number: student?.register_number || 'UNKNOWN',
+          department: student?.department || 'CSE',
+          year: student?.year || 2,
+          test_title: currentActive?.title || 'Coding Assessment',
+          progress: att.status === 'submitted' ? 'Completed' : 'In Progress',
+          current_score: att.score || 0,
+          started_time: att.started_at
+            ? new Date(att.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '—',
+          elapsed_time_seconds: elapsedSec,
+          status,
+          warnings_count: warningCount,
+          completion_time: att.completed_at
+            ? new Date(att.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : undefined,
+          tab_switches: att.tab_switch_count || 0,
+          fullscreen_exits: att.fullscreen_exit_count || 0,
+          copy_pastes: att.copy_paste_count || 0,
+          current_question_index: 1,
+          total_submissions: 1,
+          recent_logs: studentLogs,
+        };
+      });
+
+      setMonitorStudents(monitorList);
+    } catch (err) {
+      console.warn('Error loading live monitor data:', err);
+    } finally {
       setIsRefreshing(false);
-    }, 600);
+      setLoading(false);
+    }
   };
 
-  const filteredStudents = students.filter((s) => {
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 15000); // 15s real-time poll
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredStudents = monitorStudents.filter((s) => {
+    const term = searchTerm.toLowerCase();
     const matchesSearch =
-      s.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.register_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.department.toLowerCase().includes(searchTerm.toLowerCase());
+      s.student_name.toLowerCase().includes(term) ||
+      s.register_number.toLowerCase().includes(term) ||
+      s.department.toLowerCase().includes(term);
 
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -98,21 +176,23 @@ export default function LiveMonitorPage() {
             <h1 className="text-2xl font-bold text-white">Live Examination Telemetry Monitor</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time candidate tracking for JIT Python Assessment 2026 - Cycle 1
+            Real-time candidate tracking for {activeTest?.title || 'active examinations'}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Link
-            href="/admin/rankings/test-jit-py-2026"
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
-          >
-            <span>First Completion Rankings</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
+          {activeTest && (
+            <Link
+              href={`/admin/rankings/${activeTest.id}`}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
+            >
+              <span>First Completion Rankings</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+          )}
 
           <button
-            onClick={handleRefresh}
+            onClick={loadData}
             className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition border border-slate-700"
             title="Refresh stream"
           >
@@ -121,27 +201,35 @@ export default function LiveMonitorPage() {
         </div>
       </div>
 
-      {/* Quick Summary Pill Bar */}
+      {/* Status Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
-          <span className="text-[11px] text-slate-400 block mb-0.5">Enrolled Candidates</span>
-          <span className="text-xl font-bold text-white">5</span>
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+          <span className="text-[11px] text-slate-400 block mb-0.5">Total Tracked</span>
+          <span className="text-xl font-bold text-white">{monitorStudents.length}</span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
-          <span className="text-[11px] text-emerald-400 block mb-0.5">🟢 Active in Test</span>
-          <span className="text-xl font-bold text-emerald-400">1</span>
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+          <span className="text-[11px] text-emerald-400 block mb-0.5">🟢 Active Now</span>
+          <span className="text-xl font-bold text-emerald-400">
+            {monitorStudents.filter((s) => s.status === 'active').length}
+          </span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
           <span className="text-[11px] text-amber-400 block mb-0.5">🟡 Warnings Flagged</span>
-          <span className="text-xl font-bold text-amber-300">1</span>
+          <span className="text-xl font-bold text-amber-300">
+            {monitorStudents.filter((s) => s.status === 'warning').length}
+          </span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
           <span className="text-[11px] text-rose-400 block mb-0.5">🔴 Suspicious</span>
-          <span className="text-xl font-bold text-rose-300">1</span>
+          <span className="text-xl font-bold text-rose-300">
+            {monitorStudents.filter((s) => s.status === 'suspicious').length}
+          </span>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
+        <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
           <span className="text-[11px] text-blue-400 block mb-0.5">✅ Completed</span>
-          <span className="text-xl font-bold text-blue-300">2</span>
+          <span className="text-xl font-bold text-blue-300">
+            {monitorStudents.filter((s) => s.status === 'completed').length}
+          </span>
         </div>
       </div>
 
@@ -170,83 +258,89 @@ export default function LiveMonitorPage() {
             <option value="warning">Warning Issued</option>
             <option value="suspicious">Suspicious Incident</option>
             <option value="completed">Completed</option>
-            <option value="not_started">Not Started</option>
           </select>
         </div>
       </div>
 
-      {/* Live Candidates Telemetry Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold">
-                <th className="py-3.5 px-4">Student</th>
-                <th className="py-3.5 px-3">Reg Number</th>
-                <th className="py-3.5 px-3">Dept & Year</th>
-                <th className="py-3.5 px-3 text-center">Progress</th>
-                <th className="py-3.5 px-3 text-center">Current Score</th>
-                <th className="py-3.5 px-3 text-center">Started</th>
-                <th className="py-3.5 px-3 text-center">Status</th>
-                <th className="py-3.5 px-3 text-center">Violations</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {filteredStudents.map((st) => (
-                <tr
-                  key={st.id}
-                  onClick={() => setSelectedStudent(st)}
-                  className="hover:bg-slate-800/40 transition cursor-pointer group"
-                >
-                  <td className="py-3.5 px-4 font-semibold text-white group-hover:text-indigo-300 transition">
-                    {st.student_name}
-                  </td>
-                  <td className="py-3.5 px-3 font-mono text-slate-300">{st.register_number}</td>
-                  <td className="py-3.5 px-3 text-slate-400">
-                    {st.department} • Year {st.year}
-                  </td>
-                  <td className="py-3.5 px-3 text-center font-bold text-slate-200">
-                    {st.progress}
-                  </td>
-                  <td className="py-3.5 px-3 text-center font-mono font-bold text-emerald-400">
-                    {st.current_score} pts
-                  </td>
-                  <td className="py-3.5 px-3 text-center font-mono text-slate-400">
-                    {st.started_time}
-                  </td>
-                  <td className="py-3.5 px-3 text-center">{getStatusBadge(st.status)}</td>
-                  <td className="py-3.5 px-3 text-center">
-                    {st.warnings_count > 0 ? (
-                      <span
-                        className={`inline-flex items-center gap-1 font-bold ${
-                          st.warnings_count >= 3 ? 'text-rose-400 animate-pulse' : 'text-amber-400'
-                        }`}
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        {st.warnings_count} ({st.tab_switches} tabs, {st.fullscreen_exits} fs)
-                      </span>
-                    ) : (
-                      <span className="text-slate-500 font-mono">0</span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-4 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedStudent(st);
-                      }}
-                      className="px-2.5 py-1 bg-slate-800 group-hover:bg-indigo-600/30 text-slate-300 group-hover:text-indigo-200 rounded-lg text-[11px] font-medium transition border border-slate-700"
-                    >
-                      Inspect Logs
-                    </button>
-                  </td>
+      {/* Live Candidates Table or Empty State */}
+      {filteredStudents.length > 0 ? (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-4">Student</th>
+                  <th className="py-3.5 px-3">Reg Number</th>
+                  <th className="py-3.5 px-3">Dept & Year</th>
+                  <th className="py-3.5 px-3 text-center">Progress</th>
+                  <th className="py-3.5 px-3 text-center">Score</th>
+                  <th className="py-3.5 px-3 text-center">Started</th>
+                  <th className="py-3.5 px-3 text-center">Status</th>
+                  <th className="py-3.5 px-3 text-center">Violations</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {filteredStudents.map((st) => (
+                  <tr
+                    key={st.id}
+                    onClick={() => setSelectedStudent(st)}
+                    className="hover:bg-slate-800/40 transition cursor-pointer group"
+                  >
+                    <td className="py-3.5 px-4 font-semibold text-white group-hover:text-indigo-300 transition">
+                      {st.student_name}
+                    </td>
+                    <td className="py-3.5 px-3 font-mono text-slate-300">{st.register_number}</td>
+                    <td className="py-3.5 px-3 text-slate-400">
+                      {st.department} • Year {st.year}
+                    </td>
+                    <td className="py-3.5 px-3 text-center font-bold text-slate-200">
+                      {st.progress}
+                    </td>
+                    <td className="py-3.5 px-3 text-center font-mono font-bold text-emerald-400">
+                      {st.current_score} pts
+                    </td>
+                    <td className="py-3.5 px-3 text-center font-mono text-slate-400">
+                      {st.started_time}
+                    </td>
+                    <td className="py-3.5 px-3 text-center">{getStatusBadge(st.status)}</td>
+                    <td className="py-3.5 px-3 text-center">
+                      {st.warnings_count > 0 ? (
+                        <span
+                          className={`inline-flex items-center gap-1 font-bold ${
+                            st.warnings_count >= 3 ? 'text-rose-400 animate-pulse' : 'text-amber-400'
+                          }`}
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          {st.warnings_count} ({st.tab_switches} tabs, {st.fullscreen_exits} fs)
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 font-mono">0</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStudent(st);
+                        }}
+                        className="px-2.5 py-1 bg-slate-800 group-hover:bg-indigo-600/30 text-slate-300 group-hover:text-indigo-200 rounded-lg text-[11px] font-medium transition border border-slate-700"
+                      >
+                        Inspect Logs
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        <EmptyState
+          title="No candidates currently active in an assessment."
+          description="Live telemetry, tab switch violations, and progress will appear in real-time as students attempt active tests."
+        />
+      )}
     </div>
   );
 }

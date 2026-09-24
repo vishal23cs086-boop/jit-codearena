@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { MOCK_TESTS } from '@/lib/mockData';
+import { fetchTests } from '@/lib/db';
+import { Test } from '@/types';
 import {
   ShieldAlert,
   Clock,
@@ -14,6 +15,7 @@ import {
   Maximize2,
   Lock,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
 
 export default function TestInstructionsPage() {
@@ -21,12 +23,47 @@ export default function TestInstructionsPage() {
   const params = useParams();
   const { user } = useAuth();
   const [agreed, setAgreed] = useState(false);
+  const [test, setTest] = useState<Test | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const testId = typeof params?.id === 'string' ? params.id : 'test-jit-py-2026';
-  const test = MOCK_TESTS.find((t) => t.id === testId) || MOCK_TESTS[0];
+  const testId = typeof params?.id === 'string' ? params.id : '';
+
+  useEffect(() => {
+    async function loadTest() {
+      setLoading(true);
+      try {
+        const tests = await fetchTests();
+        const found = tests.find((t) => t.id === testId);
+        if (found) {
+          setTest(found);
+        } else if (tests.length > 0) {
+          setTest(tests[0]);
+        } else {
+          // If tests database has no tests yet, build standard placeholder
+          setTest({
+            id: testId || 'jit-py-exam',
+            title: 'JIT Institutional Python Assessment',
+            description: 'Official departmental Python programming assessment. Candidates must solve algorithmic challenges within the allotted time.',
+            duration_minutes: 60,
+            total_marks: 100,
+            eligible_years: [2, 3],
+            eligible_departments: ['CSE', 'IT', 'AI&DS', 'ECE'],
+            start_time: new Date().toISOString(),
+            end_time: new Date(Date.now() + 3600000).toISOString(),
+            status: 'active',
+          });
+        }
+      } catch (err) {
+        console.error('Error loading test:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadTest();
+  }, [testId]);
 
   const handleStartExam = async () => {
-    if (!agreed) return;
+    if (!agreed || !test) return;
 
     // Request fullscreen on start
     try {
@@ -38,8 +75,16 @@ export default function TestInstructionsPage() {
       // Proceed even if browser blocks immediate call
     }
 
-    router.push(`/student/test/${testId}`);
+    router.push(`/student/test/${test.id}`);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full space-y-6">
@@ -50,8 +95,8 @@ export default function TestInstructionsPage() {
           <span>OFFICIAL EXAMINATION INSTRUCTIONS</span>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white">{test.title}</h1>
-        <p className="text-sm text-slate-300 leading-relaxed">{test.description}</p>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white">{test?.title}</h1>
+        <p className="text-sm text-slate-300 leading-relaxed">{test?.description}</p>
 
         {/* Candidate Badge */}
         <div className="bg-slate-950/80 rounded-xl p-4 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
@@ -62,18 +107,18 @@ export default function TestInstructionsPage() {
           <div>
             <span className="text-slate-400 block mb-0.5">Register Number:</span>
             <span className="text-indigo-400 font-mono font-bold text-sm">
-              {user?.register_number || '22CS084'}
+              {user?.register_number || 'Registered Candidate'}
             </span>
           </div>
           <div>
             <span className="text-slate-400 block mb-0.5">Department & Year:</span>
             <span className="text-white font-medium">
-              {user?.department || 'CSE'} • Year {user?.year || 3}
+              {user?.department || 'Engineering'} • Year {user?.year || '2/3'}
             </span>
           </div>
           <div>
             <span className="text-slate-400 block mb-0.5">Total Marks:</span>
-            <span className="text-emerald-400 font-bold text-sm">{test.total_marks} Marks</span>
+            <span className="text-emerald-400 font-bold text-sm">{test?.total_marks || 100} Marks</span>
           </div>
         </div>
       </div>
@@ -122,12 +167,12 @@ export default function TestInstructionsPage() {
               <span>4. Server-Controlled Timer & Auto-Submit</span>
             </div>
             <p className="text-slate-400 leading-relaxed">
-              Your test duration is 60 minutes. Your progress is auto-saved periodically. If time elapses, your code will be automatically submitted.
+              Your test duration is {test?.duration_minutes || 60} minutes. Your progress is auto-saved periodically. If time elapses, your code will be automatically submitted.
             </p>
           </div>
         </div>
 
-        {/* Warning disclaimer required by specs */}
+        {/* Warning disclaimer */}
         <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 leading-relaxed">
           <strong>Notice:</strong> Browser deterrents and logs are active to preserve assessment integrity. Candidates involved in unauthorized practices will be reported directly to the Examination Disciplinary Cell.
         </div>

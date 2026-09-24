@@ -1,5 +1,5 @@
 // ==============================================================================
-// JIT CodeArena - Core TypeScript Interfaces and Types
+// JIT CodeArena - Core Institutional TypeScript Interfaces and Types
 // ==============================================================================
 
 export type UserRole = 'student' | 'admin' | 'invigilator';
@@ -63,14 +63,16 @@ export interface Profile {
   role: UserRole;
   avatar_url?: string;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface StudentProfile extends Profile {
   register_number: string;
-  department: string; // CSE, IT, AI&DS, ECE
-  year: number; // 2, 3, 4
+  department: string; // CSE, IT, AI&DS, ECE, MECH, CIVIL, EEE, CSBS
+  year: number; // 1, 2, 3, 4
   section?: string;
   phone?: string;
+  status: 'active' | 'disabled' | 'suspended';
 }
 
 export interface TestCase {
@@ -101,7 +103,7 @@ export interface Question {
   memory_limit_kb: number;
   is_active: boolean;
   created_at?: string;
-  test_cases?: TestCase[]; // Public test cases only when sent to student!
+  test_cases?: TestCase[]; // Hidden cases stripped for student views
 }
 
 export interface TestQuestion {
@@ -114,10 +116,10 @@ export interface TestQuestion {
 }
 
 export interface ScoringConfig {
-  correctness: number; // default 70
-  time_performance: number; // default 15
-  code_quality: number; // default 10
-  attempts: number; // default 5
+  correctness: number;
+  time_performance: number;
+  code_quality: number;
+  attempts: number;
 }
 
 export interface Test {
@@ -153,7 +155,9 @@ export interface TestAttempt {
   completion_rank?: number | null;
   auto_submitted: boolean;
   student?: StudentProfile;
+  students?: any;
   test?: Test;
+  tests?: any;
 }
 
 export interface StudentAnswer {
@@ -215,6 +219,7 @@ export interface ActivityLog {
   user_agent?: string;
   created_at: string;
   student?: StudentProfile;
+  profiles?: any;
 }
 
 export interface LeaderboardEntry {
@@ -241,7 +246,7 @@ export interface LiveMonitorStudent {
   department: string;
   year: number;
   test_title: string;
-  progress: string; // e.g. "2/4 Solved"
+  progress: string;
   current_score: number;
   started_time: string;
   elapsed_time_seconds: number;

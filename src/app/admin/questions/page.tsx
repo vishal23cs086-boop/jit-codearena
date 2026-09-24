@@ -1,20 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
-import { MOCK_QUESTIONS } from '@/lib/mockData';
+import React, { useEffect, useState } from 'react';
+import { fetchQuestions, saveQuestion, deleteQuestionById } from '@/lib/db';
 import { Question, DifficultyLevel, QuestionTopic, TestCase } from '@/types';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   BookOpen,
   Plus,
   Search,
   Filter,
   Trash2,
-  Edit,
-  Code2,
   Lock,
   Eye,
   X,
-  CheckCircle2,
+  Code2,
+  Award,
 } from 'lucide-react';
 
 const TOPICS: QuestionTopic[] = [
@@ -33,11 +33,12 @@ const TOPICS: QuestionTopic[] = [
 ];
 
 export default function QuestionBankPage() {
-  const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Form states for new question
   const [newTitle, setNewTitle] = useState('');
@@ -49,36 +50,53 @@ export default function QuestionBankPage() {
   const [newOutputFormat, setNewOutputFormat] = useState('');
   const [newConstraints, setNewConstraints] = useState('');
   const [newStarterCode, setNewStarterCode] = useState(
-    'def solution():\n    # Implement logic\n    pass\n\nif __name__ == "__main__":\n    solution()\n'
+    'def solution():\n    # Implement solution\n    pass\n\nif __name__ == "__main__":\n    solution()\n'
   );
   const [publicInput, setPublicInput] = useState('');
   const [publicOutput, setPublicOutput] = useState('');
   const [hiddenInput, setHiddenInput] = useState('');
   const [hiddenOutput, setHiddenOutput] = useState('');
 
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await fetchQuestions();
+        setQuestions(data);
+      } catch (err) {
+        console.warn('Error loading questions:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
   const filteredQuestions = questions.filter((q) => {
+    const term = searchTerm.toLowerCase();
     const matchesSearch =
-      q.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      q.description.toLowerCase().includes(searchTerm.toLowerCase());
+      q.title.toLowerCase().includes(term) ||
+      q.description.toLowerCase().includes(term);
     const matchesTopic = selectedTopic === 'all' || q.topic === selectedTopic;
     const matchesDiff = selectedDifficulty === 'all' || q.difficulty === selectedDifficulty;
     return matchesSearch && matchesTopic && matchesDiff;
   });
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this question from the bank?')) {
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to permanently delete this question from the bank?')) {
+      await deleteQuestionById(id);
       setQuestions((prev) => prev.filter((q) => q.id !== id));
     }
   };
 
-  const handleCreateQuestion = (e: React.FormEvent) => {
+  const handleCreateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     const testCases: TestCase[] = [];
+    const questionId = `q-${Date.now()}`;
 
     if (publicInput && publicOutput) {
       testCases.push({
         id: `tc-pub-${Date.now()}`,
-        question_id: `q-${Date.now()}`,
+        question_id: questionId,
         input: publicInput,
         expected_output: publicOutput,
         is_hidden: false,
@@ -89,7 +107,7 @@ export default function QuestionBankPage() {
     if (hiddenInput && hiddenOutput) {
       testCases.push({
         id: `tc-hid-${Date.now()}`,
-        question_id: `q-${Date.now()}`,
+        question_id: questionId,
         input: hiddenInput,
         expected_output: hiddenOutput,
         is_hidden: true,
@@ -98,9 +116,9 @@ export default function QuestionBankPage() {
     }
 
     const newQ: Question = {
-      id: `q-${Date.now()}`,
+      id: questionId,
       title: newTitle,
-      slug: newTitle.toLowerCase().replace(/\s+/g, '-'),
+      slug: newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       difficulty: newDifficulty,
       topic: newTopic,
       marks: Number(newMarks),
@@ -113,13 +131,23 @@ export default function QuestionBankPage() {
       memory_limit_kb: 128000,
       is_active: true,
       test_cases: testCases,
+      created_at: new Date().toISOString(),
     };
 
+    await saveQuestion(newQ);
     setQuestions([newQ, ...questions]);
     setShowCreateModal(false);
+
     // Reset form
     setNewTitle('');
     setNewDescription('');
+    setNewInputFormat('');
+    setNewOutputFormat('');
+    setNewConstraints('');
+    setPublicInput('');
+    setPublicOutput('');
+    setHiddenInput('');
+    setHiddenOutput('');
   };
 
   return (
@@ -132,7 +160,7 @@ export default function QuestionBankPage() {
             <span>Python Question Bank Management</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Author algorithmic questions, public sample test cases, and secret evaluation cases
+            Author algorithmic assessment problems, sample test cases, and hidden evaluation assertions
           </p>
         </div>
 
@@ -187,81 +215,92 @@ export default function QuestionBankPage() {
         </div>
       </div>
 
-      {/* Questions Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold">
-                <th className="py-3.5 px-4">Problem Title</th>
-                <th className="py-3.5 px-3">Topic</th>
-                <th className="py-3.5 px-3">Difficulty</th>
-                <th className="py-3.5 px-3 text-center">Marks</th>
-                <th className="py-3.5 px-3 text-center">Public Cases</th>
-                <th className="py-3.5 px-3 text-center">Hidden Cases</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {filteredQuestions.map((q) => {
-                const publicCount = q.test_cases?.filter((tc) => !tc.is_hidden).length || 0;
-                const hiddenCount = q.test_cases?.filter((tc) => tc.is_hidden).length || 0;
+      {/* Questions Table or Empty State */}
+      {filteredQuestions.length > 0 ? (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-4">Problem Title</th>
+                  <th className="py-3.5 px-3">Topic</th>
+                  <th className="py-3.5 px-3">Difficulty</th>
+                  <th className="py-3.5 px-3 text-center">Marks</th>
+                  <th className="py-3.5 px-3 text-center">Public Cases</th>
+                  <th className="py-3.5 px-3 text-center">Hidden Cases</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {filteredQuestions.map((q) => {
+                  const publicCount = q.test_cases?.filter((tc) => !tc.is_hidden).length || 0;
+                  const hiddenCount = q.test_cases?.filter((tc) => tc.is_hidden).length || 0;
 
-                return (
-                  <tr key={q.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3.5 px-4">
-                      <div className="font-semibold text-white text-sm">{q.title}</div>
-                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">/{q.slug}</div>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <span className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-medium">
-                        {q.topic}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full font-medium ${
-                          q.difficulty === 'Easy'
-                            ? 'text-emerald-400 bg-emerald-500/10'
-                            : q.difficulty === 'Medium'
-                            ? 'text-amber-400 bg-amber-500/10'
-                            : 'text-rose-400 bg-rose-500/10'
-                        }`}
-                      >
-                        {q.difficulty}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 text-center font-mono font-bold text-indigo-400">
-                      {q.marks} pts
-                    </td>
-                    <td className="py-3.5 px-3 text-center">
-                      <span className="inline-flex items-center gap-1 text-slate-300 font-mono">
-                        <Eye className="w-3.5 h-3.5 text-blue-400" />
-                        {publicCount}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 text-center">
-                      <span className="inline-flex items-center gap-1 text-slate-300 font-mono">
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                        {hiddenCount}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => handleDelete(q.id)}
-                        className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition"
-                        title="Delete Question"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  return (
+                    <tr key={q.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3.5 px-4">
+                        <div className="font-semibold text-white text-sm">{q.title}</div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">/{q.slug}</div>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-medium">
+                          {q.topic}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full font-medium ${
+                            q.difficulty === 'Easy'
+                              ? 'text-emerald-400 bg-emerald-500/10'
+                              : q.difficulty === 'Medium'
+                              ? 'text-amber-400 bg-amber-500/10'
+                              : 'text-rose-400 bg-rose-500/10'
+                          }`}
+                        >
+                          {q.difficulty}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 text-center font-mono font-bold text-indigo-400">
+                        {q.marks} pts
+                      </td>
+                      <td className="py-3.5 px-3 text-center">
+                        <span className="inline-flex items-center gap-1 text-slate-300 font-mono">
+                          <Eye className="w-3.5 h-3.5 text-blue-400" />
+                          {publicCount}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 text-center">
+                        <span className="inline-flex items-center gap-1 text-slate-300 font-mono">
+                          <Lock className="w-3.5 h-3.5 text-amber-400" />
+                          {hiddenCount}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={() => handleDelete(q.id)}
+                          className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition"
+                          title="Delete Question"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        <EmptyState
+          title="No questions available yet."
+          description="Create algorithmic challenges with public sample test cases and hidden evaluation cases to populate the Question Bank."
+          action={{
+            label: "+ CREATE QUESTION",
+            onClick: () => setShowCreateModal(true),
+          }}
+        />
+      )}
 
       {/* Create New Question Modal */}
       {showCreateModal && (
@@ -284,7 +323,7 @@ export default function QuestionBankPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Reverse Linked List"
+                    placeholder="e.g. Reverse a Linked List"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-indigo-500"
@@ -335,7 +374,7 @@ export default function QuestionBankPage() {
                 <textarea
                   rows={4}
                   required
-                  placeholder="Explain problem definition and requirements clearly..."
+                  placeholder="Explain problem requirements clearly..."
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-indigo-500"
@@ -369,7 +408,7 @@ export default function QuestionBankPage() {
                 <label className="text-slate-300 font-semibold block mb-1">Constraints</label>
                 <input
                   type="text"
-                  placeholder="e.g. 1 <= len(s) <= 10^4"
+                  placeholder="e.g. 1 <= len(nums) <= 10^5"
                   value={newConstraints}
                   onChange={(e) => setNewConstraints(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
