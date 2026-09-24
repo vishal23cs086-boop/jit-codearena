@@ -863,6 +863,40 @@ export async function deleteOrArchiveStudentInDb(
   }
 }
 
+export async function purgeAllStudentDataFromDb() {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const [stdCountRes, attCountRes, subCountRes] = await Promise.all([
+    client.execute('SELECT COUNT(*) as count FROM students'),
+    client.execute('SELECT COUNT(*) as count FROM test_attempts'),
+    client.execute('SELECT COUNT(*) as count FROM submissions'),
+  ]);
+
+  const studentsCount = Number(stdCountRes.rows[0]?.count || 0);
+  const attemptsCount = Number(attCountRes.rows[0]?.count || 0);
+  const submissionsCount = Number(subCountRes.rows[0]?.count || 0);
+
+  // Clean all student-related tables
+  await client.execute('DELETE FROM student_presence');
+  await client.execute('DELETE FROM attempt_questions');
+  await client.execute('DELETE FROM submissions');
+  await client.execute('DELETE FROM test_attempts');
+  await client.execute('DELETE FROM activity_logs');
+  await client.execute("DELETE FROM login_activity WHERE user_role = 'student' OR user_id LIKE 'std-%' OR user_id LIKE 'usr-%'");
+  await client.execute('DELETE FROM students');
+
+  return {
+    success: true,
+    deleted: {
+      students: studentsCount,
+      test_attempts: attemptsCount,
+      submissions: submissionsCount,
+    },
+    message: `All student records wiped cleanly (${studentsCount} students, ${attemptsCount} attempts, ${submissionsCount} submissions).`,
+  };
+}
+
 export async function bulkUpdateStudentsInDb(
   studentIds: string[],
   action: 'disable' | 'enable' | 'archive',
