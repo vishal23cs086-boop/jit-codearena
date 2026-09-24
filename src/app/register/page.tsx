@@ -111,33 +111,33 @@ export default function RegisterPage() {
 
   return (
     <div className="flex-1 flex items-center justify-center p-4 py-12">
-      <div className="w-full max-w-lg glass-card rounded-3xl p-8 sm:p-10 shadow-2xl space-y-6">
+      <div className="w-full max-w-lg glass-card rounded-3xl p-8 sm:p-10 shadow-xl shadow-slate-200/50 space-y-6 border border-slate-200/90">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 p-2 bg-white/[0.04] border border-white/10 rounded-2xl mx-auto shadow-inner flex items-center justify-center">
+          <div className="w-16 h-16 p-2 bg-white border border-slate-200 rounded-2xl mx-auto shadow-xs flex items-center justify-center">
             <img
               src="/jit-logo.png"
               alt="Jansons Institute of Technology Crest"
-              className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(99,102,241,0.3)]"
+              className="w-full h-full object-contain filter drop-shadow-sm"
             />
           </div>
-          <h1 className="text-2xl font-black text-white">JIT CodeArena</h1>
-          <p className="text-xs text-indigo-400 font-semibold uppercase tracking-wider">
+          <h1 className="text-2xl font-black text-slate-900">JIT CodeArena</h1>
+          <p className="text-xs text-indigo-600 font-semibold uppercase tracking-wider">
             Jansons Institute of Technology
           </p>
-          <h2 className="text-xs font-semibold text-slate-400 pt-1">Candidate Registration Portal</h2>
+          <h2 className="text-xs font-semibold text-slate-500 pt-1">Candidate Registration Portal</h2>
         </div>
 
         {error && (
-          <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
-            <label className="text-slate-300 font-semibold block mb-1">
+            <label className="text-slate-700 font-semibold block mb-1">
               Student Full Name
             </label>
             <input
@@ -146,12 +146,12 @@ export default function RegisterPage() {
               placeholder="e.g. Harish Kumar S"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="glass-input w-full rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"
+              className="glass-input w-full rounded-xl p-3 text-slate-900 placeholder-slate-400 text-sm focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="text-slate-300 font-semibold block mb-1">
+            <label className="text-slate-700 font-semibold block mb-1">
               College Register Number (Unique)
             </label>
             <input
@@ -160,7 +160,7 @@ export default function RegisterPage() {
               placeholder="e.g. 22CS084"
               value={registerNumber}
               onChange={(e) => setRegisterNumber(e.target.value)}
-              className="glass-input w-full rounded-xl p-3 text-white placeholder-slate-500 font-mono text-sm uppercase focus:outline-none"
+              className="glass-input w-full rounded-xl p-3 text-slate-900 placeholder-slate-400 font-mono text-sm uppercase focus:outline-none"
             />
             <span className="text-[10px] text-slate-500 mt-1 block">
               Used as your primary login credential.
@@ -169,16 +169,16 @@ export default function RegisterPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-slate-300 font-semibold block mb-1">
+              <label className="text-slate-700 font-semibold block mb-1">
                 Department
               </label>
               <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                className="glass-input w-full rounded-xl p-3 text-slate-200 text-sm focus:outline-none bg-[#0B1020]"
+                className="glass-input w-full rounded-xl p-3 text-slate-800 text-sm focus:outline-none bg-white"
               >
                 {DEPARTMENTS.map((d) => (
-                  <option key={d} value={d} className="bg-[#0B1020] text-slate-200">
+                  <option key={d} value={d} className="bg-white text-slate-800">
                     {d}
                   </option>
                 ))}
@@ -186,16 +186,16 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-slate-300 font-semibold block mb-1">
+              <label className="text-slate-700 font-semibold block mb-1">
                 Academic Year
               </label>
               <select
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
-                className="glass-input w-full rounded-xl p-3 text-slate-200 text-sm focus:outline-none bg-[#0B1020]"
+                className="glass-input w-full rounded-xl p-3 text-slate-800 text-sm focus:outline-none bg-white"
               >
                 {YEARS.map((y) => (
-                  <option key={y.value} value={y.value} className="bg-[#0B1020] text-slate-200">
+                  <option key={y.value} value={y.value} className="bg-white text-slate-800">
                     {y.label}
                   </option>
                 ))}
@@ -204,7 +204,7 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="text-slate-300 font-semibold block mb-1">
+            <label className="text-slate-700 font-semibold block mb-1">
               Create Password
             </label>
             <div className="relative">
@@ -214,12 +214,12 @@ export default function RegisterPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="glass-input w-full rounded-xl p-3 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none"
+                className="glass-input w-full rounded-xl p-3 pr-10 text-slate-900 placeholder-slate-400 text-sm focus:outline-none"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -228,10 +228,10 @@ export default function RegisterPage() {
             {password && (
               <div className="mt-2 space-y-1">
                 <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-slate-400">Strength:</span>
-                  <span className="font-semibold text-slate-300">{strength.label}</span>
+                  <span className="text-slate-500">Strength:</span>
+                  <span className="font-semibold text-slate-700">{strength.label}</span>
                 </div>
-                <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden">
+                <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all duration-300 ${strength.color}`}
                     style={{ width: `${strength.score}%` }}
@@ -242,7 +242,7 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="text-slate-300 font-semibold block mb-1">
+            <label className="text-slate-700 font-semibold block mb-1">
               Confirm Password
             </label>
             <div className="relative">
@@ -252,12 +252,12 @@ export default function RegisterPage() {
                 placeholder="••••••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="glass-input w-full rounded-xl p-3 pr-10 text-white placeholder-slate-500 text-sm focus:outline-none"
+                className="glass-input w-full rounded-xl p-3 pr-10 text-slate-900 placeholder-slate-400 text-sm focus:outline-none"
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
               >
                 {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -267,16 +267,16 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-4"
+            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 mt-4"
           >
             <span>{loading ? 'Creating Account...' : 'CREATE ACCOUNT'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        <div className="text-center pt-3 border-t border-white/[0.06] text-xs text-slate-400">
+        <div className="text-center pt-3 border-t border-slate-100 text-xs text-slate-500">
           Already registered?{' '}
-          <Link href="/login" className="text-indigo-400 font-semibold hover:underline">
+          <Link href="/login" className="text-indigo-600 font-semibold hover:underline">
             Sign In with Register Number
           </Link>
         </div>

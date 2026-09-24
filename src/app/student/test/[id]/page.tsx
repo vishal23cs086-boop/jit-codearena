@@ -336,9 +336,9 @@ export default function CodingTestPage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-[#070A12] flex flex-col items-center justify-center text-white space-y-4">
-        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-        <p className="text-sm font-semibold text-slate-300">Loading Assessment Environment...</p>
+      <div className="fixed inset-0 bg-[#F7F9FC] flex flex-col items-center justify-center text-slate-900 space-y-4">
+        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+        <p className="text-sm font-semibold text-slate-600">Loading Assessment Environment...</p>
       </div>
     );
   }
@@ -361,7 +361,7 @@ export default function CodingTestPage() {
   const progressPercent = Math.round((solvedCount / questions.length) * 100);
 
   return (
-    <div className="fixed inset-0 bg-[#070A12] flex flex-col z-30 select-none overflow-hidden font-sans">
+    <div className="fixed inset-0 bg-[#F7F9FC] flex flex-col z-30 select-none overflow-hidden font-sans">
       {/* Anti-Cheating Fullscreen Enforcement and Warning Modals */}
       <ExamGuardModal
         isFullscreen={examGuard.isFullscreen}
@@ -375,26 +375,26 @@ export default function CodingTestPage() {
       />
 
       {/* TOP NAVIGATION BAR */}
-      <header className="h-14 bg-slate-900/90 border-b border-white/10 px-4 flex items-center justify-between flex-shrink-0 backdrop-blur-md">
+      <header className="h-14 bg-white/95 border-b border-slate-200/90 px-4 flex items-center justify-between flex-shrink-0 backdrop-blur-md shadow-xs">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center p-1 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0 shadow-xs">
               <img
                 src="/jit-logo.png"
                 alt="Jansons Institute of Technology Crest"
-                className="w-full h-full object-contain filter drop-shadow-[0_2px_6px_rgba(99,102,241,0.3)]"
+                className="w-full h-full object-contain filter drop-shadow-sm"
               />
             </div>
             <div>
-              <span className="font-black text-sm text-white">{test?.title || 'JIT Assessment'}</span>
-              <p className="text-[10px] text-slate-400 font-mono">
+              <span className="font-black text-sm text-slate-900">{test?.title || 'JIT Assessment'}</span>
+              <p className="text-[10px] text-slate-500 font-mono">
                 {user?.register_number} • {user?.full_name}
               </p>
             </div>
           </div>
 
           {/* Question Selector Bubbles */}
-          <div className="hidden md:flex items-center gap-1.5 pl-4 border-l border-white/10">
+          <div className="hidden md:flex items-center gap-1.5 pl-4 border-l border-slate-200">
             {questions.map((q, idx) => {
               const isCurrent = currentQIndex === idx;
               const isSolved = solvedQuestions[q.id];
@@ -406,12 +406,12 @@ export default function CodingTestPage() {
                   onClick={() => handleSelectQuestion(idx)}
                   className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition flex items-center justify-center ${
                     isCurrent
-                      ? 'ring-2 ring-indigo-400 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                      ? 'ring-2 ring-indigo-500 bg-indigo-600 text-white shadow-xs'
                       : isSolved
-                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                       : isAttempted
-                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                      : 'bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white border border-white/10'
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                   }`}
                   title={`Question ${idx + 1}: ${q.title}`}
                 >
@@ -424,8 +424,8 @@ export default function CodingTestPage() {
 
         {/* Center / Progress bar */}
         <div className="hidden lg:flex items-center gap-3">
-          <span className="text-xs text-slate-400">Progress: {solvedCount}/{questions.length} Solved</span>
-          <div className="w-32 bg-white/10 rounded-full h-2 overflow-hidden">
+          <span className="text-xs text-slate-500">Progress: {solvedCount}/{questions.length} Solved</span>
+          <div className="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
             <div
               className="bg-emerald-500 h-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
@@ -442,7 +442,7 @@ export default function CodingTestPage() {
 
           <button
             onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold transition"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition shadow-xs"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Finish Test</span>
@@ -451,7 +451,7 @@ export default function CodingTestPage() {
       </header>
 
       {/* MAIN TWO-PANE WORKSPACE */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 overflow-hidden bg-[#070A12]">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 overflow-hidden bg-[#F7F9FC]">
         {/* LEFT PANE: Question Problem Specs (5 cols on desktop) */}
         <div className="lg:col-span-5 h-full overflow-hidden">
           <QuestionPanel
@@ -490,12 +490,12 @@ export default function CodingTestPage() {
       </div>
 
       {/* FOOTER BAR: Next / Prev Question Navigator & Autosave */}
-      <footer className="h-10 bg-slate-900/90 border-t border-white/10 px-4 flex items-center justify-between text-xs flex-shrink-0 backdrop-blur-md">
+      <footer className="h-10 bg-white/95 border-t border-slate-200/90 px-4 flex items-center justify-between text-xs flex-shrink-0 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleSelectQuestion(Math.max(0, currentQIndex - 1))}
             disabled={currentQIndex === 0}
-            className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 text-slate-300 rounded-lg border border-white/10 transition text-xs"
+            className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-slate-50 disabled:opacity-30 text-slate-700 rounded-lg border border-slate-200 transition text-xs shadow-xs"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
             <span>Previous Problem</span>
@@ -504,15 +504,15 @@ export default function CodingTestPage() {
           <button
             onClick={() => handleSelectQuestion(Math.min(questions.length - 1, currentQIndex + 1))}
             disabled={currentQIndex === questions.length - 1}
-            className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 text-slate-300 rounded-lg border border-white/10 transition text-xs"
+            className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-slate-50 disabled:opacity-30 text-slate-700 rounded-lg border border-slate-200 transition text-xs shadow-xs"
           >
             <span>Next Problem</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
-          <span className="text-emerald-400 font-medium">{lastSavedText}</span>
+        <div className="flex items-center gap-3 text-slate-500 font-mono text-[11px]">
+          <span className="text-emerald-700 font-medium">{lastSavedText}</span>
           <span>•</span>
           <span>Security Audit Active</span>
         </div>
@@ -520,23 +520,23 @@ export default function CodingTestPage() {
 
       {/* Confirmation modal before final submit */}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-lg flex items-center justify-center p-4">
-          <div className="glass-card rounded-3xl max-w-md w-full p-7 space-y-4 shadow-2xl border border-white/10">
-            <h3 className="text-lg font-bold text-white">Finalize & Submit Assessment?</h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-card rounded-3xl max-w-md w-full p-7 space-y-4 shadow-2xl border border-slate-200/90 bg-white">
+            <h3 className="text-lg font-bold text-slate-900">Finalize & Submit Assessment?</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
               Are you sure you want to submit? You have answered <strong>{solvedCount} of {questions.length}</strong> questions.
               Once submitted, your answers will be locked, your server completion timestamp will be recorded, and you cannot re-attempt.
             </p>
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.06]">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <button
                 onClick={() => setShowExitConfirm(false)}
-                className="px-4 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 rounded-xl text-xs font-medium transition border border-white/10"
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-medium transition border border-slate-200 shadow-xs"
               >
                 Return to Test
               </button>
               <button
                 onClick={() => handleFinalizeTest(false)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-indigo-600/30"
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-indigo-600/20"
               >
                 Yes, Submit Assessment
               </button>

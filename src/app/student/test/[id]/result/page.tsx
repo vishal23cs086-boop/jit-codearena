@@ -107,95 +107,95 @@ export default function TestResultPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full space-y-8">
       {/* Top Completion Celebration Banner */}
-      <div className="glass-card rounded-3xl p-8 sm:p-10 text-center relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] pointer-events-none rounded-full" />
+      <div className="glass-card rounded-3xl p-8 sm:p-10 text-center relative overflow-hidden shadow-sm border border-slate-200/90 bg-white">
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-emerald-100/50 blur-[120px] pointer-events-none rounded-full" />
         <div className="flex justify-center mb-5 relative z-10">
-          <div className="w-20 h-20 p-2 bg-white/[0.04] rounded-2xl border border-white/10 shadow-inner flex items-center justify-center">
+          <div className="w-20 h-20 p-2 bg-slate-50 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-center">
             <img
               src="/jit-logo.png"
               alt="Jansons Institute of Technology Crest"
-              className="w-full h-full object-contain filter drop-shadow-[0_2px_10px_rgba(16,185,129,0.3)]"
+              className="w-full h-full object-contain filter drop-shadow-sm"
             />
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold mb-3 backdrop-blur-md relative z-10">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-3 shadow-xs relative z-10">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           <span>JANSONS INSTITUTE OF TECHNOLOGY • OFFICIAL EVALUATION SCORECARD</span>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl font-black text-white mb-2 relative z-10">
+        <h1 className="text-3xl sm:text-4xl font-black text-slate-900 mb-2 relative z-10">
           Assessment Report & Scorecard
         </h1>
-        <p className="text-slate-300 text-sm max-w-xl mx-auto mb-6 relative z-10">
+        <p className="text-slate-600 text-sm max-w-xl mx-auto mb-6 relative z-10">
           Congratulations {user?.full_name || 'Candidate'} ({user?.register_number || 'Registered Candidate'})! Your responses were evaluated server-side by the JIT CodeArena scoring engine.
         </p>
 
         {/* First Completion Rank Pill */}
-        <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-sm font-bold shadow-md relative z-10">
-          <Award className="w-5 h-5 text-amber-400" />
+        <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold shadow-xs relative z-10">
+          <Award className="w-5 h-5 text-amber-600" />
           <span>Finish Order: Rank #{completionRank} to Complete</span>
         </div>
       </div>
 
       {/* KPI Results Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="glass-card-hover rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Final Score</span>
-          <div className="text-2xl font-black text-emerald-400">{totalScore.toFixed(1)}</div>
-          <span className="text-[10px] text-slate-500">out of {maxMarks}</span>
+        <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
+          <span className="text-[11px] text-slate-500 font-medium block mb-1">Final Score</span>
+          <div className="text-2xl font-black text-emerald-600">{totalScore.toFixed(1)}</div>
+          <span className="text-[10px] text-slate-400">out of {maxMarks}</span>
         </div>
 
-        <div className="glass-card-hover rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Percentage</span>
-          <div className="text-2xl font-black text-white">{percentage}%</div>
-          <span className="text-[10px] text-emerald-400 font-medium">
+        <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
+          <span className="text-[11px] text-slate-500 font-medium block mb-1">Percentage</span>
+          <div className="text-2xl font-black text-slate-900">{percentage}%</div>
+          <span className="text-[10px] text-emerald-600 font-medium">
             {percentage >= 90 ? 'Grade: O (Outstanding)' : percentage >= 75 ? 'Grade: A+ (Excellent)' : percentage >= 50 ? 'Grade: B (Satisfactory)' : 'Requires Review'}
           </span>
         </div>
 
-        <div className="glass-card-hover rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Time Taken</span>
-          <div className="text-xl font-bold text-white mt-1">{timeTakenFormatted}</div>
-          <span className="text-[10px] text-slate-500">of {test?.duration_minutes || 60}m allotted</span>
+        <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
+          <span className="text-[11px] text-slate-500 font-medium block mb-1">Time Taken</span>
+          <div className="text-xl font-bold text-slate-900 mt-1">{timeTakenFormatted}</div>
+          <span className="text-[10px] text-slate-400">of {test?.duration_minutes || 60}m allotted</span>
         </div>
 
-        <div className="glass-card-hover rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Status</span>
-          <div className="text-xl font-bold text-indigo-400 capitalize mt-1">
+        <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
+          <span className="text-[11px] text-slate-500 font-medium block mb-1">Status</span>
+          <div className="text-xl font-bold text-indigo-600 capitalize mt-1">
             {attempt?.status?.replace('_', ' ') || 'Submitted'}
           </div>
-          <span className="text-[10px] text-slate-500">Official Evaluation</span>
+          <span className="text-[10px] text-slate-400">Official Evaluation</span>
         </div>
 
-        <div className="glass-card-hover rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Tab Deviations</span>
-          <div className="text-2xl font-black text-cyan-400">{attempt?.tab_switch_count || 0}</div>
-          <span className="text-[10px] text-slate-500">Browser switches</span>
+        <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
+          <span className="text-[11px] text-slate-500 font-medium block mb-1">Tab Deviations</span>
+          <div className="text-2xl font-black text-cyan-600">{attempt?.tab_switch_count || 0}</div>
+          <span className="text-[10px] text-slate-400">Browser switches</span>
         </div>
 
-        <div className="glass-card-hover rounded-2xl p-4 text-center">
-          <span className="text-[11px] text-slate-400 font-medium block mb-1">Violations</span>
-          <div className="text-2xl font-black text-purple-400">{attempt?.fullscreen_exit_count || 0}</div>
-          <span className="text-[10px] text-slate-500">Fullscreen departures</span>
+        <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
+          <span className="text-[11px] text-slate-500 font-medium block mb-1">Violations</span>
+          <div className="text-2xl font-black text-purple-600">{attempt?.fullscreen_exit_count || 0}</div>
+          <span className="text-[10px] text-slate-400">Fullscreen departures</span>
         </div>
       </div>
 
       {/* Question-Wise Performance Breakdown */}
       {questionsList.length > 0 && (
-        <div className="glass-card rounded-3xl p-6 sm:p-7 space-y-4 shadow-2xl">
-          <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <FileCheck className="w-5 h-5 text-indigo-400" />
+        <div className="glass-card rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm border border-slate-200/90 bg-white">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileCheck className="w-5 h-5 text-indigo-600" />
               <span>Assessment Questions</span>
             </h2>
-            <span className="text-xs text-slate-400 font-mono">Scoring Model: Server-Side Unit Tests</span>
+            <span className="text-xs text-slate-500 font-mono">Scoring Model: Server-Side Unit Tests</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-white/10 text-slate-400 font-semibold uppercase tracking-wider bg-white/[0.02]">
+                <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider bg-slate-50">
                   <th className="py-3 px-3">#</th>
                   <th className="py-3 px-4">Question Title</th>
                   <th className="py-3 px-3">Topic</th>
@@ -203,22 +203,22 @@ export default function TestResultPage() {
                   <th className="py-3 px-4 text-right">Max Marks</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.06] font-mono">
+              <tbody className="divide-y divide-slate-100 font-mono">
                 {questionsList.map((q, idx) => (
-                  <tr key={q.id} className="hover:bg-white/[0.03] transition">
-                    <td className="py-3 px-3 text-slate-500 font-bold">{idx + 1}</td>
-                    <td className="py-3 px-4 font-sans font-semibold text-white">
+                  <tr key={q.id} className="hover:bg-slate-50 transition">
+                    <td className="py-3 px-3 text-slate-400 font-bold">{idx + 1}</td>
+                    <td className="py-3 px-4 font-sans font-semibold text-slate-900">
                       <span>{q.title}</span>
                     </td>
-                    <td className="py-3 px-3 font-sans text-slate-300">
-                      <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-white/[0.04] text-slate-300 border border-white/10">
+                    <td className="py-3 px-3 font-sans text-slate-600">
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                         {q.topic}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-sans capitalize text-slate-400">
+                    <td className="py-3 px-3 font-sans capitalize text-slate-600">
                       {q.difficulty}
                     </td>
-                    <td className="py-3 px-4 text-right font-bold text-emerald-400">
+                    <td className="py-3 px-4 text-right font-bold text-emerald-600">
                       {q.marks} Marks
                     </td>
                   </tr>
@@ -230,16 +230,16 @@ export default function TestResultPage() {
       )}
 
       {/* Security & Integrity Summary */}
-      <div className="glass-card rounded-3xl p-6 sm:p-7 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+      <div className="glass-card rounded-3xl p-6 sm:p-7 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm border border-slate-200/90 bg-white">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-white">
+            <h4 className="text-sm font-bold text-slate-900">
               Integrity Verification: {attempt?.tab_switch_count === 0 && attempt?.fullscreen_exit_count === 0 ? 'Clean Session' : 'Incident Telemetry Recorded'}
             </h4>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               {attempt?.tab_switch_count || 0} Tab Switches • {attempt?.fullscreen_exit_count || 0} Fullscreen Violations • {attempt?.copy_paste_count || 0} Blocked Clipboard Events
             </p>
           </div>
@@ -248,7 +248,7 @@ export default function TestResultPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/student/dashboard"
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/30"
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
           >
             <span>Return to Student Dashboard</span>
             <ArrowRight className="w-3.5 h-3.5" />

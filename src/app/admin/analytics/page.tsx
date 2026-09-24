@@ -133,46 +133,46 @@ export default function AdminAnalyticsPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-          <BarChart3 className="w-7 h-7 text-indigo-400" />
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
+          <BarChart3 className="w-7 h-7 text-indigo-600" />
           <span>Institutional Examination Analytics</span>
         </h1>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-slate-500 mt-1">
           Aggregated cohort intelligence, score distribution, and department averages
         </p>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="glass-card glass-card-hover rounded-2xl p-5 border border-white/10">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">
             Participation Rate
           </span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400">{participationRate}%</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{participationRate}%</div>
           <span className="text-[11px] text-slate-500 mt-1 block">{totalAttempts} candidates participated</span>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-5 border border-white/10">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">
             Cohort Average
           </span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-white">{cohortAverage} <span className="text-sm font-semibold text-slate-400">Marks</span></div>
-          <span className="text-[11px] text-indigo-400 font-medium mt-1 block">Mean assessment score</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{cohortAverage} <span className="text-sm font-semibold text-slate-400">Marks</span></div>
+          <span className="text-[11px] text-indigo-600 font-medium mt-1 block">Mean assessment score</span>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-5 border border-white/10">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">
             Active Candidates
           </span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-amber-400">{totalAttempts}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-amber-600">{totalAttempts}</div>
           <span className="text-[11px] text-slate-500 mt-1 block">Total sessions tracked</span>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-5 border border-white/10">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">
             Fastest Finish Time
           </span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-blue-400">{fastestTimeText}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-blue-600">{fastestTimeText}</div>
           <span className="text-[11px] text-slate-500 mt-1 block">
             {fastestAttempt?.students?.register_number || 'Earliest completion'}
           </span>
@@ -182,54 +182,54 @@ export default function AdminAnalyticsPage() {
       {/* Chart Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Score Distribution */}
-        <div className="glass-card rounded-3xl p-6 sm:p-7 space-y-5 border border-white/10">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-indigo-400" />
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 sm:p-7 space-y-5 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-indigo-600" />
             <span>Score Distribution Frequency (Histogram)</span>
           </h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={scoreDistributionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis dataKey="range" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={11} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <XAxis dataKey="range" stroke="#64748B" fontSize={11} />
+                <YAxis stroke="#64748B" fontSize={11} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0B1020',
-                    borderColor: 'rgba(255,255,255,0.1)',
-                    color: '#f8fafc',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    color: '#0F172A',
                     borderRadius: '12px',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.08)',
                   }}
                 />
-                <Bar dataKey="count" name="Students" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="count" name="Students" fill="#4F46E5" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Department vs Performance */}
-        <div className="glass-card rounded-3xl p-6 sm:p-7 space-y-5 border border-white/10">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Users className="w-4 h-4 text-emerald-400" />
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 sm:p-7 space-y-5 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Users className="w-4 h-4 text-emerald-600" />
             <span>Department Comparative Performance</span>
           </h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={deptPerformanceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis dataKey="department" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={11} domain={[0, 100]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <XAxis dataKey="department" stroke="#64748B" fontSize={11} />
+                <YAxis stroke="#64748B" fontSize={11} domain={[0, 100]} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0B1020',
-                    borderColor: 'rgba(255,255,255,0.1)',
-                    color: '#f8fafc',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    color: '#0F172A',
                     borderRadius: '12px',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.08)',
                   }}
                 />
-                <Bar dataKey="avgScore" name="Average Marks" fill="#10b981" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="avgScore" name="Average Marks" fill="#059669" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

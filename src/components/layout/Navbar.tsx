@@ -114,18 +114,18 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
   const currentNavItems: NavItem[] = isStudentPortal ? studentNavItems : isAdminPortal ? adminNavItems : [];
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#070A12] text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="min-h-screen flex flex-col bg-[#F7F9FC] text-slate-900 selection:bg-indigo-100 selection:text-indigo-800">
       {/* ========================================================================= */}
       {/* 1. PORTAL SHELL (STUDENT & ADMIN SIDEBARS + TOP BAR)                      */}
       {/* ========================================================================= */}
       {isPortalLayout ? (
         <div className="flex-1 flex w-full">
           {/* DESKTOP SIDEBAR */}
-          <aside className="hidden md:flex flex-col fixed top-0 left-0 bottom-0 w-64 bg-[#0B1020]/95 backdrop-blur-2xl border-r border-white/[0.08] z-40 select-none">
+          <aside className="hidden md:flex flex-col fixed top-0 left-0 bottom-0 w-64 bg-white/95 backdrop-blur-xl border-r border-slate-200/90 z-40 select-none shadow-xs">
             {/* Sidebar Brand Header */}
-            <div className="h-16 px-5 border-b border-white/[0.08] flex items-center justify-between">
+            <div className="h-16 px-5 border-b border-slate-100 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-3 group">
-                <div className="w-9 h-9 p-0.5 rounded-xl bg-white/[0.04] border border-white/[0.12] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                <div className="w-9 h-9 p-0.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
                   <img
                     src="/jit-logo.png"
                     alt="Jansons Institute of Technology Crest"
@@ -134,12 +134,12 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                 </div>
                 <div className="overflow-hidden">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-extrabold text-sm tracking-tight text-white">JIT</span>
-                    <span className="font-extrabold text-sm tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
+                    <span className="font-extrabold text-sm tracking-tight text-slate-900">JIT</span>
+                    <span className="font-extrabold text-sm tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600">
                       CodeArena
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-medium truncate">
+                  <p className="text-[10px] text-slate-500 font-medium truncate">
                     {isAdminPortal ? 'Administration' : 'Student Portal'}
                   </p>
                 </div>
@@ -148,7 +148,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
 
             {/* Navigation Section */}
             <div className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-              <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 Menu
               </div>
               {currentNavItems.map((item) => {
@@ -161,24 +161,24 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                     href={item.href}
                     className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all group ${
                       isActive
-                        ? 'bg-gradient-to-r from-indigo-600/20 to-violet-600/10 text-white border border-indigo-500/30 shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                        ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200/80 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <Icon
                         className={`w-4 h-4 transition-colors ${
                           isActive
-                            ? 'text-indigo-400'
-                            : 'text-slate-400 group-hover:text-slate-200'
+                            ? 'text-indigo-600'
+                            : 'text-slate-400 group-hover:text-slate-700'
                         }`}
                       />
                       <span>{item.label}</span>
                     </div>
 
                     {item.isLive && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         LIVE
                       </span>
                     )}
@@ -188,11 +188,11 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
             </div>
 
             {/* Sidebar Bottom Controls */}
-            <div className="p-3 border-t border-white/[0.08] space-y-1 bg-black/20">
+            <div className="p-3 border-t border-slate-100 space-y-1 bg-slate-50/60">
               {isStudentPortal && (
                 <button
                   onClick={() => setShowHelpModal(true)}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-slate-600 hover:text-slate-900 hover:bg-white transition text-left border border-transparent hover:border-slate-200"
                 >
                   <HelpCircle className="w-4 h-4 text-slate-400" />
                   <span>Exam Support / Help</span>
@@ -201,7 +201,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
 
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition text-left"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition text-left"
               >
                 <LogOut className="w-4 h-4" />
                 <span>Sign Out</span>
@@ -212,23 +212,23 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
           {/* MAIN COLUMN (TOPBAR + CONTENT) */}
           <div className="flex-1 flex flex-col md:pl-64 min-w-0">
             {/* TOP BAR */}
-            <header className="sticky top-0 z-30 h-16 bg-[#070A12]/85 backdrop-blur-xl border-b border-white/[0.08] px-4 sm:px-6 flex items-center justify-between">
+            <header className="sticky top-0 z-30 h-16 bg-white/85 backdrop-blur-xl border-b border-slate-200/90 px-4 sm:px-6 flex items-center justify-between">
               {/* Left: Mobile trigger & Breadcrumbs */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                  className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/[0.05]"
+                  className="md:hidden p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100"
                   aria-label="Toggle navigation menu"
                 >
                   {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                 </button>
 
                 <div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
                     <span>{category}</span>
                     <span>/</span>
                   </div>
-                  <h1 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
+                  <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight leading-tight">
                     {title}
                   </h1>
                 </div>
@@ -237,8 +237,8 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
               {/* Right: Actions, Connection Pill & Identity */}
               <div className="flex items-center gap-3 sm:gap-4">
                 {/* Connection Status Pill */}
-                <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-mono font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Connected</span>
                 </div>
 
@@ -246,23 +246,23 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                 <div className="relative">
                   <button
                     onClick={() => setShowNotifications(!showNotifications)}
-                    className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/[0.05] transition relative"
+                    className="p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition relative"
                     title="System Notifications"
                   >
                     <Bell className="w-4 h-4" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-500 ring-2 ring-[#070A12]" />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-white" />
                   </button>
 
                   {showNotifications && (
-                    <div className="absolute right-0 mt-2 w-72 bg-[#0B1020] border border-white/[0.1] rounded-2xl p-4 shadow-2xl z-50 text-xs space-y-3">
-                      <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
-                        <span className="font-bold text-white">Notifications</span>
-                        <span className="text-[10px] text-emerald-400 font-mono">System Active</span>
+                    <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl p-4 shadow-xl z-50 text-xs space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span className="font-bold text-slate-900">Notifications</span>
+                        <span className="text-[10px] text-emerald-600 font-mono font-semibold">System Active</span>
                       </div>
-                      <div className="space-y-2 text-slate-300">
-                        <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                          <p className="font-semibold text-white">Live Examination Engine</p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                      <div className="space-y-2 text-slate-700">
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                          <p className="font-semibold text-slate-900">Live Examination Engine</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
                             Automated evaluation runtime is operating normally with server-side Judge0 sandboxing.
                           </p>
                         </div>
@@ -273,15 +273,15 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
 
                 {/* User Identity Pill */}
                 {user && (
-                  <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-white/[0.08]">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                  <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-200">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 flex items-center justify-center text-white text-xs font-bold shadow-xs">
                       {user.full_name?.charAt(0).toUpperCase() || 'U'}
                     </div>
                     <div className="hidden sm:block text-left">
-                      <p className="text-xs font-semibold text-white leading-tight">
+                      <p className="text-xs font-semibold text-slate-900 leading-tight">
                         {user.full_name || 'Candidate'}
                       </p>
-                      <p className="text-[10px] font-mono text-slate-400">
+                      <p className="text-[10px] font-mono text-slate-500">
                         {role === 'admin' ? 'Administrator' : user.register_number}
                       </p>
                     </div>
@@ -292,21 +292,21 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
 
             {/* MOBILE SIDEBAR DRAWER */}
             {mobileMenuOpen && (
-              <div className="md:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col">
-                <div className="p-4 border-b border-white/[0.08] flex items-center justify-between bg-[#0B1020]">
+              <div className="md:hidden fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex flex-col">
+                <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white">
                   <div className="flex items-center gap-2.5">
                     <img src="/jit-logo.png" alt="JIT Logo" className="w-8 h-8 object-contain" />
-                    <span className="font-bold text-white text-sm">JIT CodeArena</span>
+                    <span className="font-bold text-slate-900 text-sm">JIT CodeArena</span>
                   </div>
                   <button
                     onClick={() => setMobileMenuOpen(false)}
-                    className="p-1.5 text-slate-400 hover:text-white"
+                    className="p-1.5 text-slate-500 hover:text-slate-900"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="flex-1 p-4 space-y-2 overflow-y-auto bg-[#070A12]">
+                <div className="flex-1 p-4 space-y-2 overflow-y-auto bg-white">
                   {currentNavItems.map((item) => {
                     const Icon = item.icon;
                     return (
@@ -314,9 +314,9 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                         key={item.href}
                         href={item.href}
                         onClick={() => setMobileMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-white/[0.05]"
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60"
                       >
-                        <Icon className="w-5 h-5 text-indigo-400" />
+                        <Icon className="w-5 h-5 text-indigo-600" />
                         <span>{item.label}</span>
                       </Link>
                     );
@@ -326,7 +326,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                       setMobileMenuOpen(false);
                       handleLogout();
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 text-left mt-6"
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-rose-600 hover:bg-rose-50 text-left mt-6"
                   >
                     <LogOut className="w-5 h-5" />
                     <span>Sign Out</span>
@@ -344,12 +344,12 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
         /* 2. PUBLIC TOP NAVIGATION (LANDING, LOGIN, REGISTER, INSTRUCTIONS, RESULTS)  */
         /* ========================================================================= */
         <>
-          <header className="sticky top-0 z-40 bg-[#070A12]/80 backdrop-blur-xl border-b border-white/[0.08]">
+          <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-slate-200/90 shadow-xs">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                 {/* Brand Logo with College Seal */}
                 <Link href="/" className="flex items-center gap-3 group">
-                  <div className="w-10 h-10 p-0.5 rounded-xl bg-white/[0.04] border border-white/[0.12] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                  <div className="w-10 h-10 p-0.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
                     <img
                       src="/jit-logo.png"
                       alt="Jansons Institute of Technology Crest"
@@ -358,15 +358,15 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-base tracking-tight text-white">JIT</span>
-                      <span className="font-extrabold text-base tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-blue-400 to-cyan-400">
+                      <span className="font-extrabold text-base tracking-tight text-slate-900">JIT</span>
+                      <span className="font-extrabold text-base tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700">
                         CodeArena
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded font-mono font-semibold">
+                      <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-mono font-semibold">
                         v2.0
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 tracking-wider uppercase font-medium">
+                    <p className="text-[10px] text-slate-500 tracking-wider uppercase font-medium">
                       Jansons Institute of Technology
                     </p>
                   </div>
@@ -378,14 +378,14 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                     <div className="flex items-center gap-3">
                       <Link
                         href={role === 'student' ? '/student/dashboard' : '/admin/dashboard'}
-                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-indigo-600/25 flex items-center gap-2"
+                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-md shadow-indigo-600/20 flex items-center gap-2"
                       >
                         <LayoutDashboard className="w-3.5 h-3.5" />
                         <span>Go to Dashboard</span>
                       </Link>
                       <button
                         onClick={handleLogout}
-                        className="p-2 text-slate-400 hover:text-rose-400 rounded-xl hover:bg-white/[0.05] transition"
+                        className="p-2 text-slate-500 hover:text-rose-600 rounded-xl hover:bg-slate-100 transition"
                         title="Sign Out"
                       >
                         <LogOut className="w-4 h-4" />
@@ -395,19 +395,19 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
                     <div className="flex items-center gap-2.5">
                       <Link
                         href="/login"
-                        className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-md shadow-indigo-600/25"
+                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-sm shadow-indigo-600/20"
                       >
                         Student Sign In
                       </Link>
                       <Link
                         href="/register"
-                        className="px-3.5 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 text-xs font-semibold rounded-xl border border-white/[0.1] transition"
+                        className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition shadow-xs"
                       >
                         Register
                       </Link>
                       <Link
                         href="/admin/login"
-                        className="hidden sm:inline-flex px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-xl border border-amber-500/30 transition"
+                        className="hidden sm:inline-flex px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-semibold rounded-xl border border-amber-200 transition"
                       >
                         Exam Cell Portal
                       </Link>
@@ -424,28 +424,28 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
 
       {/* Support / Help Modal for Students */}
       {showHelpModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#0B1020] border border-white/[0.1] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
-              <div className="flex items-center gap-2 text-indigo-400 font-bold">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-indigo-600 font-bold">
                 <HelpCircle className="w-5 h-5" />
                 <span>Examination Support</span>
               </div>
               <button
                 onClick={() => setShowHelpModal(false)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="text-xs text-slate-300 space-y-2.5">
+            <div className="text-xs text-slate-600 space-y-2.5">
               <p>
-                <strong>Jansons Institute of Technology Examination Cell</strong>
+                <strong className="text-slate-900">Jansons Institute of Technology Examination Cell</strong>
               </p>
-              <p className="text-slate-400 leading-relaxed">
+              <p className="leading-relaxed">
                 If you encounter any network interruption, browser crash, or timer discrepancies during an active assessment, notify your hall invigilator immediately.
               </p>
-              <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl space-y-1 font-mono text-[11px] text-slate-300">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 font-mono text-[11px] text-slate-700">
                 <p>• Code autosaves to server every 10 seconds</p>
                 <p>• Fullscreen mode is strictly monitored</p>
                 <p>• Tab switching triggers anti-cheating alerts</p>
@@ -453,7 +453,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
             </div>
             <button
               onClick={() => setShowHelpModal(false)}
-              className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition"
+              className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition shadow-sm"
             >
               Close
             </button>

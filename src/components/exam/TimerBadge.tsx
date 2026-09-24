@@ -45,20 +45,20 @@ export const TimerBadge: React.FC<TimerBadgeProps> = ({
     <div
       className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-mono text-xs font-semibold transition backdrop-blur-md border ${
         isCritical
-          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-bounce shadow-lg shadow-rose-500/20'
+          ? 'bg-rose-50 text-rose-700 border-rose-300 animate-bounce shadow-xs'
           : isLowTime
-          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 animate-pulse shadow-md shadow-amber-500/10'
-          : 'bg-white/[0.06] text-white border-white/10'
+          ? 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse shadow-xs'
+          : 'bg-white text-slate-800 border-slate-200 shadow-xs'
       }`}
       title="Server-synchronized assessment countdown"
     >
       {isCritical ? (
-        <AlertCircle className="w-3.5 h-3.5 text-rose-400 animate-spin" />
+        <AlertCircle className="w-3.5 h-3.5 text-rose-600 animate-spin" />
       ) : (
-        <Clock className={`w-3.5 h-3.5 ${isLowTime ? 'text-amber-400' : 'text-indigo-400'}`} />
+        <Clock className={`w-3.5 h-3.5 ${isLowTime ? 'text-amber-600' : 'text-indigo-600'}`} />
       )}
       <span>{formatTimeSeconds(secondsRemaining)}</span>
-      <span className="text-[10px] uppercase font-sans tracking-wider text-slate-400">Left</span>
+      <span className="text-[10px] uppercase font-sans tracking-wider text-slate-500">Left</span>
     </div>
   );
 };

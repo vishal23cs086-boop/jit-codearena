@@ -125,35 +125,35 @@ export default function LiveMonitorPage() {
     switch (status) {
       case 'active':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Active
           </span>
         );
       case 'warning':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
             Warning
           </span>
         );
       case 'suspicious':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-            <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
             Suspicious
           </span>
         );
       case 'completed':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
             Completed
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/[0.04] text-slate-400 border border-white/10">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200">
             <span className="w-2 h-2 rounded-full bg-slate-400" />
             Not Started
           </span>
@@ -173,10 +173,10 @@ export default function LiveMonitorPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Live Examination Telemetry Monitor</h1>
+            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Live Examination Telemetry Monitor</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Real-time candidate tracking for {activeTest?.title || 'active examinations'}
           </p>
         </div>
@@ -185,7 +185,7 @@ export default function LiveMonitorPage() {
           {activeTest && (
             <Link
               href={`/admin/rankings/${activeTest.id}`}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-md shadow-indigo-600/20"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm shadow-indigo-600/20"
             >
               <span>First Completion Rankings</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -194,7 +194,7 @@ export default function LiveMonitorPage() {
 
           <button
             onClick={loadData}
-            className="p-2.5 glass-card-hover text-slate-300 hover:text-white rounded-xl transition border border-white/10"
+            className="p-2.5 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-xl transition border border-slate-200 shadow-sm"
             title="Refresh stream"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -204,38 +204,38 @@ export default function LiveMonitorPage() {
 
       {/* Status Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
-          <span className="text-[11px] text-slate-400 block mb-1">Total Tracked</span>
-          <span className="text-2xl font-bold text-white">{monitorStudents.length}</span>
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <span className="text-[11px] text-slate-500 block mb-1 font-semibold uppercase tracking-wider">Total Tracked</span>
+          <span className="text-2xl font-bold text-slate-900">{monitorStudents.length}</span>
         </div>
-        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
-          <span className="text-[11px] text-emerald-400 block mb-1">Active Now</span>
-          <span className="text-2xl font-bold text-emerald-400">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <span className="text-[11px] text-emerald-600 block mb-1 font-semibold uppercase tracking-wider">Active Now</span>
+          <span className="text-2xl font-bold text-emerald-600">
             {monitorStudents.filter((s) => s.status === 'active').length}
           </span>
         </div>
-        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
-          <span className="text-[11px] text-amber-400 block mb-1">Warnings Flagged</span>
-          <span className="text-2xl font-bold text-amber-400">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <span className="text-[11px] text-amber-600 block mb-1 font-semibold uppercase tracking-wider">Warnings Flagged</span>
+          <span className="text-2xl font-bold text-amber-600">
             {monitorStudents.filter((s) => s.status === 'warning').length}
           </span>
         </div>
-        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
-          <span className="text-[11px] text-rose-400 block mb-1">Suspicious</span>
-          <span className="text-2xl font-bold text-rose-400">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <span className="text-[11px] text-rose-600 block mb-1 font-semibold uppercase tracking-wider">Suspicious</span>
+          <span className="text-2xl font-bold text-rose-600">
             {monitorStudents.filter((s) => s.status === 'suspicious').length}
           </span>
         </div>
-        <div className="glass-card glass-card-hover rounded-2xl p-4 border border-white/10">
-          <span className="text-[11px] text-blue-400 block mb-1">Completed</span>
-          <span className="text-2xl font-bold text-blue-400">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <span className="text-[11px] text-blue-600 block mb-1 font-semibold uppercase tracking-wider">Completed</span>
+          <span className="text-2xl font-bold text-blue-600">
             {monitorStudents.filter((s) => s.status === 'completed').length}
           </span>
         </div>
       </div>
 
       {/* Filters and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-card p-3 rounded-2xl border border-white/10">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/90 backdrop-blur-xl p-3 rounded-2xl border border-slate-200/90 shadow-sm shadow-slate-900/5">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -243,33 +243,33 @@ export default function LiveMonitorPage() {
             placeholder="Search candidate name, reg no..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-xs text-white placeholder-slate-500 focus:bg-white/[0.08] focus:outline-none focus:border-indigo-500/50"
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-500"
           />
         </div>
 
         <div className="flex items-center gap-2.5 w-full sm:w-auto">
-          <span className="text-xs text-slate-400 font-medium">Status Filter:</span>
+          <span className="text-xs text-slate-500 font-medium">Status Filter:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white/[0.04] border border-white/10 text-xs text-slate-200 rounded-xl px-3 py-2 focus:bg-[#0B1020] focus:outline-none focus:border-indigo-500/50"
+            className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-xl px-3 py-2 focus:bg-white focus:outline-none focus:border-indigo-500"
           >
-            <option value="all" className="bg-[#0B1020] text-white">All Candidates</option>
-            <option value="active" className="bg-[#0B1020] text-white">Active Now</option>
-            <option value="warning" className="bg-[#0B1020] text-white">Warning Issued</option>
-            <option value="suspicious" className="bg-[#0B1020] text-white">Suspicious Incident</option>
-            <option value="completed" className="bg-[#0B1020] text-white">Completed</option>
+            <option value="all">All Candidates</option>
+            <option value="active">Active Now</option>
+            <option value="warning">Warning Issued</option>
+            <option value="suspicious">Suspicious Incident</option>
+            <option value="completed">Completed</option>
           </select>
         </div>
       </div>
 
       {/* Live Candidates Table or Empty State */}
       {filteredStudents.length > 0 ? (
-        <div className="glass-card rounded-2xl overflow-hidden border border-white/10">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl overflow-hidden border border-slate-200/90 shadow-sm shadow-slate-900/5">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 uppercase tracking-wider font-semibold">
+                <tr className="border-b border-slate-100 bg-slate-50/75 text-slate-500 uppercase tracking-wider font-semibold text-[11px]">
                   <th className="py-4 px-4">Student</th>
                   <th className="py-4 px-3">Reg Number</th>
                   <th className="py-4 px-3">Dept & Year</th>
@@ -281,27 +281,27 @@ export default function LiveMonitorPage() {
                   <th className="py-4 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-100">
                 {filteredStudents.map((st) => (
                   <tr
                     key={st.id}
                     onClick={() => setSelectedStudent(st)}
-                    className="hover:bg-white/[0.03] transition cursor-pointer group"
+                    className="hover:bg-slate-50/80 transition cursor-pointer group"
                   >
-                    <td className="py-4 px-4 font-semibold text-white group-hover:text-indigo-400 transition">
+                    <td className="py-4 px-4 font-semibold text-slate-900 group-hover:text-indigo-600 transition">
                       {st.student_name}
                     </td>
-                    <td className="py-4 px-3 font-mono text-slate-300">{st.register_number}</td>
-                    <td className="py-4 px-3 text-slate-400">
+                    <td className="py-4 px-3 font-mono text-slate-600">{st.register_number}</td>
+                    <td className="py-4 px-3 text-slate-500">
                       {st.department} • Year {st.year}
                     </td>
-                    <td className="py-4 px-3 text-center font-bold text-slate-300">
+                    <td className="py-4 px-3 text-center font-bold text-slate-700">
                       {st.progress}
                     </td>
-                    <td className="py-4 px-3 text-center font-mono font-bold text-emerald-400">
+                    <td className="py-4 px-3 text-center font-mono font-bold text-emerald-600">
                       {st.current_score} pts
                     </td>
-                    <td className="py-4 px-3 text-center font-mono text-slate-400">
+                    <td className="py-4 px-3 text-center font-mono text-slate-500">
                       {st.started_time}
                     </td>
                     <td className="py-4 px-3 text-center">{getStatusBadge(st.status)}</td>
@@ -309,14 +309,14 @@ export default function LiveMonitorPage() {
                       {st.warnings_count > 0 ? (
                         <span
                           className={`inline-flex items-center gap-1 font-bold ${
-                            st.warnings_count >= 3 ? 'text-rose-400 animate-pulse' : 'text-amber-400'
+                            st.warnings_count >= 3 ? 'text-rose-600 animate-pulse' : 'text-amber-600'
                           }`}
                         >
                           <AlertTriangle className="w-3.5 h-3.5" />
                           {st.warnings_count} ({st.tab_switches} tabs, {st.fullscreen_exits} fs)
                         </span>
                       ) : (
-                        <span className="text-slate-500 font-mono">0</span>
+                        <span className="text-slate-400 font-mono">0</span>
                       )}
                     </td>
                     <td className="py-4 px-4 text-right">
@@ -325,7 +325,7 @@ export default function LiveMonitorPage() {
                           e.stopPropagation();
                           setSelectedStudent(st);
                         }}
-                        className="px-3 py-1.5 glass-card-hover group-hover:border-indigo-500/40 text-slate-300 group-hover:text-indigo-300 rounded-lg text-[11px] font-medium transition border border-white/10"
+                        className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 group-hover:border-indigo-200 group-hover:text-indigo-600 rounded-lg text-[11px] font-medium transition border border-slate-200 shadow-xs"
                       >
                         Inspect Logs
                       </button>
