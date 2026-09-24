@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { runTestCases } from '@/lib/judge0/client';
 import { calculateSubmissionScore } from '@/lib/scoring';
 import { getTursoClient } from '@/lib/turso';
@@ -19,6 +19,18 @@ export async function POST(req: NextRequest) {
 
     if (!questionId || typeof code !== 'string') {
       return NextResponse.json({ error: 'Question ID and code are required' }, { status: 400 });
+    }
+
+    // Strict Academic Year & Attempt Assignment Guard
+    if (studentId) {
+      const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
+      const verification = await verifyQuestionForStudentAttempt(studentId, questionId, attemptId);
+      if (!verification.valid) {
+        return NextResponse.json(
+          { error: verification.error || 'Submission rejected: question does not belong to your academic year or attempt.' },
+          { status: 403 }
+        );
+      }
     }
 
     let allTestCases: TestCase[] = [];

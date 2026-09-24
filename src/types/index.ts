@@ -90,6 +90,7 @@ export interface Question {
   title: string;
   slug: string;
   description: string;
+  year: number; // 2 or 3 (Academic year pool)
   input_format: string;
   output_format: string;
   constraints: string;
@@ -115,6 +116,15 @@ export interface TestQuestion {
   question?: Question;
 }
 
+export interface AttemptQuestion {
+  id: string;
+  attempt_id: string;
+  question_id: string;
+  question_order: number;
+  created_at: string;
+  question?: Question;
+}
+
 export interface ScoringConfig {
   correctness: number;
   time_performance: number;
@@ -126,6 +136,8 @@ export interface Test {
   id: string;
   title: string;
   description: string;
+  year?: number; // 2 or 3 (Academic Year restriction)
+  question_count?: number; // Configured number of questions to assign from pool
   duration_minutes: number;
   total_marks: number;
   eligible_years: number[];

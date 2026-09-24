@@ -55,14 +55,19 @@ export default function StudentDashboardPage() {
 
   const studentName = user?.full_name || user?.register_number || 'Candidate';
 
-  // Filter tests by eligibility and status
+  // Filter tests strictly by student's academic year and eligibility
   const eligibleTests = tests.filter((t) => {
     if (!user) return true;
-    const yearMatch = !t.eligible_years?.length || t.eligible_years.includes(user.year);
+    if (t.year) {
+      if (Number(t.year) !== Number(user.year)) return false;
+    } else {
+      const yearMatch = !t.eligible_years?.length || t.eligible_years.includes(user.year);
+      if (!yearMatch) return false;
+    }
     const deptMatch =
       !t.eligible_departments?.length ||
       t.eligible_departments.some((d) => d.toUpperCase() === user.department?.toUpperCase());
-    return yearMatch && deptMatch;
+    return deptMatch;
   });
 
   const availableTests = eligibleTests.filter((t) => t.status === 'active');

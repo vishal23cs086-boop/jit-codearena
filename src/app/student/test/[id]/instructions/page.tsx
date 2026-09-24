@@ -62,8 +62,10 @@ export default function TestInstructionsPage() {
     loadTest();
   }, [testId]);
 
+  const isYearMismatch = Boolean(test?.year && user?.year && test.year !== user.year);
+
   const handleStartExam = async () => {
-    if (!agreed || !test) return;
+    if (!agreed || !test || isYearMismatch) return;
 
     // Request fullscreen on start
     try {
@@ -88,6 +90,36 @@ export default function TestInstructionsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 w-full space-y-6">
+      {/* Year Mismatch Warning Banner */}
+      {isYearMismatch && (
+        <div className="p-5 bg-rose-50 border border-rose-300 rounded-3xl text-rose-900 shadow-sm flex items-start gap-4">
+          <div className="w-10 h-10 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-rose-950 flex items-center gap-2">
+              <span>Access Denied (403): Academic Year Mismatch</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-200 text-rose-800">
+                RESTRICTED
+              </span>
+            </h3>
+            <p className="text-xs text-rose-800 leading-relaxed">
+              This assessment is configured strictly for <strong>{test?.year === 2 ? '2nd' : '3rd'} Year</strong> candidates only.
+              You are authenticated as a <strong>{user?.year === 2 ? '2nd' : '3rd'} Year</strong> candidate.
+              Server-side security policies prevent cross-year assessment attempts.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => router.push('/student/assessments')}
+                className="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-semibold transition shadow-xs"
+              >
+                Return to My Assessments
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div className="glass-card rounded-3xl p-6 sm:p-8 space-y-4 shadow-sm border border-slate-200/90 relative overflow-hidden bg-white">
         <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-100/50 blur-[90px] pointer-events-none rounded-full" />
@@ -104,7 +136,20 @@ export default function TestInstructionsPage() {
               <FileCode className="w-3.5 h-3.5 text-indigo-600" />
               <span>JANSONS INSTITUTE OF TECHNOLOGY • OFFICIAL EXAMINATION</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900">{test?.title}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900">{test?.title}</h1>
+              {test?.year && (
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                    test.year === 2
+                      ? 'bg-sky-50 text-sky-700 border-sky-200'
+                      : 'bg-purple-50 text-purple-700 border-purple-200'
+                  }`}
+                >
+                  {test.year === 2 ? '2nd Year Assessment' : '3rd Year Assessment'}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <p className="text-sm text-slate-600 leading-relaxed relative z-10">{test?.description}</p>
@@ -190,12 +235,13 @@ export default function TestInstructionsPage() {
 
         {/* Honor Code Checkbox */}
         <div className="pt-3 border-t border-slate-100">
-          <label className="flex items-start gap-3 cursor-pointer group">
+          <label className={`flex items-start gap-3 ${isYearMismatch ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer group'}`}>
             <input
               type="checkbox"
               checked={agreed}
+              disabled={isYearMismatch}
               onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded text-indigo-600 bg-white border-slate-300 focus:ring-indigo-500 cursor-pointer"
+              className="mt-1 w-4 h-4 rounded text-indigo-600 bg-white border-slate-300 focus:ring-indigo-500 cursor-pointer disabled:cursor-not-allowed"
             />
             <span className="text-xs text-slate-600 group-hover:text-slate-900 leading-relaxed">
               I acknowledge that I am attempting this test independently without using external AI, web search, or unauthorized materials. I agree to abide by the JIT College Examination Code of Conduct.
@@ -206,10 +252,10 @@ export default function TestInstructionsPage() {
         {/* Start Button */}
         <button
           onClick={handleStartExam}
-          disabled={!agreed}
-          className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-bold rounded-xl transition shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 text-sm"
+          disabled={!agreed || isYearMismatch}
+          className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-bold rounded-xl transition shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 text-sm disabled:cursor-not-allowed"
         >
-          <span>Enter Fullscreen & Begin Assessment</span>
+          <span>{isYearMismatch ? 'Assessment Restricted by Academic Year' : 'Enter Fullscreen & Begin Assessment'}</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

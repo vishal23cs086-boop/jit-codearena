@@ -1,4 +1,5 @@
 import { createClient, type Client } from '@libsql/client';
+import crypto from 'crypto';
 
 let tursoClientInstance: Client | null = null;
 let isInitialized = false;
@@ -109,6 +110,14 @@ export async function initTursoDb(): Promise<void> {
       created_at TEXT NOT NULL
     );`,
 
+    `CREATE TABLE IF NOT EXISTS attempt_questions (
+      id TEXT PRIMARY KEY,
+      attempt_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      question_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );`,
+
     `CREATE TABLE IF NOT EXISTS submissions (
       id TEXT PRIMARY KEY,
       test_id TEXT NOT NULL,
@@ -161,10 +170,29 @@ export async function initTursoDb(): Promise<void> {
     }
   }
 
-  try {
-    await client.execute('ALTER TABLE students ADD COLUMN is_archived INTEGER DEFAULT 0;');
-  } catch {
-    // Column already exists
+  const alters = [
+    'ALTER TABLE students ADD COLUMN is_archived INTEGER DEFAULT 0;',
+    'ALTER TABLE questions ADD COLUMN year INTEGER NOT NULL DEFAULT 2;',
+    "ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT 'Algorithms';",
+    "ALTER TABLE questions ADD COLUMN input_format TEXT DEFAULT '';",
+    "ALTER TABLE questions ADD COLUMN output_format TEXT DEFAULT '';",
+    "ALTER TABLE questions ADD COLUMN constraints TEXT DEFAULT '';",
+    'ALTER TABLE tests ADD COLUMN year INTEGER NOT NULL DEFAULT 2;',
+    'ALTER TABLE tests ADD COLUMN question_count INTEGER NOT NULL DEFAULT 0;',
+    'ALTER TABLE test_attempts ADD COLUMN question_seed TEXT;',
+    'CREATE INDEX IF NOT EXISTS idx_questions_year ON questions(year);',
+    'CREATE INDEX IF NOT EXISTS idx_students_year ON students(year);',
+    'CREATE INDEX IF NOT EXISTS idx_tests_year ON tests(year);',
+    'CREATE INDEX IF NOT EXISTS idx_attempt_questions_attempt ON attempt_questions(attempt_id);',
+    'CREATE INDEX IF NOT EXISTS idx_attempt_questions_question ON attempt_questions(question_id);',
+  ];
+
+  for (const alt of alters) {
+    try {
+      await client.execute(alt);
+    } catch {
+      // Column or index already exists
+    }
   }
 
   isInitialized = true;
@@ -895,10 +923,11 @@ export async function getAssessmentsFromDb(includeArchived = false) {
       start_time: row.start_time ? String(row.start_time) : '',
       end_time: row.end_time ? String(row.end_time) : '',
       status: String(row.status || 'draft'),
+      year: Number(row.year || 2),
+      question_count: Number(row.question_count || questionCount),
       is_archived: Number(row.is_archived || 0) === 1,
       created_at: String(row.created_at),
       updated_at: String(row.updated_at),
-      question_count: questionCount,
       participant_count: participantCount,
     });
   }
@@ -928,11 +957,16 @@ export async function getAssessmentWithQuestions(id: string) {
     description: String(q.description),
     difficulty: String(q.difficulty),
     marks: Number(q.marks),
+    year: Number(q.year || testRow.year || 2),
+    topic: String(q.topic || 'Algorithms'),
     initial_code: q.initial_code ? String(q.initial_code) : '',
     solution_code: q.solution_code ? String(q.solution_code) : '',
     test_cases: q.test_cases ? JSON.parse(String(q.test_cases)) : [],
     time_limit: Number(q.time_limit || 2000),
     memory_limit: Number(q.memory_limit || 128),
+    input_format: String(q.input_format || ''),
+    output_format: String(q.output_format || ''),
+    constraints: String(q.constraints || ''),
     order_index: Number(q.order_index || 0),
     created_at: String(q.created_at),
   }));
@@ -956,6 +990,8 @@ export async function getAssessmentWithQuestions(id: string) {
     start_time: testRow.start_time ? String(testRow.start_time) : '',
     end_time: testRow.end_time ? String(testRow.end_time) : '',
     status: String(testRow.status || 'draft'),
+    year: Number(testRow.year || 2),
+    question_count: Number(testRow.question_count || questions.length),
     is_archived: Number(testRow.is_archived || 0) === 1,
     created_at: String(testRow.created_at),
     updated_at: String(testRow.updated_at),
@@ -976,6 +1012,8 @@ export async function createAssessmentInDb(data: {
   start_time?: string;
   end_time?: string;
   status?: string;
+  year?: number;
+  question_count?: number;
   questions?: Array<{
     title: string;
     description: string;
@@ -984,16 +1022,20 @@ export async function createAssessmentInDb(data: {
     initial_code?: string;
     solution_code?: string;
     test_cases?: any[];
+    year?: number;
+    topic?: string;
   }>;
 }) {
   await initTursoDb();
   const client = getTursoClient();
   const testId = data.id || `test-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
+  const testYear = data.year ? Number(data.year) : 2;
+  const qCount = data.question_count ? Number(data.question_count) : (data.questions?.length || 0);
 
   await client.execute({
-    sql: `INSERT INTO tests (id, title, description, code, instructions, duration, total_marks, passing_marks, start_time, end_time, status, is_archived, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    sql: `INSERT INTO tests (id, title, description, code, instructions, duration, total_marks, passing_marks, start_time, end_time, status, year, question_count, is_archived, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     args: [
       testId,
       data.title,
@@ -1006,6 +1048,8 @@ export async function createAssessmentInDb(data: {
       data.start_time || null,
       data.end_time || null,
       data.status || 'draft',
+      testYear,
+      qCount,
       now,
       now,
     ],
@@ -1016,8 +1060,8 @@ export async function createAssessmentInDb(data: {
       const q = data.questions[i];
       const qId = `q-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
       await client.execute({
-        sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, solution_code, test_cases, order_index, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, solution_code, test_cases, order_index, year, topic, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           qId,
           testId,
@@ -1029,6 +1073,8 @@ export async function createAssessmentInDb(data: {
           q.solution_code || '',
           JSON.stringify(q.test_cases || []),
           i,
+          q.year ? Number(q.year) : testYear,
+          q.topic || 'Algorithms',
           now,
         ],
       });
@@ -1051,6 +1097,8 @@ export async function updateAssessmentInDb(
     start_time?: string;
     end_time?: string;
     status?: string;
+    year?: number;
+    question_count?: number;
     questions?: Array<{
       id?: string;
       title: string;
@@ -1060,6 +1108,8 @@ export async function updateAssessmentInDb(
       initial_code?: string;
       solution_code?: string;
       test_cases?: any[];
+      year?: number;
+      topic?: string;
     }>;
   }
 ) {
@@ -1117,6 +1167,14 @@ export async function updateAssessmentInDb(
     updates.push('status = ?');
     args.push(data.status);
   }
+  if (data.year !== undefined) {
+    updates.push('year = ?');
+    args.push(Number(data.year));
+  }
+  if (data.question_count !== undefined) {
+    updates.push('question_count = ?');
+    args.push(Number(data.question_count));
+  }
 
   args.push(id);
   await client.execute({
@@ -1134,8 +1192,8 @@ export async function updateAssessmentInDb(
       const q = data.questions[i];
       const qId = q.id || `q-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
       await client.execute({
-        sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, solution_code, test_cases, order_index, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, solution_code, test_cases, order_index, year, topic, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           qId,
           id,
@@ -1147,6 +1205,8 @@ export async function updateAssessmentInDb(
           q.solution_code || '',
           JSON.stringify(q.test_cases || []),
           i,
+          q.year ? Number(q.year) : (data.year ? Number(data.year) : 2),
+          q.topic || 'Algorithms',
           now,
         ],
       });
@@ -1217,6 +1277,615 @@ export async function deleteOrArchiveAssessmentInDb(id: string) {
       message: 'Assessment and all associated questions deleted successfully.',
     };
   }
+}
+
+// -------------------------------------------------------------
+// QUESTION BANK REPOSITORY (STRICT YEAR-BASED POOLS)
+// -------------------------------------------------------------
+export async function getQuestionsFromDb(filters?: {
+  year?: number;
+  test_id?: string;
+  topic?: string;
+  difficulty?: string;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  let sql = 'SELECT * FROM questions WHERE 1=1';
+  const args: any[] = [];
+
+  if (filters?.year) {
+    sql += ' AND year = ?';
+    args.push(Number(filters.year));
+  }
+  if (filters?.test_id) {
+    sql += ' AND test_id = ?';
+    args.push(filters.test_id);
+  }
+  if (filters?.topic && filters.topic !== 'all') {
+    sql += ' AND topic = ?';
+    args.push(filters.topic);
+  }
+  if (filters?.difficulty && filters.difficulty !== 'all') {
+    sql += ' AND LOWER(difficulty) = LOWER(?)';
+    args.push(filters.difficulty);
+  }
+
+  sql += ' ORDER BY created_at DESC';
+
+  const res = await client.execute({ sql, args });
+  return res.rows.map((row: any) => ({
+    id: String(row.id),
+    test_id: String(row.test_id),
+    title: String(row.title),
+    slug: String(row.id),
+    description: String(row.description),
+    year: Number(row.year || 2),
+    difficulty: String(row.difficulty),
+    topic: String(row.topic || 'Algorithms'),
+    marks: Number(row.marks || 20),
+    initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    solution_code: row.solution_code ? String(row.solution_code) : undefined,
+    test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
+    time_limit: Number(row.time_limit || 2000),
+    time_limit_ms: Number(row.time_limit || 2000),
+    memory_limit: Number(row.memory_limit || 128),
+    memory_limit_kb: Number(row.memory_limit || 128) * 1024,
+    input_format: String(row.input_format || ''),
+    output_format: String(row.output_format || ''),
+    constraints: String(row.constraints || ''),
+    order_index: Number(row.order_index || 0),
+    is_active: true,
+    created_at: String(row.created_at),
+  }));
+}
+
+export async function getQuestionByIdFromDb(id: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const res = await client.execute({
+    sql: 'SELECT * FROM questions WHERE id = ? LIMIT 1',
+    args: [id],
+  });
+  if (res.rows.length === 0) return null;
+  const row: any = res.rows[0];
+  return {
+    id: String(row.id),
+    test_id: String(row.test_id),
+    title: String(row.title),
+    slug: String(row.id),
+    description: String(row.description),
+    year: Number(row.year || 2),
+    difficulty: String(row.difficulty),
+    topic: String(row.topic || 'Algorithms'),
+    marks: Number(row.marks || 20),
+    initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    solution_code: row.solution_code ? String(row.solution_code) : undefined,
+    test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
+    time_limit: Number(row.time_limit || 2000),
+    time_limit_ms: Number(row.time_limit || 2000),
+    memory_limit: Number(row.memory_limit || 128),
+    memory_limit_kb: Number(row.memory_limit || 128) * 1024,
+    input_format: String(row.input_format || ''),
+    output_format: String(row.output_format || ''),
+    constraints: String(row.constraints || ''),
+    is_active: true,
+    created_at: String(row.created_at),
+  };
+}
+
+export async function createQuestionInDb(data: {
+  id?: string;
+  test_id?: string;
+  title: string;
+  description: string;
+  year: number; // 2 or 3
+  difficulty?: string;
+  topic?: string;
+  marks?: number;
+  initial_code?: string;
+  solution_code?: string;
+  test_cases?: any[];
+  time_limit?: number;
+  memory_limit?: number;
+  input_format?: string;
+  output_format?: string;
+  constraints?: string;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const qId = data.id || `q-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  const qYear = Number(data.year) === 3 ? 3 : 2; // Strict 2 or 3
+
+  await client.execute({
+    sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, solution_code, test_cases, time_limit, memory_limit, order_index, year, topic, input_format, output_format, constraints, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      qId,
+      data.test_id || 'bank',
+      data.title.trim(),
+      data.description || '',
+      data.difficulty || 'Easy',
+      data.marks || 20,
+      data.initial_code || 'def solution():\n    pass\n',
+      data.solution_code || '',
+      JSON.stringify(data.test_cases || []),
+      data.time_limit || 2000,
+      data.memory_limit || 128,
+      qYear,
+      data.topic || 'Algorithms',
+      data.input_format || '',
+      data.output_format || '',
+      data.constraints || '',
+      now,
+    ],
+  });
+
+  return getQuestionByIdFromDb(qId);
+}
+
+export async function updateQuestionInDb(
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    year?: number;
+    difficulty?: string;
+    topic?: string;
+    marks?: number;
+    initial_code?: string;
+    solution_code?: string;
+    test_cases?: any[];
+    time_limit?: number;
+    memory_limit?: number;
+    input_format?: string;
+    output_format?: string;
+    constraints?: string;
+  }
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const updates: string[] = [];
+  const args: any[] = [];
+
+  if (data.title !== undefined) {
+    updates.push('title = ?');
+    args.push(data.title.trim());
+  }
+  if (data.description !== undefined) {
+    updates.push('description = ?');
+    args.push(data.description);
+  }
+  if (data.year !== undefined) {
+    updates.push('year = ?');
+    args.push(Number(data.year) === 3 ? 3 : 2);
+  }
+  if (data.difficulty !== undefined) {
+    updates.push('difficulty = ?');
+    args.push(data.difficulty);
+  }
+  if (data.topic !== undefined) {
+    updates.push('topic = ?');
+    args.push(data.topic);
+  }
+  if (data.marks !== undefined) {
+    updates.push('marks = ?');
+    args.push(Number(data.marks));
+  }
+  if (data.initial_code !== undefined) {
+    updates.push('initial_code = ?');
+    args.push(data.initial_code);
+  }
+  if (data.solution_code !== undefined) {
+    updates.push('solution_code = ?');
+    args.push(data.solution_code);
+  }
+  if (data.test_cases !== undefined) {
+    updates.push('test_cases = ?');
+    args.push(JSON.stringify(data.test_cases));
+  }
+  if (data.time_limit !== undefined) {
+    updates.push('time_limit = ?');
+    args.push(Number(data.time_limit));
+  }
+  if (data.memory_limit !== undefined) {
+    updates.push('memory_limit = ?');
+    args.push(Number(data.memory_limit));
+  }
+  if (data.input_format !== undefined) {
+    updates.push('input_format = ?');
+    args.push(data.input_format);
+  }
+  if (data.output_format !== undefined) {
+    updates.push('output_format = ?');
+    args.push(data.output_format);
+  }
+  if (data.constraints !== undefined) {
+    updates.push('constraints = ?');
+    args.push(data.constraints);
+  }
+
+  if (updates.length > 0) {
+    args.push(id);
+    await client.execute({
+      sql: `UPDATE questions SET ${updates.join(', ')} WHERE id = ?`,
+      args,
+    });
+  }
+
+  return getQuestionByIdFromDb(id);
+}
+
+export async function deleteQuestionInDb(id: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+  await client.execute({
+    sql: 'DELETE FROM questions WHERE id = ?',
+    args: [id],
+  });
+  return { success: true };
+}
+
+export async function getQuestionPoolStats() {
+  await initTursoDb();
+  const client = getTursoClient();
+  const [y2Res, y3Res, totalRes] = await Promise.all([
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 2'),
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 3'),
+    client.execute('SELECT COUNT(*) as count FROM questions'),
+  ]);
+
+  return {
+    year2Count: Number(y2Res.rows[0]?.count || 0),
+    year3Count: Number(y3Res.rows[0]?.count || 0),
+    totalCount: Number(totalRes.rows[0]?.count || 0),
+  };
+}
+
+// -------------------------------------------------------------
+// YEAR-BASED RANDOMIZED ASSESSMENT ENGINE (FROZEN ATTEMPTS)
+// -------------------------------------------------------------
+export async function startOrGetAssessmentAttempt(testId: string, studentId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // 1. Authenticate & load student from Turso DB
+  const sRes = await client.execute({
+    sql: 'SELECT id, register_number, full_name, email, department, year, section, status FROM students WHERE id = ? LIMIT 1',
+    args: [studentId],
+  });
+  if (sRes.rows.length === 0) {
+    const err: any = new Error('Student record not found in system.');
+    err.status = 404;
+    throw err;
+  }
+  const student: any = sRes.rows[0];
+  if (student.status === 'disabled' || student.status === 'archived') {
+    const err: any = new Error(
+      student.status === 'disabled'
+        ? 'Your student account has been disabled by the administrator. Please contact the Examination Cell.'
+        : 'Your student account has been archived. Login access is no longer permitted.'
+    );
+    err.status = 403;
+    throw err;
+  }
+  const studentYear = Number(student.year);
+
+  // 2. Load assessment from Turso DB
+  const tRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? AND is_archived = 0 LIMIT 1',
+    args: [testId],
+  });
+  if (tRes.rows.length === 0) {
+    const err: any = new Error('Assessment not found or has been archived.');
+    err.status = 404;
+    throw err;
+  }
+  const test: any = tRes.rows[0];
+  const testYear = Number(test.year || 2);
+
+  // 3. Strict Server-Side Academic Year Guard
+  if (studentYear !== testYear) {
+    const err: any = new Error('This assessment is not available for your academic year.');
+    err.status = 403;
+    throw err;
+  }
+
+  // 4. Check for active attempt in progress
+  const attRes = await client.execute({
+    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND (status = 'in_progress' OR status = 'not_started') ORDER BY start_time DESC LIMIT 1",
+    args: [studentId, testId],
+  });
+
+  if (attRes.rows.length > 0) {
+    const existingAttempt: any = attRes.rows[0];
+    const attemptId = String(existingAttempt.id);
+
+    // Retrieve already frozen assigned questions from attempt_questions
+    const aqRes = await client.execute({
+      sql: `SELECT aq.id as aq_id, aq.question_order, q.*
+            FROM attempt_questions aq
+            JOIN questions q ON aq.question_id = q.id
+            WHERE aq.attempt_id = ?
+            ORDER BY aq.question_order ASC`,
+      args: [attemptId],
+    });
+
+    if (aqRes.rows.length > 0) {
+      // FROZEN SET: DO NOT RANDOMIZE AGAIN
+      const assignedQuestions = aqRes.rows.map((row: any) => {
+        const testCases = row.test_cases ? JSON.parse(String(row.test_cases)) : [];
+        const sanitizedCases = testCases.map((tc: any) => ({
+          id: tc.id,
+          input: tc.is_hidden ? '' : tc.input,
+          expected_output: tc.is_hidden ? '' : tc.expected_output,
+          is_hidden: Boolean(tc.is_hidden),
+          weight: tc.weight || 1,
+          explanation: tc.explanation || '',
+        }));
+
+        return {
+          id: String(row.id),
+          test_id: String(row.test_id),
+          title: String(row.title),
+          slug: String(row.id),
+          description: String(row.description),
+          difficulty: String(row.difficulty),
+          topic: String(row.topic || 'Algorithms'),
+          marks: Number(row.marks || 20),
+          year: Number(row.year),
+          initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
+          starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+          input_format: String(row.input_format || ''),
+          output_format: String(row.output_format || ''),
+          constraints: String(row.constraints || ''),
+          time_limit_ms: Number(row.time_limit || 2000),
+          memory_limit_kb: Number(row.memory_limit || 128000),
+          order_index: Number(row.question_order || 0),
+          test_cases: sanitizedCases,
+        };
+      });
+
+      return {
+        isExisting: true,
+        attempt: {
+          id: attemptId,
+          test_id: testId,
+          student_id: studentId,
+          start_time: String(existingAttempt.start_time),
+          status: String(existingAttempt.status),
+          score: Number(existingAttempt.score || 0),
+          max_score: Number(existingAttempt.max_score || 100),
+        },
+        test: {
+          id: String(test.id),
+          title: String(test.title),
+          description: String(test.description || ''),
+          duration_minutes: Number(test.duration || 60),
+          total_marks: Number(test.total_marks || 100),
+          year: testYear,
+          question_count: assignedQuestions.length,
+          instructions: String(test.instructions || ''),
+        },
+        questions: assignedQuestions,
+      };
+    }
+  }
+
+  // 5. Query eligible question pool strictly for student's year
+  const poolRes = await client.execute({
+    sql: `SELECT * FROM questions
+          WHERE year = ? AND (test_id = ? OR test_id = 'bank' OR test_id = '' OR test_id IS NULL)
+          ORDER BY created_at DESC`,
+    args: [studentYear, testId],
+  });
+
+  const pool = poolRes.rows.map((row: any) => ({
+    id: String(row.id),
+    test_id: String(row.test_id),
+    title: String(row.title),
+    slug: String(row.id),
+    description: String(row.description),
+    difficulty: String(row.difficulty),
+    topic: String(row.topic || 'Algorithms'),
+    marks: Number(row.marks || 20),
+    year: Number(row.year),
+    initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    input_format: String(row.input_format || ''),
+    output_format: String(row.output_format || ''),
+    constraints: String(row.constraints || ''),
+    time_limit_ms: Number(row.time_limit || 2000),
+    memory_limit_kb: Number(row.memory_limit || 128000),
+    test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
+  }));
+
+  // Determine configured number of questions
+  const configuredCount = Number(test.question_count || 0);
+  const requiredCount = configuredCount > 0 ? configuredCount : pool.length;
+
+  // Edge case check:
+  if (pool.length < requiredCount || pool.length === 0) {
+    const yearLabel = studentYear === 2 ? '2nd Year' : studentYear === 3 ? '3rd Year' : `Year ${studentYear}`;
+    const err: any = new Error(
+      `Insufficient questions for this assessment. Required: ${requiredCount}. Available for ${yearLabel}: ${pool.length}.`
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  // 6. Cryptographically secure server-side randomization (Fisher-Yates)
+  // Ensure every question selected has question.year === studentYear
+  const eligiblePool = pool.filter((q) => q.year === studentYear);
+  for (let i = eligiblePool.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [eligiblePool[i], eligiblePool[j]] = [eligiblePool[j], eligiblePool[i]];
+  }
+
+  // Select the configured number of questions
+  const selectedQuestions = eligiblePool.slice(0, requiredCount);
+
+  // Shuffle the selected array again to randomize display order
+  for (let i = selectedQuestions.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [selectedQuestions[i], selectedQuestions[j]] = [selectedQuestions[j], selectedQuestions[i]];
+  }
+
+  // 7. Create attempt in test_attempts
+  const attemptId = `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const randomSeed = crypto.randomBytes(8).toString('hex');
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, score, max_score, status, question_seed, created_at)
+          VALUES (?, ?, ?, ?, 0, ?, 'in_progress', ?, ?)`,
+    args: [
+      attemptId,
+      testId,
+      studentId,
+      now,
+      Number(test.total_marks || 100),
+      randomSeed,
+      now,
+    ],
+  });
+
+  // 8. Freeze assigned questions in attempt_questions table
+  for (let idx = 0; idx < selectedQuestions.length; idx++) {
+    const q = selectedQuestions[idx];
+    const aqId = `aq-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+    await client.execute({
+      sql: `INSERT INTO attempt_questions (id, attempt_id, question_id, question_order, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [aqId, attemptId, q.id, idx + 1, now],
+    });
+  }
+
+  // 9. Update presence table with active assessment
+  await client.execute({
+    sql: `UPDATE student_presence
+          SET active_assessment_id = ?, session_status = 'IN_ASSESSMENT', current_question_index = 0, total_questions = ?
+          WHERE student_id = ?`,
+    args: [testId, selectedQuestions.length, studentId],
+  });
+
+  // 10. Record activity log
+  await recordActivityLogInDb({
+    test_id: testId,
+    student_id: studentId,
+    student_name: student.full_name,
+    register_number: student.register_number,
+    event_type: 'TEST_STARTED',
+    description: `Candidate started ${test.title} (${testYear === 2 ? '2nd Year' : '3rd Year'}). Assigned ${selectedQuestions.length} randomized questions.`,
+    metadata: {
+      attemptId,
+      studentYear,
+      testYear,
+      assignedQuestionIds: selectedQuestions.map((q) => q.id),
+    },
+  });
+
+  // 11. Sanitize test cases before returning to frontend
+  const sanitizedQuestions = selectedQuestions.map((q, idx) => ({
+    ...q,
+    order_index: idx + 1,
+    test_cases: (q.test_cases || []).map((tc: any) => ({
+      id: tc.id,
+      input: tc.is_hidden ? '' : tc.input,
+      expected_output: tc.is_hidden ? '' : tc.expected_output,
+      is_hidden: Boolean(tc.is_hidden),
+      weight: tc.weight || 1,
+      explanation: tc.explanation || '',
+    })),
+  }));
+
+  return {
+    isExisting: false,
+    attempt: {
+      id: attemptId,
+      test_id: testId,
+      student_id: studentId,
+      start_time: now,
+      status: 'in_progress',
+      score: 0,
+      max_score: Number(test.total_marks || 100),
+    },
+    test: {
+      id: String(test.id),
+      title: String(test.title),
+      description: String(test.description || ''),
+      duration_minutes: Number(test.duration || 60),
+      total_marks: Number(test.total_marks || 100),
+      year: testYear,
+      question_count: selectedQuestions.length,
+      instructions: String(test.instructions || ''),
+    },
+    questions: sanitizedQuestions,
+  };
+}
+
+export async function verifyQuestionForStudentAttempt(
+  studentId: string,
+  questionId: string,
+  attemptId?: string
+): Promise<{ valid: boolean; error?: string }> {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // 1. Fetch student
+  const sRes = await client.execute({
+    sql: 'SELECT id, year, status FROM students WHERE id = ? LIMIT 1',
+    args: [studentId],
+  });
+  if (sRes.rows.length === 0) {
+    return { valid: false, error: 'Student not found.' };
+  }
+  const studentYear = Number(sRes.rows[0].year);
+
+  // 2. Fetch question
+  const qRes = await client.execute({
+    sql: 'SELECT id, year FROM questions WHERE id = ? LIMIT 1',
+    args: [questionId],
+  });
+  if (qRes.rows.length === 0) {
+    return { valid: false, error: 'Question not found.' };
+  }
+  const questionYear = Number(qRes.rows[0].year);
+
+  // Academic year must match!
+  if (questionYear !== studentYear) {
+    return {
+      valid: false,
+      error: `Question does not belong to your academic year (${studentYear === 2 ? '2nd' : '3rd'} Year).`,
+    };
+  }
+
+  // 3. If attemptId provided, verify it is in attempt_questions (if attempt has recorded question assignments)
+  if (attemptId && attemptId !== 'general') {
+    const countRes = await client.execute({
+      sql: 'SELECT COUNT(*) as count FROM attempt_questions WHERE attempt_id = ?',
+      args: [attemptId],
+    });
+    const hasAssignedQuestions = Number(countRes.rows[0]?.count || 0) > 0;
+    if (hasAssignedQuestions) {
+      const aqRes = await client.execute({
+        sql: 'SELECT id FROM attempt_questions WHERE attempt_id = ? AND question_id = ? LIMIT 1',
+        args: [attemptId, questionId],
+      });
+      if (aqRes.rows.length === 0) {
+        return {
+          valid: false,
+          error: 'Question is not assigned to this assessment attempt.',
+        };
+      }
+    }
+  }
+
+  return { valid: true };
 }
 
 // -------------------------------------------------------------

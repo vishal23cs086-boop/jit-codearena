@@ -24,12 +24,13 @@ import {
   Maximize2,
   Loader2,
   FileCode,
+  Lock,
 } from 'lucide-react';
 
 export default function CodingTestPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
 
   const testId = typeof params?.id === 'string' ? params.id : '';
 
@@ -37,6 +38,9 @@ export default function CodingTestPage() {
   const [test, setTest] = useState<Test | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
+  const [attemptId, setAttemptId] = useState<string>('');
+  const [isExistingAttempt, setIsExistingAttempt] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<{ status: number; text: string } | null>(null);
 
   // Map of student's current code per questionId
   const [studentCodeMap, setStudentCodeMap] = useState<Record<string, string>>({});
@@ -68,49 +72,74 @@ export default function CodingTestPage() {
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // Load Test and its Questions from Database
+  // Load Test and its Questions from Database via secure Server-Side Year-Based Start Attempt API
   useEffect(() => {
     async function loadAssessmentData() {
+      if (authLoading) return;
+      if (!user) {
+        setErrorMessage({
+          status: 401,
+          text: 'Authentication required. Please log in to take the assessment.',
+        });
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
+      setErrorMessage(null);
+
       try {
-        const tests = await fetchTests();
-        const foundTest = tests.find((t) => t.id === testId) || tests[0] || null;
-        setTest(foundTest);
+        const res = await fetch('/api/exam/start-attempt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            testId,
+            studentId: user.id,
+          }),
+        });
 
-        let activeQuestions: Question[] = [];
-        if (foundTest?.questions && foundTest.questions.length > 0) {
-          activeQuestions = foundTest.questions.map((tq) => tq.question!).filter(Boolean);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          setErrorMessage({
+            status: res.status,
+            text: data.error || 'Failed to start or retrieve assessment attempt.',
+          });
+          setLoading(false);
+          return;
         }
 
-        if (activeQuestions.length === 0) {
-          const allDbQuestions = await fetchQuestions();
-          activeQuestions = allDbQuestions.filter((q) => q.is_active);
-        }
-
-        setQuestions(activeQuestions);
+        setAttemptId(data.attempt.id);
+        setIsExistingAttempt(Boolean(data.isExisting));
+        setTest(data.test);
+        setQuestions(data.questions || []);
 
         // Initialize code map with starter codes
         const initialMap: Record<string, string> = {};
-        activeQuestions.forEach((q) => {
+        (data.questions || []).forEach((q: Question) => {
           initialMap[q.id] = q.starter_code || 'def solution():\n    pass\n';
         });
         setStudentCodeMap(initialMap);
       } catch (err) {
         console.error('Failed to load assessment data:', err);
+        setErrorMessage({
+          status: 500,
+          text: 'Network error communicating with assessment engine.',
+        });
       } finally {
         setLoading(false);
       }
     }
     loadAssessmentData();
-  }, [testId]);
+  }, [testId, user, authLoading]);
 
   const currentQuestion = questions[currentQIndex] || null;
 
   // Anti-cheating guard integration
   const examGuard = useExamGuard({
-    enabled: Boolean(test && questions.length > 0),
+    enabled: Boolean(test && questions.length > 0 && !errorMessage),
     studentId: user?.id || 'candidate',
-    attemptId: `att-${testId}`,
+    attemptId: attemptId || `att-${testId}`,
   });
 
   // Relative autosave time label updater
@@ -140,7 +169,7 @@ export default function CodingTestPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            attemptId: `att-${testId}`,
+            attemptId: attemptId || `att-${testId}`,
             questionId: qId,
             studentId: user?.id || 'candidate',
             code: codeToSave,
@@ -152,7 +181,7 @@ export default function CodingTestPage() {
         setSaveStatus('saved');
       }
     },
-    [testId, user?.id]
+    [attemptId, testId, user?.id]
   );
 
   // Periodic Auto-save every 20 seconds
@@ -199,10 +228,22 @@ export default function CodingTestPage() {
           code,
           input: inputToUse,
           timeLimitMs: currentQuestion.time_limit_ms,
+          studentId: user?.id,
+          questionId: currentQuestion.id,
+          attemptId: attemptId || undefined,
         }),
       });
 
       const data = await res.json();
+
+      if (!res.ok) {
+        setLastRunResult({
+          status: res.status === 403 ? 'Access Denied (403)' : 'Execution Error',
+          stderr: data.error || 'Execution rejected by server.',
+          isSubmission: false,
+        });
+        return;
+      }
 
       setLastRunResult({
         status: data.status || 'Executed',
@@ -235,7 +276,7 @@ export default function CodingTestPage() {
         body: JSON.stringify({
           questionId: currentQuestion.id,
           code,
-          attemptId: `att-${testId}`,
+          attemptId: attemptId || `att-${testId}`,
           studentId: user?.id || 'candidate',
           attemptNumber: 1,
           testCases: currentQuestion.test_cases || [],
@@ -245,6 +286,15 @@ export default function CodingTestPage() {
       });
 
       const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setLastRunResult({
+          status: res.status === 403 ? 'Access Denied (403)' : 'Submission Error',
+          stderr: data.error || 'Submission rejected by server.',
+          isSubmission: true,
+        });
+        return;
+      }
 
       setLastRunResult({
         status: data.status,
@@ -284,8 +334,10 @@ export default function CodingTestPage() {
     const maxMarks = test?.total_marks || 100;
     const percentage = Math.round((totalScore / maxMarks) * 100);
 
+    const realAttemptId = attemptId || `att-${testId}-${user?.register_number || 'guest'}`;
+
     const attemptRecord: TestAttempt = {
-      id: `att-${testId}-${user?.register_number || 'guest'}`,
+      id: realAttemptId,
       test_id: testId,
       student_id: user?.id || 'candidate',
       started_at: new Date(Date.now() - 1800000).toISOString(),
@@ -320,8 +372,10 @@ export default function CodingTestPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          attemptId: attemptRecord.id,
+          attemptId: realAttemptId,
           studentId: user?.id || 'candidate',
+          studentName: user?.full_name,
+          registerNumber: user?.register_number,
           testId,
           isAutoSubmit,
           finalScores: questionScores,
@@ -339,6 +393,63 @@ export default function CodingTestPage() {
       <div className="fixed inset-0 bg-[#F7F9FC] flex flex-col items-center justify-center text-slate-900 space-y-4">
         <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
         <p className="text-sm font-semibold text-slate-600">Loading Assessment Environment...</p>
+      </div>
+    );
+  }
+
+  // Display specific server-side errors (e.g. 403 Academic Year Mismatch, 400 Insufficient Questions Pool)
+  if (errorMessage) {
+    const is403 = errorMessage.status === 403;
+    const is400 = errorMessage.status === 400;
+
+    return (
+      <div className="fixed inset-0 bg-[#F7F9FC] flex items-center justify-center p-4 z-50">
+        <div className="glass-card rounded-3xl max-w-lg w-full p-8 space-y-6 shadow-xl border border-slate-200/90 bg-white text-center">
+          <div
+            className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center ${
+              is403
+                ? 'bg-rose-100 text-rose-600'
+                : is400
+                ? 'bg-amber-100 text-amber-600'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {is403 ? (
+              <Lock className="w-8 h-8" />
+            ) : is400 ? (
+              <AlertTriangle className="w-8 h-8" />
+            ) : (
+              <Shield className="w-8 h-8" />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700">
+              <span>HTTP {errorMessage.status}</span>
+              <span>•</span>
+              <span>{is403 ? 'ACCESS DENIED' : is400 ? 'REQUIREMENT NOT MET' : 'ERROR'}</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">
+              {is403
+                ? 'Academic Year Restriction'
+                : is400
+                ? 'Assessment Pool Notice'
+                : 'Unable to Load Assessment'}
+            </h2>
+            <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
+              {errorMessage.text}
+            </p>
+          </div>
+
+          <div className="pt-2 flex justify-center gap-3">
+            <button
+              onClick={() => router.push('/student/assessments')}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-indigo-600/20"
+            >
+              Return to My Assessments
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

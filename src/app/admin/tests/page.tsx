@@ -56,10 +56,11 @@ interface AssessmentItem {
   start_time: string;
   end_time: string;
   status: 'draft' | 'scheduled' | 'live' | 'completed' | 'closed' | 'archived';
+  year: number; // 2 or 3
+  question_count: number;
   is_archived: boolean;
   created_at: string;
   updated_at: string;
-  question_count: number;
   participant_count: number;
   questions?: QuestionDraft[];
 }
@@ -69,6 +70,10 @@ export default function AssessmentManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [poolStats, setPoolStats] = useState<{ year2Count: number; year3Count: number }>({
+    year2Count: 0,
+    year3Count: 0,
+  });
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -87,6 +92,8 @@ export default function AssessmentManagementPage() {
   const [formPassingMarks, setFormPassingMarks] = useState(40);
   const [formStartTime, setFormStartTime] = useState('');
   const [formEndTime, setFormEndTime] = useState('');
+  const [formYear, setFormYear] = useState<2 | 3>(2);
+  const [formQuestionCount, setFormQuestionCount] = useState<number>(0);
   const [formQuestions, setFormQuestions] = useState<QuestionDraft[]>([]);
 
   // New question mini-form state
@@ -102,10 +109,20 @@ export default function AssessmentManagementPage() {
   const fetchAssessments = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/assessments?includeArchived=true');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.assessments)) {
-        setAssessments(data.assessments);
+      const [resAss, resStats] = await Promise.all([
+        fetch('/api/admin/assessments?includeArchived=true'),
+        fetch('/api/admin/questions?stats=true'),
+      ]);
+      const dataAss = await resAss.json();
+      if (dataAss.success && Array.isArray(dataAss.assessments)) {
+        setAssessments(dataAss.assessments);
+      }
+      const dataStats = await resStats.json();
+      if (dataStats.success && dataStats.stats) {
+        setPoolStats({
+          year2Count: dataStats.stats.year2Count || 0,
+          year3Count: dataStats.stats.year3Count || 0,
+        });
       }
     } catch (err) {
       console.error('Failed to load assessments:', err);
@@ -127,6 +144,8 @@ export default function AssessmentManagementPage() {
     setFormDuration(60);
     setFormTotalMarks(100);
     setFormPassingMarks(40);
+    setFormYear(2);
+    setFormQuestionCount(0);
     const now = new Date();
     setFormStartTime(now.toISOString().slice(0, 16));
     const nextWeek = new Date(Date.now() + 7 * 86400000);
@@ -169,6 +188,8 @@ export default function AssessmentManagementPage() {
     setFormPassingMarks(test.passing_marks || 40);
     setFormStartTime(test.start_time ? test.start_time.slice(0, 16) : '');
     setFormEndTime(test.end_time ? test.end_time.slice(0, 16) : '');
+    setFormYear(Number(test.year) === 3 ? 3 : 2);
+    setFormQuestionCount(Number(test.question_count || 0));
 
     // Fetch full question list for this test
     try {
@@ -228,6 +249,8 @@ export default function AssessmentManagementPage() {
         start_time: formStartTime || new Date().toISOString(),
         end_time: formEndTime || new Date(Date.now() + 86400000 * 7).toISOString(),
         status: targetStatus,
+        year: Number(formYear),
+        question_count: Number(formQuestionCount),
         questions: formQuestions,
       };
 
@@ -490,10 +513,21 @@ export default function AssessmentManagementPage() {
                     <tr key={test.id} className="hover:bg-slate-50/70 transition">
                       {/* Title & Code */}
                       <td className="py-3.5 px-4">
-                        <div className="space-y-0.5">
-                          <span className="font-bold text-slate-900 hover:text-indigo-600 cursor-pointer" onClick={() => openEditModal(test)}>
-                            {test.title}
-                          </span>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-900 hover:text-indigo-600 cursor-pointer text-sm" onClick={() => openEditModal(test)}>
+                              {test.title}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                                Number(test.year) === 3
+                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}
+                            >
+                              {Number(test.year) === 3 ? '3rd Year Assessment' : '2nd Year Assessment'}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-1.5">
                             <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 font-mono text-[10px] rounded border border-slate-200">
                               {test.code || test.id.slice(0, 8)}
@@ -505,7 +539,8 @@ export default function AssessmentManagementPage() {
 
                       {/* Questions count */}
                       <td className="py-3.5 px-3 text-center font-medium text-slate-700">
-                        {test.question_count}
+                        <span className="font-bold text-slate-900">{test.question_count}</span>
+                        <span className="text-[10px] text-slate-400 block font-normal">to assign</span>
                       </td>
 
                       {/* Duration */}
@@ -714,6 +749,47 @@ export default function AssessmentManagementPage() {
                   onChange={(e) => setFormDescription(e.target.value)}
                   className="w-full glass-input rounded-xl p-2.5 text-slate-900 focus:outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div>
+                  <label className="block text-slate-800 font-bold mb-1">
+                    Academic Year Restriction <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={formYear}
+                    onChange={(e) => setFormYear(Number(e.target.value) as 2 | 3)}
+                    className="w-full bg-white border border-indigo-200 rounded-xl p-2.5 font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value={2}>2nd Year Assessment (Strict Year 2 Pool)</option>
+                    <option value={3}>3rd Year Assessment (Strict Year 3 Pool)</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Available in {formYear === 2 ? '2nd Year' : '3rd Year'} Question Bank:{' '}
+                    <strong className="text-indigo-600 font-bold">
+                      {formYear === 2 ? poolStats.year2Count : poolStats.year3Count} questions
+                    </strong>
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-slate-800 font-bold mb-1">
+                    Number of Questions to Assign (Server-side Randomized)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="0 for all questions in pool"
+                    value={formQuestionCount}
+                    onChange={(e) => setFormQuestionCount(Number(e.target.value))}
+                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {formQuestionCount > 0
+                      ? `Each candidate receives ${formQuestionCount} randomly selected questions from the Year ${formYear} pool.`
+                      : 'Candidates receive all available questions from the pool in randomized order.'}
+                  </p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

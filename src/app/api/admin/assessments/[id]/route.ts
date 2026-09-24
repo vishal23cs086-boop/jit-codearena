@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAssessmentWithQuestions, updateAssessmentInDb, deleteOrArchiveAssessmentInDb } from '@/lib/turso';
 
 export async function GET(
@@ -31,6 +31,24 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
+
+    if (body.question_count && Number(body.question_count) > 0) {
+      const { getQuestionsFromDb, getAssessmentWithQuestions } = await import('@/lib/turso');
+      const existing = await getAssessmentWithQuestions(id);
+      const targetYear = body.year !== undefined ? (Number(body.year) === 3 ? 3 : 2) : (existing?.year || 2);
+      const pool = await getQuestionsFromDb({ year: targetYear });
+      const reqCount = Number(body.question_count);
+      const totalAvailable = Math.max(pool.length, Array.isArray(body.questions) ? body.questions.length : 0);
+      if (totalAvailable < reqCount) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Insufficient questions for this assessment. Required: ${reqCount}. Available for ${targetYear === 2 ? '2nd' : '3rd'} Year: ${totalAvailable}.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     const result = await updateAssessmentInDb(id, body);
     return NextResponse.json({

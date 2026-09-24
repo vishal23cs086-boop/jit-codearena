@@ -30,7 +30,10 @@ export default function StudentAssessmentsPage() {
           fetchTests(),
           fetchAttempts(),
         ]);
-        setTests(allTests);
+        const yearFiltered = user?.year
+          ? allTests.filter((t) => Number(t.year || 2) === Number(user.year))
+          : allTests;
+        setTests(yearFiltered);
         if (user) {
           setAttempts(allAttempts.filter((a) => a.student_id === user.id));
         }
@@ -139,8 +142,14 @@ export default function StudentAssessmentsPage() {
                 <div>
                   <div className="flex items-center justify-between gap-3 mb-3">
                     {getStatusBadge(status)}
-                    <span className="text-xs text-slate-500 font-mono">
-                      {test.questions?.length || 0} Questions
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
+                        Number(test.year) === 3
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}
+                    >
+                      {Number(test.year) === 3 ? '3rd Year Assessment' : '2nd Year Assessment'}
                     </span>
                   </div>
 
