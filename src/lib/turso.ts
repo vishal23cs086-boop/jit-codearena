@@ -453,7 +453,6 @@ export async function getStudentsWithDetails() {
   await initTursoDb();
   const client = getTursoClient();
   const res = await client.execute('SELECT * FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) ORDER BY register_number ASC');
-  const now = Date.now();
   const students = [];
 
   for (const row of res.rows) {
@@ -462,30 +461,14 @@ export async function getStudentsWithDetails() {
 
     // Test attempts count and scores
     const attRes = await client.execute({
-      sql: `SELECT 
-              COUNT(*) as count, 
-              SUM(CASE WHEN status = 'completed' OR status = 'submitted' OR status = 'auto_submitted' THEN 1 ELSE 0 END) as completed_count,
-              AVG(CASE WHEN status = 'completed' OR status = 'submitted' OR status = 'auto_submitted' THEN score ELSE NULL END) as avg_score, 
-              MAX(score) as max_score,
-              SUM(violation_count) as total_violations
-            FROM test_attempts 
-            WHERE student_id = ?`,
+      sql: 'SELECT COUNT(*) as count, AVG(score) as avg_score, MAX(score) as max_score FROM test_attempts WHERE student_id = ?',
       args: [studentId],
     });
-
-    const attRow: any = attRes.rows[0] || {};
-    const attemptsCount = Number(attRow.count || 0);
-    const completedCount = Number(attRow.completed_count || 0);
-    const avgScore = attRow.avg_score !== null && attRow.avg_score !== undefined ? Math.round(Number(attRow.avg_score)) : null;
-    const maxScore = attRow.max_score !== null && attRow.max_score !== undefined ? Math.round(Number(attRow.max_score)) : null;
-    const attemptViolations = Number(attRow.total_violations || 0);
-
-    // Presence
-    const presRes = await client.execute({
-      sql: 'SELECT session_status, last_seen, active_assessment_id, violation_count FROM student_presence WHERE student_id = ? LIMIT 1',
-      args: [studentId],
-    });
-    const pres: any = presRes.rows[0] || null;
+    const attemptsCount = Number(attRes.rows[0]?.count || 0);
+    const rawAvg = attRes.rows[0]?.avg_score;
+    const rawMax = attRes.rows[0]?.max_score;
+    const avgScore = rawAvg !== null && rawAvg !== undefined ? Math.round(Number(rawAvg)) : null;
+    const maxScore = rawMax !== null && rawMax !== undefined ? Math.round(Number(rawMax)) : null;
 
     // Last login from login_activity
     const logRes = await client.execute({
@@ -493,40 +476,6 @@ export async function getStudentsWithDetails() {
       args: [studentId, regNo],
     });
     const lastLogin = logRes.rows[0]?.login_time ? String(logRes.rows[0]?.login_time) : null;
-
-    const isArchived = Number(row.is_archived || 0) === 1;
-    const isActive = Number(row.is_active ?? 1) === 1;
-    const status = (row.status as 'active' | 'disabled' | 'archived') || 'active';
-
-    let onlineStatus: 'ONLINE' | 'IDLE' | 'OFFLINE' | 'DISABLED' | 'ARCHIVED' = 'OFFLINE';
-    if (!isActive || status === 'disabled') {
-      onlineStatus = 'DISABLED';
-    } else if (isArchived || status === 'archived') {
-      onlineStatus = 'ARCHIVED';
-    } else if (pres && pres.last_seen && now - Number(pres.last_seen) <= 90000) {
-      if (now - Number(pres.last_seen) > 45000) {
-        onlineStatus = 'IDLE';
-      } else {
-        onlineStatus = 'ONLINE';
-      }
-    } else {
-      onlineStatus = 'OFFLINE';
-    }
-
-    // Active assessment info if in progress
-    let currentAssessment: string | null = null;
-    let assessmentStatus: string | null = null;
-    if (pres?.active_assessment_id) {
-      const tRes = await client.execute({
-        sql: 'SELECT title FROM tests WHERE id = ? LIMIT 1',
-        args: [pres.active_assessment_id],
-      });
-      currentAssessment = tRes.rows[0]?.title ? String(tRes.rows[0].title) : String(pres.active_assessment_id);
-      assessmentStatus = 'In Progress';
-    }
-
-    const lastSeenTime = pres?.last_seen ? new Date(Number(pres.last_seen)).toISOString() : null;
-    const lastActive = lastSeenTime || lastLogin || String(row.created_at);
 
     students.push({
       id: studentId,
@@ -538,23 +487,17 @@ export async function getStudentsWithDetails() {
       year: Number(row.year),
       section: String(row.section || 'A'),
       phone: row.phone ? String(row.phone) : undefined,
-      status,
-      online_status: onlineStatus,
-      is_active: isActive,
-      is_archived: isArchived,
+      status: (row.status as 'active' | 'disabled' | 'archived') || 'active',
+      is_active: Number(row.is_active ?? 1) === 1,
+      is_archived: Number(row.is_archived || 0) === 1,
       account_deleted: Number(row.account_deleted || 0) === 1,
       session_version: Number(row.session_version || 1),
       created_at: String(row.created_at),
       updated_at: row.updated_at ? String(row.updated_at) : undefined,
       attempts_count: attemptsCount,
-      completed_count: completedCount,
       average_score: avgScore,
       max_score: maxScore,
-      violations: Math.min(3, Math.max(Number(pres?.violation_count || 0), attemptViolations)),
-      current_assessment: currentAssessment,
-      assessment_status: assessmentStatus,
       last_login: lastLogin,
-      last_active: lastActive,
     });
   }
   return students;
@@ -574,7 +517,7 @@ export async function getStudentProfileDetails(studentId: string) {
 
   // 2. Fetch attempts with test details
   const attRes = await client.execute({
-    sql: `SELECT ta.*, t.title as test_title, t.code as test_code, t.duration as test_duration, t.passing_marks
+    sql: `SELECT ta.*, t.title as test_title, t.code as test_code, t.duration as test_duration
           FROM test_attempts ta
           LEFT JOIN tests t ON ta.test_id = t.id
           WHERE ta.student_id = ?
@@ -582,40 +525,22 @@ export async function getStudentProfileDetails(studentId: string) {
     args: [studentId],
   });
 
-  const attempts = attRes.rows.map((r: any) => {
-    const score = Number(r.score || 0);
-    const maxScore = Number(r.max_score || 100);
-    const passingMarks = Number(r.passing_marks || 40);
-    const percentage = r.percentage !== null && r.percentage !== undefined && Number(r.percentage) > 0
-      ? Number(r.percentage)
-      : maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-
-    let timeTakenSeconds = Number(r.time_taken_seconds || 0);
-    if (timeTakenSeconds <= 0 && r.start_time && r.end_time) {
-      timeTakenSeconds = Math.max(1, Math.floor((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / 1000));
-    }
-
-    return {
-      id: String(r.id),
-      test_id: String(r.test_id),
-      test_title: String(r.test_title || 'Assessment'),
-      test_code: r.test_code ? String(r.test_code) : undefined,
-      test_duration: Number(r.test_duration || 60),
-      score,
-      max_score: maxScore,
-      percentage,
-      status: String(r.status || 'in_progress'),
-      result_status: score >= passingMarks ? 'Passed' : 'Failed',
-      start_time: String(r.start_time),
-      end_time: r.end_time ? String(r.end_time) : null,
-      time_taken_seconds: timeTakenSeconds,
-      completion_rank: Number(r.completion_rank || 1),
-      tab_switches: Number(r.tab_switches || 0),
-      fullscreen_exits: Number(r.fullscreen_exits || 0),
-      violation_count: Math.min(3, Number(r.violation_count || 0)),
-      created_at: String(r.created_at),
-    };
-  });
+  const attempts = attRes.rows.map((r: any) => ({
+    id: String(r.id),
+    test_id: String(r.test_id),
+    test_title: String(r.test_title || 'Assessment'),
+    test_code: r.test_code ? String(r.test_code) : undefined,
+    test_duration: Number(r.test_duration || 60),
+    score: Number(r.score || 0),
+    max_score: Number(r.max_score || 100),
+    status: String(r.status || 'in_progress'),
+    start_time: String(r.start_time),
+    end_time: r.end_time ? String(r.end_time) : null,
+    tab_switches: Number(r.tab_switches || 0),
+    fullscreen_exits: Number(r.fullscreen_exits || 0),
+    violation_count: Number(r.violation_count || 0),
+    created_at: String(r.created_at),
+  }));
 
   // 3. Submissions summary
   const subRes = await client.execute({
@@ -627,7 +552,7 @@ export async function getStudentProfileDetails(studentId: string) {
 
   // 4. Activity Logs for this student
   const logsRes = await client.execute({
-    sql: 'SELECT * FROM activity_logs WHERE student_id = ? OR register_number = ? ORDER BY timestamp DESC LIMIT 50',
+    sql: 'SELECT * FROM activity_logs WHERE student_id = ? OR register_number = ? ORDER BY timestamp DESC LIMIT 25',
     args: [studentId, s.register_number],
   });
   const logs = logsRes.rows.map((l: any) => ({
@@ -641,129 +566,10 @@ export async function getStudentProfileDetails(studentId: string) {
 
   // 5. Last Login
   const loginRes = await client.execute({
-    sql: 'SELECT * FROM login_activity WHERE user_id = ? OR UPPER(TRIM(register_number)) = UPPER(?) ORDER BY login_time DESC LIMIT 1',
+    sql: 'SELECT * FROM login_activity WHERE user_id = ? OR register_number = ? ORDER BY login_time DESC LIMIT 1',
     args: [studentId, s.register_number],
   });
   const lastLoginRow: any = loginRes.rows[0] || null;
-
-  // 6. Current presence
-  const presRes = await client.execute({
-    sql: `SELECT sp.*, t.title as active_test_title, t.code as active_test_code, ta.ends_at as attempt_ends_at
-          FROM student_presence sp
-          LEFT JOIN tests t ON sp.active_assessment_id = t.id
-          LEFT JOIN test_attempts ta ON sp.student_id = ta.student_id AND sp.active_assessment_id = ta.test_id AND (ta.status = 'in_progress' OR ta.status = 'not_started')
-          WHERE sp.student_id = ? LIMIT 1`,
-    args: [studentId],
-  });
-  const presRow: any = presRes.rows[0] || null;
-  const now = Date.now();
-
-  let onlineStatus: 'ONLINE' | 'IDLE' | 'OFFLINE' | 'DISABLED' | 'ARCHIVED' = 'OFFLINE';
-  const isArchived = Number(s.is_archived || 0) === 1 || s.status === 'archived';
-  const isActive = Number(s.is_active ?? 1) === 1 && s.status !== 'disabled';
-
-  if (!isActive) {
-    onlineStatus = 'DISABLED';
-  } else if (isArchived) {
-    onlineStatus = 'ARCHIVED';
-  } else if (presRow && presRow.last_seen && now - Number(presRow.last_seen) <= 90000) {
-    if (now - Number(presRow.last_seen) > 45000) {
-      onlineStatus = 'IDLE';
-    } else {
-      onlineStatus = 'ONLINE';
-    }
-  } else {
-    onlineStatus = 'OFFLINE';
-  }
-
-  let currentActivity = null;
-  if (presRow?.active_assessment_id) {
-    const totalQ = Number(presRow.total_questions || 4);
-    const currQ = Number(presRow.current_question_index || 0);
-    const endsAtMs = presRow.attempt_ends_at ? new Date(String(presRow.attempt_ends_at)).getTime() : null;
-    const timeRemaining = endsAtMs ? Math.max(0, Math.floor((endsAtMs - now) / 1000)) : null;
-
-    currentActivity = {
-      active_assessment_id: String(presRow.active_assessment_id),
-      active_assessment_title: String(presRow.active_test_title || 'Active Assessment'),
-      assessment_code: presRow.active_test_code ? String(presRow.active_test_code) : undefined,
-      current_question_index: currQ,
-      current_question: `Q${currQ + 1} of ${totalQ}`,
-      total_questions: totalQ,
-      progress_percent: totalQ > 0 ? Math.round(((currQ) / totalQ) * 100) : 0,
-      time_remaining_seconds: timeRemaining,
-      ends_at: presRow.attempt_ends_at ? String(presRow.attempt_ends_at) : null,
-      violation_count: Math.min(3, Number(presRow.violation_count || 0)),
-      last_seen: new Date(Number(presRow.last_seen)).toISOString(),
-    };
-  }
-
-  // 7. Question Performance across submissions
-  const qPerfRes = await client.execute({
-    sql: `SELECT 
-            sub.question_id,
-            q.title as question_title,
-            q.topic,
-            q.difficulty,
-            q.marks as max_marks,
-            sub.score as marks_awarded,
-            sub.status,
-            sub.passed_test_cases,
-            sub.total_test_cases,
-            sub.execution_time,
-            sub.created_at as last_submitted_at,
-            sub.code as last_code
-          FROM submissions sub
-          JOIN questions q ON sub.question_id = q.id
-          WHERE sub.student_id = ?
-          ORDER BY sub.created_at DESC`,
-    args: [studentId],
-  });
-
-  const questionPerformance = qPerfRes.rows.map((qp: any, idx: number) => ({
-    question_id: String(qp.question_id),
-    question_number: idx + 1,
-    title: String(qp.question_title),
-    topic: String(qp.topic || 'Algorithms'),
-    difficulty: String(qp.difficulty || 'Easy'),
-    score: Number(qp.marks_awarded || 0),
-    max_score: Number(qp.max_marks || 25),
-    status: String(qp.status || 'Attempted'),
-    passed_test_cases: Number(qp.passed_test_cases || 0),
-    total_test_cases: Number(qp.total_test_cases || 2),
-    execution_time_ms: Number(qp.execution_time || 0),
-    last_submission: String(qp.last_submitted_at),
-    code: String(qp.last_code || ''),
-  }));
-
-  // 8. Security & Proctoring Summary
-  let totalFullscreenExits = 0;
-  let totalTabSwitches = 0;
-  let copyPasteEvents = 0;
-  let otherSecurityEvents = 0;
-
-  for (const a of attempts) {
-    totalFullscreenExits += a.fullscreen_exits;
-    totalTabSwitches += a.tab_switches;
-  }
-
-  for (const l of logs) {
-    if (l.event_type === 'FULLSCREEN_EXIT') totalFullscreenExits++;
-    else if (l.event_type === 'TAB_SWITCH') totalTabSwitches++;
-    else if (l.event_type.includes('COPY') || l.event_type.includes('PASTE') || l.event_type.includes('CUT')) copyPasteEvents++;
-    else if (l.event_type === 'SHORTCUT_ATTEMPT' || l.event_type === 'WARNING_TRIGGERED') otherSecurityEvents++;
-  }
-
-  const securityProctoring = {
-    warning_count: Math.min(3, Number(presRow?.violation_count || 0)),
-    fullscreen_exits: totalFullscreenExits,
-    tab_switches: totalTabSwitches,
-    copy_paste_events: copyPasteEvents,
-    other_security_events: otherSecurityEvents,
-    recent_security_logs: logs.filter((l) =>
-      ['FULLSCREEN_EXIT', 'TAB_SWITCH', 'COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT', 'SHORTCUT_ATTEMPT', 'WARNING_TRIGGERED'].includes(l.event_type)
-    ),
-  };
 
   // Compute statistics
   const completedAttempts = attempts.filter(
@@ -775,9 +581,6 @@ export async function getStudentProfileDetails(studentId: string) {
   const highestScore = attempts.length > 0
     ? Math.max(...attempts.map((a) => a.score))
     : 0;
-
-  const lastSeenIso = presRow?.last_seen ? new Date(Number(presRow.last_seen)).toISOString() : null;
-  const lastActive = lastSeenIso || (lastLoginRow ? String(lastLoginRow.login_time) : String(s.created_at));
 
   return {
     student: {
@@ -791,16 +594,12 @@ export async function getStudentProfileDetails(studentId: string) {
       section: String(s.section || 'A'),
       phone: s.phone ? String(s.phone) : undefined,
       status: (s.status as 'active' | 'disabled' | 'archived') || 'active',
-      online_status: onlineStatus,
-      is_archived: isArchived,
-      is_active: isActive,
+      is_archived: Number(s.is_archived || 0) === 1,
       created_at: String(s.created_at),
       updated_at: s.updated_at ? String(s.updated_at) : undefined,
       last_login: lastLoginRow ? String(lastLoginRow.login_time) : null,
-      last_active: lastActive,
       last_ip: lastLoginRow?.ip_address ? String(lastLoginRow.ip_address) : '127.0.0.1',
     },
-    current_activity: currentActivity,
     stats: {
       tests_attempted: attempts.length,
       tests_completed: completedAttempts.length,
@@ -809,9 +608,7 @@ export async function getStudentProfileDetails(studentId: string) {
       problems_solved: acceptedSubmissions,
       total_submissions: totalSubmissions,
     },
-    recent_assessments: attempts,
-    question_performance: questionPerformance,
-    security_proctoring: securityProctoring,
+    recent_assessments: attempts.slice(0, 10),
     recent_activity: logs,
   };
 }
@@ -1382,7 +1179,6 @@ export async function getPresenceListFromDb() {
       current_question_index: Number(row.current_question_index || 0),
       total_questions: Number(row.total_questions || 0),
       violation_count: violations,
-      fullscreen_exits: Number((row as any).fullscreen_exits || 0),
       session_status: computedStatus,
       last_seen: lastSeen,
       started_at: row.started_at ? Number(row.started_at) : null,
@@ -2777,38 +2573,18 @@ export async function getDashboardStatsFromDb() {
   await initTursoDb();
   const client = getTursoClient();
 
-  const [studentsRes, presenceRes, activeAttemptsRes, attemptsRes, violationsRes] = await Promise.all([
-    client.execute('SELECT COUNT(*) as count FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL)'),
+  const [studentsRes, presenceRes, attemptsRes, violationsRes] = await Promise.all([
+    client.execute('SELECT COUNT(*) as count FROM students'),
     getPresenceListFromDb(),
-    client.execute(`
-      SELECT COUNT(*) as count 
-      FROM test_attempts ta 
-      JOIN students s ON ta.student_id = s.id 
-      WHERE (ta.status = 'in_progress' OR ta.status = 'not_started') 
-        AND (s.account_deleted = 0 OR s.account_deleted IS NULL) 
-        AND (ta.ends_at IS NULL OR ta.ends_at > datetime('now'))
-    `),
-    client.execute(`
-      SELECT COUNT(*) as count 
-      FROM test_attempts ta 
-      JOIN students s ON ta.student_id = s.id 
-      WHERE (ta.status = 'completed' OR ta.status = 'submitted' OR ta.status = 'auto_submitted') 
-        AND (s.account_deleted = 0 OR s.account_deleted IS NULL)
-    `),
-    client.execute(`
-      SELECT COUNT(*) as count 
-      FROM activity_logs 
-      WHERE event_type IN ('FULLSCREEN_EXIT', 'TAB_SWITCH', 'COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT', 'SHORTCUT_ATTEMPT', 'WARNING_TRIGGERED', 'VIOLATION')
-    `),
+    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE status = 'completed' OR status = 'submitted'"),
+    client.execute('SELECT SUM(violation_count) as total_violations FROM student_presence'),
   ]);
 
   const totalStudents = Number(studentsRes.rows[0]?.count || 0);
-  const onlineCount = presenceRes.filter(
-    (p) => p.session_status === 'ONLINE' || p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING' || p.session_status === 'IDLE'
-  ).length;
-  const inAssessmentCount = Number(activeAttemptsRes.rows[0]?.count || 0);
+  const onlineCount = presenceRes.filter((p) => p.session_status === 'ONLINE' || p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING').length;
+  const inAssessmentCount = presenceRes.filter((p) => p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING').length;
   const completedAttempts = Number(attemptsRes.rows[0]?.count || 0);
-  const totalViolations = Number(violationsRes.rows[0]?.count || 0);
+  const totalViolations = Number(violationsRes.rows[0]?.total_violations || 0);
 
   const recentLogs = await getActivityLogsFromDb(20);
 
@@ -3163,449 +2939,4 @@ export async function getStudentAssessmentResultFromDb(testId: string, studentId
     copy_paste_count: Number(att.violation_count || 0),
     questions,
   };
-}
-
-// -------------------------------------------------------------
-// DRILL-DOWN HELPERS FOR ADMIN DASHBOARD
-// -------------------------------------------------------------
-
-export async function getActiveAttemptsFromDb() {
-  await initTursoDb();
-  const client = getTursoClient();
-
-  const res = await client.execute(`
-    SELECT 
-      ta.id as attempt_id,
-      ta.test_id,
-      ta.student_id,
-      ta.start_time,
-      ta.ends_at,
-      ta.score as current_score,
-      ta.status as attempt_status,
-      ta.tab_switches,
-      ta.fullscreen_exits,
-      ta.violation_count,
-      s.register_number,
-      s.full_name as student_name,
-      s.department,
-      s.year,
-      t.title as test_title,
-      t.code as test_code,
-      t.duration as test_duration,
-      sp.current_question_index,
-      sp.total_questions,
-      sp.last_seen as last_activity_time
-    FROM test_attempts ta
-    JOIN students s ON ta.student_id = s.id
-    LEFT JOIN tests t ON ta.test_id = t.id
-    LEFT JOIN student_presence sp ON ta.student_id = sp.student_id AND ta.test_id = sp.active_assessment_id
-    WHERE (ta.status = 'in_progress' OR ta.status = 'not_started')
-      AND (s.account_deleted = 0 OR s.account_deleted IS NULL)
-      AND (ta.ends_at IS NULL OR ta.ends_at > datetime('now'))
-    ORDER BY ta.start_time DESC
-  `);
-
-  const now = Date.now();
-  const list = [];
-
-  for (const r of res.rows) {
-    const attemptId = String(r.attempt_id);
-    const subRes = await client.execute({
-      sql: 'SELECT COUNT(DISTINCT question_id) as comp FROM submissions WHERE attempt_id = ? AND passed_test_cases > 0',
-      args: [attemptId],
-    });
-    const questionsCompleted = Number(subRes.rows[0]?.comp || 0);
-    const totalQuestions = Number(r.total_questions || 4);
-    const progressPercent = totalQuestions > 0 ? Math.min(100, Math.round((questionsCompleted / totalQuestions) * 100)) : 0;
-    const endsAtMs = r.ends_at ? new Date(String(r.ends_at)).getTime() : null;
-    const timeRemainingSeconds = endsAtMs ? Math.max(0, Math.floor((endsAtMs - now) / 1000)) : null;
-
-    list.push({
-      attempt_id: attemptId,
-      student_id: String(r.student_id),
-      student_name: String(r.student_name || 'Student'),
-      register_number: String(r.register_number || 'N/A'),
-      department: String(r.department || 'N/A'),
-      year: Number(r.year || 2),
-      test_id: String(r.test_id),
-      test_title: String(r.test_title || 'Assessment'),
-      test_code: r.test_code ? String(r.test_code) : undefined,
-      started_at: String(r.start_time),
-      ends_at: r.ends_at ? String(r.ends_at) : null,
-      time_remaining_seconds: timeRemainingSeconds,
-      current_question_index: Number(r.current_question_index || 0),
-      current_question: `Q${Number(r.current_question_index || 0) + 1} of ${totalQuestions}`,
-      questions_completed: questionsCompleted,
-      total_questions: totalQuestions,
-      progress_percent: progressPercent,
-      current_score: Number(r.current_score || 0),
-      violation_count: Math.min(3, Number(r.violation_count || 0)),
-      tab_switches: Number(r.tab_switches || 0),
-      fullscreen_exits: Number(r.fullscreen_exits || 0),
-      last_activity: r.last_activity_time ? new Date(Number(r.last_activity_time)).toISOString() : String(r.start_time),
-    });
-  }
-
-  return list;
-}
-
-export async function getCompletedAttemptsFromDb() {
-  await initTursoDb();
-  const client = getTursoClient();
-
-  const res = await client.execute(`
-    SELECT 
-      ta.id as attempt_id,
-      ta.test_id,
-      ta.student_id,
-      ta.start_time,
-      ta.end_time,
-      ta.score,
-      ta.max_score,
-      ta.percentage,
-      ta.time_taken_seconds,
-      ta.completion_rank,
-      ta.status as attempt_status,
-      ta.tab_switches,
-      ta.fullscreen_exits,
-      ta.violation_count,
-      ta.question_results,
-      s.register_number,
-      s.full_name as student_name,
-      s.department,
-      s.year,
-      t.title as test_title,
-      t.code as test_code,
-      t.passing_marks
-    FROM test_attempts ta
-    JOIN students s ON ta.student_id = s.id
-    LEFT JOIN tests t ON ta.test_id = t.id
-    WHERE (ta.status = 'completed' OR ta.status = 'submitted' OR ta.status = 'auto_submitted')
-      AND (s.account_deleted = 0 OR s.account_deleted IS NULL)
-    ORDER BY ta.end_time DESC, ta.created_at DESC
-  `);
-
-  return res.rows.map((r: any) => {
-    const score = Number(r.score || 0);
-    const maxScore = Number(r.max_score || 100);
-    const passingMarks = Number(r.passing_marks || 40);
-    const percentage = r.percentage !== null && r.percentage !== undefined && Number(r.percentage) > 0
-      ? Number(r.percentage)
-      : maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-
-    let timeTakenSeconds = Number(r.time_taken_seconds || 0);
-    if (timeTakenSeconds <= 0 && r.start_time && r.end_time) {
-      timeTakenSeconds = Math.max(1, Math.floor((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / 1000));
-    }
-
-    let questionResults = [];
-    if (r.question_results) {
-      try {
-        questionResults = JSON.parse(String(r.question_results));
-      } catch {}
-    }
-
-    return {
-      attempt_id: String(r.attempt_id),
-      student_id: String(r.student_id),
-      student_name: String(r.student_name || 'Student'),
-      register_number: String(r.register_number || 'N/A'),
-      department: String(r.department || 'N/A'),
-      year: Number(r.year || 2),
-      test_id: String(r.test_id),
-      test_title: String(r.test_title || 'Assessment'),
-      test_code: r.test_code ? String(r.test_code) : undefined,
-      started_at: String(r.start_time),
-      completed_at: r.end_time ? String(r.end_time) : String(r.start_time),
-      time_taken_seconds: timeTakenSeconds,
-      score,
-      max_score: maxScore,
-      percentage,
-      result_status: score >= passingMarks ? 'Passed' : 'Failed',
-      completion_rank: Number(r.completion_rank || 1),
-      violation_count: Math.min(3, Number(r.violation_count || 0)),
-      tab_switches: Number(r.tab_switches || 0),
-      fullscreen_exits: Number(r.fullscreen_exits || 0),
-      question_results: questionResults,
-    };
-  });
-}
-
-export async function getAttemptEvaluationDetails(attemptId: string) {
-  await initTursoDb();
-  const client = getTursoClient();
-
-  const aRes = await client.execute({
-    sql: `
-      SELECT 
-        ta.*,
-        s.register_number,
-        s.full_name as student_name,
-        s.department,
-        s.year as student_year,
-        s.email as student_email,
-        t.title as test_title,
-        t.code as test_code,
-        t.duration as test_duration,
-        t.passing_marks,
-        t.total_marks
-      FROM test_attempts ta
-      JOIN students s ON ta.student_id = s.id
-      LEFT JOIN tests t ON ta.test_id = t.id
-      WHERE ta.id = ?
-      LIMIT 1
-    `,
-    args: [attemptId],
-  });
-
-  if (aRes.rows.length === 0) return null;
-  const a: any = aRes.rows[0];
-
-  const score = Number(a.score || 0);
-  const maxScore = Number(a.max_score || a.total_marks || 100);
-  const passingMarks = Number(a.passing_marks || 40);
-  const percentage = a.percentage !== null && a.percentage !== undefined && Number(a.percentage) > 0
-    ? Number(a.percentage)
-    : maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-
-  let timeTakenSeconds = Number(a.time_taken_seconds || 0);
-  if (timeTakenSeconds <= 0 && a.start_time && a.end_time) {
-    timeTakenSeconds = Math.max(1, Math.floor((new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 1000));
-  }
-
-  // Fetch assigned questions
-  const qRes = await client.execute({
-    sql: `
-      SELECT 
-        aq.question_order,
-        q.id as question_id,
-        q.title,
-        q.description,
-        q.topic,
-        q.difficulty,
-        q.marks,
-        q.time_limit,
-        q.memory_limit,
-        q.test_cases
-      FROM attempt_questions aq
-      JOIN questions q ON aq.question_id = q.id
-      WHERE aq.attempt_id = ?
-      ORDER BY aq.question_order ASC
-    `,
-    args: [attemptId],
-  });
-
-  const questions = [];
-  for (const row of qRes.rows) {
-    const qId = String(row.question_id);
-    const subRes = await client.execute({
-      sql: `
-        SELECT * FROM submissions 
-        WHERE attempt_id = ? AND question_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 1
-      `,
-      args: [attemptId, qId],
-    });
-
-    const sub: any = subRes.rows[0] || null;
-    let testCases = [];
-    if (row.test_cases) {
-      try {
-        testCases = JSON.parse(String(row.test_cases));
-      } catch {}
-    }
-
-    questions.push({
-      question_id: qId,
-      question_order: Number(row.question_order),
-      title: String(row.title),
-      description: String(row.description || ''),
-      topic: String(row.topic || 'Algorithms'),
-      difficulty: String(row.difficulty || 'Easy'),
-      max_marks: Number(row.marks || 25),
-      marks_awarded: sub ? Number(sub.score || 0) : 0,
-      status: sub ? String(sub.status || 'Attempted') : 'Unattempted',
-      test_cases_passed: sub ? Number(sub.passed_test_cases || 0) : 0,
-      total_test_cases: sub ? Number(sub.total_test_cases || testCases.length) : testCases.length,
-      execution_time_ms: sub ? Number(sub.execution_time || 0) : 0,
-      memory_kb: sub ? Number(sub.memory_used || 0) : 0,
-      submitted_code: sub ? String(sub.code || '') : null,
-      submitted_at: sub ? String(sub.created_at) : null,
-      test_cases: testCases.map((tc: any, idx: number) => ({
-        index: idx + 1,
-        input: tc.input,
-        expected_output: tc.expected_output,
-        is_hidden: Boolean(tc.is_hidden),
-      })),
-    });
-  }
-
-  // Security logs
-  const logsRes = await client.execute({
-    sql: `
-      SELECT * FROM activity_logs 
-      WHERE (test_id = ? OR student_id = ?) 
-        AND event_type IN ('FULLSCREEN_EXIT', 'TAB_SWITCH', 'COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT', 'WARNING_TRIGGERED')
-      ORDER BY timestamp DESC 
-      LIMIT 20
-    `,
-    args: [a.test_id, a.student_id],
-  });
-
-  return {
-    attempt: {
-      id: String(a.id),
-      test_id: String(a.test_id),
-      student_id: String(a.student_id),
-      score,
-      max_score: maxScore,
-      percentage,
-      status: String(a.status),
-      result_status: score >= passingMarks ? 'Passed' : 'Failed',
-      started_at: String(a.start_time),
-      ends_at: a.ends_at ? String(a.ends_at) : null,
-      completed_at: a.end_time ? String(a.end_time) : null,
-      time_taken_seconds: timeTakenSeconds,
-      completion_rank: Number(a.completion_rank || 1),
-    },
-    student: {
-      id: String(a.student_id),
-      full_name: String(a.student_name),
-      register_number: String(a.register_number),
-      department: String(a.department),
-      year: Number(a.student_year),
-      email: String(a.student_email),
-    },
-    test: {
-      id: String(a.test_id),
-      title: String(a.test_title || 'Assessment'),
-      code: a.test_code ? String(a.test_code) : undefined,
-      duration: Number(a.test_duration || 60),
-      passing_marks: passingMarks,
-      total_marks: maxScore,
-    },
-    questions,
-    security: {
-      warning_count: Math.min(3, Number(a.violation_count || 0)),
-      tab_switches: Number(a.tab_switches || 0),
-      fullscreen_exits: Number(a.fullscreen_exits || 0),
-      logs: logsRes.rows.map((l: any) => ({
-        id: String(l.id),
-        event_type: String(l.event_type),
-        description: String(l.description),
-        timestamp: String(l.timestamp),
-      })),
-    },
-  };
-}
-
-export async function getSecurityEventsFromDb(limit = 100) {
-  await initTursoDb();
-  const client = getTursoClient();
-
-  const res = await client.execute({
-    sql: `
-      SELECT 
-        al.id,
-        al.test_id,
-        al.student_id,
-        al.student_name,
-        al.register_number,
-        al.event_type,
-        al.description,
-        al.metadata,
-        al.timestamp,
-        t.title as test_title,
-        s.department,
-        s.year,
-        sp.violation_count as current_warning_count
-      FROM activity_logs al
-      LEFT JOIN tests t ON al.test_id = t.id
-      LEFT JOIN students s ON al.student_id = s.id
-      LEFT JOIN student_presence sp ON al.student_id = sp.student_id
-      WHERE al.event_type IN ('FULLSCREEN_EXIT', 'TAB_SWITCH', 'COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT', 'SHORTCUT_ATTEMPT', 'WARNING_TRIGGERED', 'VIOLATION')
-      ORDER BY al.timestamp DESC
-      LIMIT ?
-    `,
-    args: [limit],
-  });
-
-  return res.rows.map((r: any) => {
-    let metadata: any = {};
-    if (r.metadata) {
-      try {
-        metadata = JSON.parse(String(r.metadata));
-      } catch {}
-    }
-
-    const eventType = String(r.event_type);
-    let severity: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
-    if (eventType === 'WARNING_TRIGGERED' || eventType === 'FULLSCREEN_EXIT') {
-      severity = 'HIGH';
-    } else if (eventType === 'TAB_SWITCH' || eventType.includes('COPY') || eventType.includes('PASTE') || eventType.includes('CUT')) {
-      severity = 'MEDIUM';
-    }
-
-    const warningNumber = Math.min(3, Number(r.current_warning_count || metadata.warningCount || 1));
-    const questionInfo = metadata.questionTitle || (metadata.questionIndex ? `Question ${metadata.questionIndex}` : null);
-
-    return {
-      id: String(r.id),
-      student_id: String(r.student_id),
-      student_name: String(r.student_name || 'Student'),
-      register_number: String(r.register_number || 'N/A'),
-      department: String(r.department || 'N/A'),
-      year: Number(r.year || 2),
-      test_id: r.test_id ? String(r.test_id) : null,
-      test_title: r.test_title ? String(r.test_title) : (metadata.testTitle || 'Active Assessment'),
-      event_type: eventType,
-      event_time: String(r.timestamp),
-      severity,
-      warning_number: warningNumber,
-      question: questionInfo,
-      details: String(r.description || eventType),
-      metadata,
-    };
-  });
-}
-
-export async function getOnlineStudentsFromDb() {
-  await initTursoDb();
-  const presenceList = await getPresenceListFromDb();
-  const now = Date.now();
-
-  const onlineList = presenceList.filter(
-    (p) => p.session_status === 'ONLINE' || p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING' || p.session_status === 'IDLE'
-  );
-
-  return onlineList.map((p) => {
-    const totalQuestions = Number(p.total_questions || 4);
-    const currentQIdx = Number(p.current_question_index || 0);
-    const progressPercent = totalQuestions > 0 ? Math.min(100, Math.round(((currentQIdx) / totalQuestions) * 100)) : 0;
-    const endsAtMs = p.ends_at ? new Date(String(p.ends_at)).getTime() : null;
-    const timeRemainingSeconds = endsAtMs ? Math.max(0, Math.floor((endsAtMs - now) / 1000)) : null;
-    const lastSeenSec = Math.max(0, Math.floor((now - Number(p.last_seen)) / 1000));
-
-    return {
-      student_id: p.student_id,
-      student_name: p.full_name,
-      register_number: p.register_number,
-      department: p.department,
-      year: p.year,
-      section: p.section,
-      status: p.session_status,
-      current_assessment_id: p.active_assessment_id,
-      current_question_index: currentQIdx,
-      current_question: `Q${currentQIdx + 1} of ${totalQuestions}`,
-      total_questions: totalQuestions,
-      progress_percent: progressPercent,
-      time_remaining_seconds: timeRemainingSeconds,
-      ends_at: p.ends_at,
-      last_heartbeat_seconds: lastSeenSec,
-      last_heartbeat_time: new Date(Number(p.last_seen)).toISOString(),
-      violation_count: Math.min(3, Number(p.violation_count || 0)),
-      fullscreen_status: Number((p as any).fullscreen_exits || 0) > 0 ? 'Exited Fullscreen' : 'Fullscreen Normal',
-    };
-  });
 }
