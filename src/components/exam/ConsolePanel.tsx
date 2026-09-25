@@ -170,13 +170,13 @@ export const ConsolePanel: React.FC<ConsolePanelProps> = ({
                 {/* Result Summary Banner */}
                 <div
                   className={`p-3.5 rounded-2xl border flex items-center justify-between ${
-                    lastRunResult.status === 'Accepted'
+                    lastRunResult.status === 'Accepted' || lastRunResult.status === 'SUCCESS'
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-rose-50 border-rose-200 text-rose-800'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 font-sans">
-                    {lastRunResult.status === 'Accepted' ? (
+                    {lastRunResult.status === 'Accepted' || lastRunResult.status === 'SUCCESS' ? (
                       <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                     ) : (
                       <XCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
@@ -188,7 +188,17 @@ export const ConsolePanel: React.FC<ConsolePanelProps> = ({
                       <p className="text-xs opacity-90 text-slate-600">
                         {lastRunResult.passedCases !== undefined && lastRunResult.totalCases !== undefined
                           ? `${lastRunResult.passedCases}/${lastRunResult.totalCases} Test Cases Passed`
-                          : 'Code executed successfully'}
+                          : lastRunResult.status === 'Accepted' || lastRunResult.status === 'SUCCESS'
+                          ? 'Code executed successfully'
+                          : lastRunResult.status === 'JUDGE0_NOT_CONFIGURED'
+                          ? 'Execution engine credentials missing on server'
+                          : lastRunResult.status === 'COMPILATION_ERROR'
+                          ? 'Syntax / Compilation error in code'
+                          : lastRunResult.status === 'RUNTIME_ERROR'
+                          ? 'Runtime exception encountered'
+                          : lastRunResult.status === 'TIME_LIMIT'
+                          ? 'Execution time limit exceeded'
+                          : 'Execution failed'}
                       </p>
                     </div>
                   </div>

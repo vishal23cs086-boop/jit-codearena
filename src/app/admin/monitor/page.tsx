@@ -35,6 +35,8 @@ interface PresenceStudent {
   session_status: 'ONLINE' | 'IDLE' | 'IN_ASSESSMENT' | 'WARNING' | 'OFFLINE';
   last_seen: number;
   started_at?: number | null;
+  ends_at?: string | null;
+  attempt_start_time?: string | null;
   user_agent?: string;
   ip_address?: string;
 }
@@ -318,6 +320,20 @@ export default function LiveMonitorPage() {
                       <span className="text-[11px] text-slate-400">Question Progress:</span>
                       <span className="font-mono font-bold text-indigo-600 text-xs">
                         Question {s.current_question_index + 1} of {s.total_questions}
+                      </span>
+                    </div>
+                  )}
+
+                  {s.ends_at && isExam && (
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span className="text-[11px] text-slate-400">Time Remaining:</span>
+                      <span className="font-mono font-bold text-amber-600 text-[11px]">
+                        {(() => {
+                          const remSec = Math.max(0, Math.floor((new Date(s.ends_at).getTime() - Date.now()) / 1000));
+                          const m = Math.floor(remSec / 60);
+                          const sec = remSec % 60;
+                          return `${m}m ${sec.toString().padStart(2, '0')}s`;
+                        })()}
                       </span>
                     </div>
                   )}

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runTestCases } from '@/lib/judge0/client';
 import { calculateSubmissionScore } from '@/lib/scoring';
-import { getTursoClient } from '@/lib/turso';
+import { getTursoClient, recordCodeExecutionInDb, recordActivityLogInDb } from '@/lib/turso';
+import { verifySessionToken } from '@/lib/session';
 import { TestCase } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -11,14 +12,24 @@ export async function POST(req: NextRequest) {
       questionId,
       code,
       attemptId,
-      studentId,
-      sessionVersion,
-      session_version,
       attemptNumber = 1,
       testCases: clientTestCases,
       timeLimitMs: clientTimeLimit,
       marks: clientMarks,
     } = body;
+
+    let studentId = body.studentId;
+    let sessionVersion = body.sessionVersion ?? body.session_version;
+
+    // Check authenticated session cookie
+    const studentCookie = req.cookies.get('jit_student_session')?.value;
+    if (studentCookie) {
+      const payload = await verifySessionToken(studentCookie);
+      if (payload && payload.role === 'student') {
+        studentId = payload.id;
+        sessionVersion = payload.session_version;
+      }
+    }
 
     if (!questionId || typeof code !== 'string') {
       return NextResponse.json({ error: 'Question ID and code are required' }, { status: 400 });
@@ -27,12 +38,11 @@ export async function POST(req: NextRequest) {
     // Strict Academic Year & Attempt Assignment Guard & Student Validation
     if (studentId) {
       const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
-      const verVersion = sessionVersion ?? session_version;
       const verification = await verifyQuestionForStudentAttempt(
         studentId,
         questionId,
         attemptId,
-        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
+        sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined
       );
       if (!verification.valid) {
         return NextResponse.json(
@@ -48,6 +58,7 @@ export async function POST(req: NextRequest) {
     let allTestCases: TestCase[] = [];
     let timeLimitMs = typeof clientTimeLimit === 'number' ? clientTimeLimit : 2000;
     let questionMarks = typeof clientMarks === 'number' ? clientMarks : 25;
+    let targetTestId = body.testId || '';
 
     // 1. Fetch Question and Test Cases from Turso DB
     try {
@@ -61,6 +72,16 @@ export async function POST(req: NextRequest) {
         allTestCases = row.test_cases ? JSON.parse(String(row.test_cases)) : [];
         timeLimitMs = Number(row.time_limit || 2000);
         questionMarks = Number(row.marks || 25);
+      }
+
+      if (!targetTestId && attemptId) {
+        const aRes = await client.execute({
+          sql: 'SELECT test_id FROM test_attempts WHERE id = ? LIMIT 1',
+          args: [attemptId],
+        });
+        if (aRes.rows.length > 0) {
+          targetTestId = String(aRes.rows[0].test_id);
+        }
       }
     } catch (err) {
       console.warn('Turso question lookup notice:', err);
@@ -93,15 +114,18 @@ export async function POST(req: NextRequest) {
       questionMaxMarks: questionMarks,
     });
 
+    const now = new Date().toISOString();
+    const submissionId = `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
     // 4. Record submission in Turso
     try {
       const client = getTursoClient();
       await client.execute({
-        sql: `INSERT INTO submissions (id, test_id, question_id, student_id, code, language, status, execution_time, memory_used, passed_test_cases, total_test_cases, score, created_at)
-              VALUES (?, ?, ?, ?, ?, 'python', ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO submissions (id, test_id, question_id, student_id, code, language, status, execution_time, memory_used, passed_test_cases, total_test_cases, score, created_at, attempt_id)
+              VALUES (?, ?, ?, ?, ?, 'python', ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
-          `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          attemptId || 'general',
+          submissionId,
+          targetTestId || attemptId || 'general',
           questionId,
           studentId || 'unknown',
           code,
@@ -111,11 +135,43 @@ export async function POST(req: NextRequest) {
           execSummary.testCasesPassed,
           execSummary.totalTestCases,
           scoreResult.finalMarks,
-          new Date().toISOString(),
+          now,
+          attemptId || null,
         ],
       });
+
+      // Record in code_executions audit trail
+      if (studentId) {
+        await recordCodeExecutionInDb({
+          student_id: studentId,
+          attempt_id: attemptId || null,
+          question_id: questionId,
+          source_code: code,
+          language: 'python',
+          execution_status: execSummary.overallStatus,
+          test_cases_passed: execSummary.testCasesPassed,
+          test_cases_failed: execSummary.totalTestCases - execSummary.testCasesPassed,
+          execution_time: execSummary.averageTimeMs,
+          memory_used: execSummary.maxMemoryKb,
+        }).catch(() => {});
+
+        await recordActivityLogInDb({
+          test_id: targetTestId || null,
+          student_id: studentId,
+          event_type: 'SUBMISSION',
+          description: `Submitted solution for question ${questionId}. Status: ${execSummary.overallStatus}. Score: ${scoreResult.finalMarks}/${questionMarks}`,
+          metadata: {
+            submissionId,
+            questionId,
+            score: scoreResult.finalMarks,
+            maxMarks: questionMarks,
+            testCasesPassed: execSummary.testCasesPassed,
+            totalTestCases: execSummary.totalTestCases,
+          },
+        }).catch(() => {});
+      }
     } catch (err) {
-      // Safe non-blocking
+      console.warn('Error saving submission:', err);
     }
 
     // 5. Sanitize test case results before returning to client (NEVER expose hidden test cases inputs/expected outputs)

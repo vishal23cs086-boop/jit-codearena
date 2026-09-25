@@ -1,107 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTursoClient, recordActivityLogInDb } from '@/lib/turso';
+import { finalizeAssessmentAttemptInDb } from '@/lib/turso';
+import { verifySessionToken } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      attemptId,
-      studentId,
-      studentName,
-      registerNumber,
-      testId,
-      sessionVersion,
-      session_version,
-      isAutoSubmit = false,
-      finalScores = {},
-    } = body;
+    const { attemptId, isAutoSubmit = false } = body;
 
-    if (studentId) {
-      const { validateStudentAccountAndSession } = await import('@/lib/turso');
-      const verVersion = sessionVersion ?? session_version;
-      const validation = await validateStudentAccountAndSession(
-        studentId,
-        verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
-      );
-      if (!validation.valid) {
-        return NextResponse.json(
-          { error: validation.message, message: validation.message },
-          { status: validation.code || 401 }
-        );
+    let studentId = body.studentId;
+    let testId = body.testId;
+
+    // Check signed session cookie
+    const studentCookie = req.cookies.get('jit_student_session')?.value;
+    if (studentCookie) {
+      const payload = await verifySessionToken(studentCookie);
+      if (payload && payload.role === 'student') {
+        studentId = payload.id;
       }
     }
 
-    const completedAt = new Date().toISOString();
-
-    // Calculate total score from submitted questions
-    let totalScore = 0;
-    if (typeof finalScores === 'object' && finalScores !== null) {
-      Object.values(finalScores).forEach((val) => {
-        if (typeof val === 'number') totalScore += val;
-      });
+    if (!attemptId || !studentId) {
+      return NextResponse.json(
+        { error: 'attemptId and studentId are required' },
+        { status: 400 }
+      );
     }
 
-    const client = getTursoClient();
-
-    // Count existing completed attempts to determine completion rank
-    const countRes = await client.execute({
-      sql: "SELECT COUNT(*) as count FROM test_attempts WHERE test_id = ? AND (status = 'submitted' OR status = 'completed' OR status = 'auto_submitted')",
-      args: [testId || ''],
-    });
-    const completionRank = Number(countRes.rows[0]?.count || 0) + 1;
-
-    // Upsert or update attempt record in Turso
-    const attId = attemptId || `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    await client.execute({
-      sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, end_time, score, max_score, status, answers, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 100, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              end_time = excluded.end_time,
-              score = excluded.score,
-              status = excluded.status,
-              answers = excluded.answers`,
-      args: [
-        attId,
-        testId || 'general',
-        studentId,
-        completedAt,
-        completedAt,
-        totalScore,
-        isAutoSubmit ? 'auto_submitted' : 'completed',
-        JSON.stringify(finalScores),
-        completedAt,
-      ],
-    });
-
-    // Clear active assessment from presence
-    await client.execute({
-      sql: "UPDATE student_presence SET active_assessment_id = null, session_status = 'ONLINE' WHERE student_id = ?",
-      args: [studentId],
-    });
-
-    // Record activity log
-    await recordActivityLogInDb({
-      test_id: testId || null,
-      student_id: studentId,
-      student_name: studentName,
-      register_number: registerNumber,
-      event_type: isAutoSubmit ? 'AUTO_SUBMISSION' : 'TEST_COMPLETED',
-      description: `Assessment submitted with score ${totalScore}/100. Completion Rank: #${completionRank}`,
-      metadata: { finalScores, completionRank, isAutoSubmit },
+    const result = await finalizeAssessmentAttemptInDb({
+      attemptId,
+      studentId,
+      testId,
+      isAutoSubmit: Boolean(isAutoSubmit),
     });
 
     return NextResponse.json({
       success: true,
-      completedAt,
-      completionRank,
-      status: isAutoSubmit ? 'auto_submitted' : 'completed',
-      totalScore,
+      completedAt: result.completedAt,
+      completionRank: result.completionRank,
+      status: result.status,
+      totalScore: result.score,
+      maxMarks: result.totalMarks,
+      percentage: result.percentage,
+      passingMarks: result.passingMarks,
+      isPassed: result.isPassed,
+      timeTakenSeconds: result.timeTakenSeconds,
+      questionResults: result.questionResults,
       message: isAutoSubmit
         ? 'Time expired. Assessment automatically finalized and submitted.'
         : 'Assessment completed and submitted successfully.',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Finalize test error:', error);
-    return NextResponse.json({ error: 'Failed to finalize test' }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || 'Failed to finalize test' },
+      { status: 500 }
+    );
   }
 }

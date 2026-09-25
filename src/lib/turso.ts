@@ -184,6 +184,24 @@ export async function initTursoDb(): Promise<void> {
       ip_address TEXT,
       user_agent TEXT,
       status TEXT DEFAULT 'active'
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS code_executions (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      attempt_id TEXT,
+      question_id TEXT,
+      source_code TEXT NOT NULL,
+      language TEXT NOT NULL DEFAULT 'python',
+      execution_status TEXT NOT NULL,
+      test_cases_passed INTEGER DEFAULT 0,
+      test_cases_failed INTEGER DEFAULT 0,
+      execution_time REAL DEFAULT 0,
+      memory_used INTEGER DEFAULT 0,
+      stdout TEXT,
+      stderr TEXT,
+      compile_output TEXT,
+      created_at TEXT NOT NULL
     );`
   ];
 
@@ -230,6 +248,12 @@ export async function initTursoDb(): Promise<void> {
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_students_reg_no_upper ON students(UPPER(TRIM(register_number)));',
     'ALTER TABLE test_attempts ADD COLUMN ends_at TEXT;',
     'ALTER TABLE submissions ADD COLUMN attempt_id TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN percentage INTEGER DEFAULT 0;',
+    'ALTER TABLE test_attempts ADD COLUMN time_taken_seconds INTEGER DEFAULT 0;',
+    'ALTER TABLE test_attempts ADD COLUMN completion_rank INTEGER DEFAULT 1;',
+    'ALTER TABLE test_attempts ADD COLUMN question_results TEXT DEFAULT "[]";',
+    'CREATE INDEX IF NOT EXISTS idx_code_executions_student ON code_executions(student_id);',
+    'CREATE INDEX IF NOT EXISTS idx_code_executions_attempt ON code_executions(attempt_id);',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_tests_code_upper ON tests(UPPER(TRIM(code))) WHERE code IS NOT NULL AND TRIM(code) != "";',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_test_attempts_active_unique ON test_attempts(student_id, test_id) WHERE status = "in_progress" OR status = "not_started";',
   ];
@@ -1109,9 +1133,12 @@ export async function getPresenceListFromDb() {
 
   // Only select presence records that belong to currently active, non-archived, non-deleted students
   const res = await client.execute(`
-    SELECT sp.* 
+    SELECT sp.*, ta.ends_at, ta.start_time as attempt_start_time
     FROM student_presence sp
     INNER JOIN students s ON sp.student_id = s.id
+    LEFT JOIN test_attempts ta ON sp.student_id = ta.student_id
+      AND sp.active_assessment_id = ta.test_id
+      AND (ta.status = 'in_progress' OR ta.status = 'not_started')
     WHERE (s.account_deleted = 0 OR s.account_deleted IS NULL)
       AND (s.is_archived = 0 OR s.is_archived IS NULL)
       AND (s.is_active = 1 OR s.is_active IS NULL)
@@ -1155,6 +1182,8 @@ export async function getPresenceListFromDb() {
       session_status: computedStatus,
       last_seen: lastSeen,
       started_at: row.started_at ? Number(row.started_at) : null,
+      ends_at: row.ends_at ? String(row.ends_at) : null,
+      attempt_start_time: row.attempt_start_time ? String(row.attempt_start_time) : null,
       user_agent: String(row.user_agent || ''),
       ip_address: String(row.ip_address || ''),
     };
@@ -2566,5 +2595,348 @@ export async function getDashboardStatsFromDb() {
     completedAttempts,
     totalViolations,
     recentLogs,
+  };
+}
+
+// -------------------------------------------------------------
+// CODE EXECUTIONS PERSISTENCE (JUDGE0 AUDIT TRAIL)
+// -------------------------------------------------------------
+export async function recordCodeExecutionInDb(data: {
+  id?: string;
+  student_id: string;
+  attempt_id?: string;
+  question_id?: string;
+  source_code: string;
+  language?: string;
+  execution_status: string;
+  test_cases_passed?: number;
+  test_cases_failed?: number;
+  execution_time?: number;
+  memory_used?: number;
+  stdout?: string | null;
+  stderr?: string | null;
+  compile_output?: string | null;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const execId = data.id || `exec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `INSERT INTO code_executions (id, student_id, attempt_id, question_id, source_code, language, execution_status, test_cases_passed, test_cases_failed, execution_time, memory_used, stdout, stderr, compile_output, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      execId,
+      data.student_id,
+      data.attempt_id || null,
+      data.question_id || null,
+      data.source_code,
+      data.language || 'python',
+      data.execution_status,
+      data.test_cases_passed || 0,
+      data.test_cases_failed || 0,
+      data.execution_time || 0,
+      data.memory_used || 0,
+      data.stdout || null,
+      data.stderr || null,
+      data.compile_output || null,
+      now,
+    ],
+  });
+}
+
+// -------------------------------------------------------------
+// AUTHORITATIVE ASSESSMENT ATTEMPT FINALIZATION & SCORING
+// -------------------------------------------------------------
+export async function finalizeAssessmentAttemptInDb(params: {
+  attemptId: string;
+  studentId: string;
+  testId?: string;
+  isAutoSubmit?: boolean;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const { attemptId, studentId, isAutoSubmit = false } = params;
+
+  // 1. Fetch attempt
+  const aRes = await client.execute({
+    sql: 'SELECT * FROM test_attempts WHERE id = ? LIMIT 1',
+    args: [attemptId],
+  });
+  if (aRes.rows.length === 0) {
+    throw new Error('Assessment attempt record not found.');
+  }
+  const attempt: any = aRes.rows[0];
+  const targetTestId = attempt.test_id || params.testId;
+
+  // 2. Fetch test
+  const tRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [targetTestId],
+  });
+  const test: any = tRes.rows[0] || {};
+  const totalMarks = Number(test.total_marks || 100);
+  const passingMarks = Number(test.passing_marks !== undefined ? test.passing_marks : 40);
+
+  // 3. Fetch assigned questions from frozen attempt_questions
+  const aqRes = await client.execute({
+    sql: `SELECT aq.question_id, aq.question_order, q.title, q.topic, q.difficulty, q.marks, q.test_cases
+          FROM attempt_questions aq
+          JOIN questions q ON aq.question_id = q.id
+          WHERE aq.attempt_id = ?
+          ORDER BY aq.question_order ASC`,
+    args: [attemptId],
+  });
+
+  const assignedQuestions = aqRes.rows;
+
+  // 4. Calculate score per assigned question from Turso submissions table (server-authoritative)
+  let computedTotalScore = 0;
+  const questionResults = [];
+
+  for (const row of assignedQuestions) {
+    const qId = String(row.question_id);
+    const qMarks = Number(row.marks || 25);
+    const qTitle = String(row.title || 'Question');
+    const qTopic = String(row.topic || 'Algorithms');
+    const qDiff = String(row.difficulty || 'Easy');
+    const testCases = row.test_cases ? JSON.parse(String(row.test_cases)) : [];
+
+    // Query highest score submission for this student + question + attempt
+    const subRes = await client.execute({
+      sql: `SELECT * FROM submissions 
+            WHERE (attempt_id = ? OR student_id = ?) AND question_id = ?
+            ORDER BY score DESC, created_at DESC LIMIT 1`,
+      args: [attemptId, studentId, qId],
+    });
+
+    if (subRes.rows.length > 0) {
+      const sub: any = subRes.rows[0];
+      const earned = Math.min(qMarks, Number(sub.score || 0));
+      computedTotalScore += earned;
+      questionResults.push({
+        question_id: qId,
+        question_order: Number(row.question_order),
+        title: qTitle,
+        topic: qTopic,
+        difficulty: qDiff,
+        marks: qMarks,
+        score: earned,
+        status: String(sub.status || 'Submitted'),
+        passed_test_cases: Number(sub.passed_test_cases || 0),
+        total_test_cases: Number(sub.total_test_cases || testCases.length),
+        is_passed: earned >= qMarks,
+      });
+    } else {
+      questionResults.push({
+        question_id: qId,
+        question_order: Number(row.question_order),
+        title: qTitle,
+        topic: qTopic,
+        difficulty: qDiff,
+        marks: qMarks,
+        score: 0,
+        status: 'Unattempted',
+        passed_test_cases: 0,
+        total_test_cases: testCases.length,
+        is_passed: false,
+      });
+    }
+  }
+
+  // 5. Server-side percentage and pass/fail
+  const percentage = totalMarks > 0 ? Math.round((computedTotalScore / totalMarks) * 100) : 0;
+  const isPassed = computedTotalScore >= passingMarks;
+
+  // 6. Server-side time taken calculation
+  const completedAt = new Date().toISOString();
+  const startTimeMs = new Date(attempt.start_time).getTime();
+  const completedTimeMs = new Date(completedAt).getTime();
+  let timeTakenSeconds = Math.max(1, Math.round((completedTimeMs - startTimeMs) / 1000));
+  if (attempt.ends_at) {
+    const endsAtMs = new Date(attempt.ends_at).getTime();
+    if (completedTimeMs > endsAtMs) {
+      timeTakenSeconds = Math.max(1, Math.round((endsAtMs - startTimeMs) / 1000));
+    }
+  }
+
+  // 7. Calculate completion rank among completed attempts for this test
+  const rankRes = await client.execute({
+    sql: `SELECT COUNT(*) as rank FROM test_attempts 
+          WHERE test_id = ? 
+            AND (status = 'completed' OR status = 'submitted' OR status = 'auto_submitted')
+            AND id != ?`,
+    args: [targetTestId, attemptId],
+  });
+  const completionRank = Number(rankRes.rows[0]?.rank || 0) + 1;
+
+  // 8. Update test_attempts in Turso
+  const finalStatus = isAutoSubmit ? 'auto_submitted' : 'completed';
+  await client.execute({
+    sql: `UPDATE test_attempts SET
+            end_time = ?,
+            score = ?,
+            max_score = ?,
+            percentage = ?,
+            time_taken_seconds = ?,
+            completion_rank = ?,
+            status = ?,
+            answers = ?,
+            question_results = ?
+          WHERE id = ?`,
+    args: [
+      completedAt,
+      computedTotalScore,
+      totalMarks,
+      percentage,
+      timeTakenSeconds,
+      completionRank,
+      finalStatus,
+      JSON.stringify(questionResults),
+      JSON.stringify(questionResults),
+      attemptId,
+    ],
+  });
+
+  // 9. Clear active assessment from presence
+  await client.execute({
+    sql: "UPDATE student_presence SET active_assessment_id = null, session_status = 'ONLINE' WHERE student_id = ?",
+    args: [studentId],
+  });
+
+  // 10. Record activity log
+  const studentRes = await client.execute({
+    sql: 'SELECT full_name, register_number FROM students WHERE id = ? LIMIT 1',
+    args: [studentId],
+  });
+  const student = studentRes.rows[0] as any;
+
+  await recordActivityLogInDb({
+    test_id: targetTestId,
+    student_id: studentId,
+    student_name: student?.full_name,
+    register_number: student?.register_number,
+    event_type: isAutoSubmit ? 'AUTO_SUBMISSION' : 'TEST_COMPLETED',
+    description: `Assessment completed. Score: ${computedTotalScore}/${totalMarks} (${percentage}%). Rank: #${completionRank}`,
+    metadata: {
+      attemptId,
+      score: computedTotalScore,
+      totalMarks,
+      percentage,
+      completionRank,
+      timeTakenSeconds,
+      isAutoSubmit,
+      isPassed,
+    },
+  });
+
+  return {
+    success: true,
+    attemptId,
+    score: computedTotalScore,
+    totalMarks,
+    percentage,
+    passingMarks,
+    isPassed,
+    timeTakenSeconds,
+    completionRank,
+    status: finalStatus,
+    completedAt,
+    questionResults,
+  };
+}
+
+// -------------------------------------------------------------
+// STUDENT AUTHORITATIVE ASSESSMENT RESULT RETRIEVAL
+// -------------------------------------------------------------
+export async function getStudentAssessmentResultFromDb(testId: string, studentId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // Find attempt for this student and test
+  const attRes = await client.execute({
+    sql: `SELECT ta.*, t.title as test_title, t.description as test_description, t.duration as test_duration,
+                 t.total_marks as test_total_marks, t.passing_marks as test_passing_marks, t.year as test_year,
+                 s.register_number, s.full_name, s.department, s.year as student_year
+          FROM test_attempts ta
+          JOIN tests t ON ta.test_id = t.id
+          JOIN students s ON ta.student_id = s.id
+          WHERE ta.student_id = ? AND ta.test_id = ?
+          ORDER BY ta.created_at DESC LIMIT 1`,
+    args: [studentId, testId],
+  });
+
+  if (attRes.rows.length === 0) {
+    return null;
+  }
+
+  const att: any = attRes.rows[0];
+  const isCompleted = att.status === 'completed' || att.status === 'submitted' || att.status === 'auto_submitted';
+
+  const totalMarks = Number(att.test_total_marks || att.max_score || 100);
+  const passingMarks = Number(att.test_passing_marks !== undefined ? att.test_passing_marks : 40);
+  const score = Number(att.score || 0);
+  const percentage = att.percentage !== undefined && att.percentage !== null
+    ? Number(att.percentage)
+    : totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
+
+  let timeTakenSeconds = Number(att.time_taken_seconds || 0);
+  if (timeTakenSeconds <= 0 && att.start_time && att.end_time) {
+    timeTakenSeconds = Math.max(1, Math.floor((new Date(att.end_time).getTime() - new Date(att.start_time).getTime()) / 1000));
+  }
+
+  let questions = [];
+  if (att.question_results) {
+    try {
+      questions = JSON.parse(String(att.question_results));
+    } catch {}
+  }
+
+  // If question_results was empty, query attempt_questions joined with questions
+  if (questions.length === 0) {
+    const aqRes = await client.execute({
+      sql: `SELECT aq.question_order, q.id as question_id, q.title, q.topic, q.difficulty, q.marks
+            FROM attempt_questions aq
+            JOIN questions q ON aq.question_id = q.id
+            WHERE aq.attempt_id = ?
+            ORDER BY aq.question_order ASC`,
+      args: [att.id],
+    });
+    questions = aqRes.rows.map((q: any) => ({
+      question_id: String(q.question_id),
+      question_order: Number(q.question_order),
+      title: String(q.title),
+      topic: String(q.topic || 'Algorithms'),
+      difficulty: String(q.difficulty || 'Easy'),
+      marks: Number(q.marks || 25),
+      score: 0,
+      status: 'Unattempted',
+    }));
+  }
+
+  return {
+    attempt_id: String(att.id),
+    test_id: String(att.test_id),
+    test_title: String(att.test_title),
+    student_id: String(att.student_id),
+    register_number: String(att.register_number),
+    full_name: String(att.full_name),
+    department: String(att.department),
+    student_year: Number(att.student_year),
+    score,
+    total_marks: totalMarks,
+    passing_marks: passingMarks,
+    is_passed: score >= passingMarks,
+    percentage,
+    time_taken_seconds: timeTakenSeconds,
+    status: String(att.status),
+    is_completed: isCompleted,
+    started_at: String(att.start_time),
+    completed_at: att.end_time ? String(att.end_time) : null,
+    completion_rank: Number(att.completion_rank || 1),
+    tab_switch_count: Number(att.tab_switches || 0),
+    fullscreen_exit_count: Number(att.fullscreen_exits || 0),
+    copy_paste_count: Number(att.violation_count || 0),
+    questions,
   };
 }

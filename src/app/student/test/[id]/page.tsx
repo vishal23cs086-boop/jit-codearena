@@ -30,7 +30,7 @@ import {
 export default function CodingTestPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, sendPresenceHeartbeat } = useAuth();
 
   const testId = typeof params?.id === 'string' ? params.id : '';
 
@@ -211,6 +211,30 @@ export default function CodingTestPage() {
     }
     setCurrentQIndex(index);
     setLastRunResult(null);
+
+    // Notify telemetry heartbeat so invigilator monitor reflects active question order
+    sendPresenceHeartbeat({
+      active_assessment_id: testId,
+      current_question_index: index,
+      total_questions: questions.length,
+    });
+
+    if (user && questions[index]) {
+      recordActivityLog({
+        id: `act-${Date.now()}`,
+        attempt_id: attemptId || undefined,
+        student_id: user.id,
+        event_type: 'QUESTION_VIEWED',
+        details: {
+          testId,
+          questionIndex: index + 1,
+          totalQuestions: questions.length,
+          questionId: questions[index]?.id,
+          questionTitle: questions[index]?.title,
+        },
+        created_at: new Date().toISOString(),
+      });
+    }
   };
 
   // Run Code (runs on sample test cases or custom input)
@@ -325,60 +349,17 @@ export default function CodingTestPage() {
 
   // Finalize & Submit Test (manual or when timer expires)
   const handleFinalizeTest = async (isAutoSubmit = false) => {
-    const completedAt = new Date().toISOString();
-    let totalScore = 0;
-    Object.values(questionScores).forEach((val) => {
-      if (typeof val === 'number') totalScore += val;
-    });
-
-    const maxMarks = test?.total_marks || 100;
-    const percentage = Math.round((totalScore / maxMarks) * 100);
-
-    const realAttemptId = attemptId || `att-${testId}-${user?.register_number || 'guest'}`;
-
-    const attemptRecord: TestAttempt = {
-      id: realAttemptId,
-      test_id: testId,
-      student_id: user?.id || 'candidate',
-      started_at: new Date(Date.now() - 1800000).toISOString(),
-      last_saved_at: completedAt,
-      completed_at: completedAt,
-      status: isAutoSubmit ? 'auto_submitted' : 'submitted',
-      score: totalScore,
-      percentage,
-      time_taken_seconds: 1800,
-      tab_switch_count: examGuard.tabSwitchCount,
-      fullscreen_exit_count: examGuard.fullscreenExitCount,
-      copy_paste_count: examGuard.copyPasteCount,
-      completion_rank: 1,
-      auto_submitted: isAutoSubmit,
-      students: user ? {
-        register_number: user.register_number,
-        department: user.department,
-        year: user.year,
-        profiles: {
-          full_name: user.full_name,
-          email: user.email,
-        },
-      } : undefined,
-      tests: test ? {
-        title: test.title,
-      } : undefined,
-    };
+    const realAttemptId = attemptId || `att-${testId}-${user?.register_number || 'candidate'}`;
 
     try {
-      await saveAttempt(attemptRecord);
       await fetch('/api/exam/submit-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           attemptId: realAttemptId,
-          studentId: user?.id || 'candidate',
-          studentName: user?.full_name,
-          registerNumber: user?.register_number,
+          studentId: user?.id,
           testId,
           isAutoSubmit,
-          finalScores: questionScores,
         }),
       });
     } catch (err) {

@@ -15,6 +15,10 @@ export async function GET(req: NextRequest) {
         ta.end_time,
         ta.score,
         ta.max_score,
+        ta.percentage,
+        ta.time_taken_seconds,
+        ta.completion_rank,
+        ta.question_results,
         ta.status,
         ta.tab_switches,
         ta.fullscreen_exits,
@@ -39,13 +43,17 @@ export async function GET(req: NextRequest) {
     const attempts = res.rows.map((r: any) => {
       const score = Number(r.score || 0);
       const maxScore = Number(r.max_score || 100);
-      const percentage = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+      const percentage = r.percentage !== undefined && r.percentage !== null && Number(r.percentage) > 0
+        ? Number(r.percentage)
+        : maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
 
-      let timeTakenSeconds = 0;
-      if (r.start_time && r.end_time) {
-        timeTakenSeconds = Math.max(0, Math.floor((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / 1000));
-      } else if (r.start_time) {
-        timeTakenSeconds = Math.max(0, Math.floor((Date.now() - new Date(r.start_time).getTime()) / 1000));
+      let timeTakenSeconds = Number(r.time_taken_seconds || 0);
+      if (timeTakenSeconds <= 0) {
+        if (r.start_time && r.end_time) {
+          timeTakenSeconds = Math.max(1, Math.floor((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / 1000));
+        } else if (r.start_time) {
+          timeTakenSeconds = Math.max(1, Math.floor((Date.now() - new Date(r.start_time).getTime()) / 1000));
+        }
       }
 
       return {
@@ -60,6 +68,7 @@ export async function GET(req: NextRequest) {
         tab_switch_count: Number(r.tab_switches || 0),
         fullscreen_exit_count: Number(r.fullscreen_exits || 0),
         time_taken_seconds: timeTakenSeconds,
+        completion_rank: Number(r.completion_rank || 1),
         students: {
           register_number: r.register_number ? String(r.register_number) : 'N/A',
           department: r.department ? String(r.department) : 'Engineering',

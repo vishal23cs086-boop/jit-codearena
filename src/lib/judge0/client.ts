@@ -28,18 +28,25 @@ export async function executeJudge0(
   timeLimitSec = 2.0,
   memoryLimitKb = 128000
 ): Promise<Judge0Result> {
-  const apiUrl = process.env.JUDGE0_API_URL || 'https://judge0-ce.p.rapidapi.com';
-  const apiKey = process.env.JUDGE0_API_KEY;
+  const apiKey = process.env.JUDGE0_API_KEY ? process.env.JUDGE0_API_KEY.trim().replace(/^["']|["']$/g, '') : '';
+  const configuredUrl = process.env.JUDGE0_API_URL ? process.env.JUDGE0_API_URL.trim().replace(/^["']|["']$/g, '') : '';
   const apiHost = process.env.JUDGE0_API_HOST || 'judge0-ce.p.rapidapi.com';
 
-  // If Judge0 API key is not configured, return an honest configuration error state
-  if (!apiKey || apiKey.trim().length === 0 || apiKey.includes('your_')) {
+  const isRapidApi = Boolean(
+    (configuredUrl && configuredUrl.includes('rapidapi.com')) ||
+    (apiKey && !configuredUrl)
+  );
+
+  const apiUrl = configuredUrl || (isRapidApi ? 'https://judge0-ce.p.rapidapi.com' : 'https://ce.judge0.com');
+
+  // If RapidAPI is targeted without a valid key, report honest configuration error
+  if (apiUrl.includes('rapidapi.com') && (!apiKey || apiKey.length === 0 || apiKey.includes('your_'))) {
     return {
       stdout: null,
       stderr:
-        'Execution Error: Judge0 API credentials (JUDGE0_API_KEY) are not configured on the server. Please configure your Judge0 API key in environment variables to execute Python code.',
+        'Execution Error: Judge0 API credentials (JUDGE0_API_KEY) are not configured on the server. Please configure your Judge0 API key in environment variables to execute Python code via RapidAPI.',
       compile_output: null,
-      status: { id: 13, description: 'Judge0 Not Configured' },
+      status: { id: 13, description: 'JUDGE0_NOT_CONFIGURED' },
       time: null,
       memory: null,
       notConfigured: true,
@@ -54,7 +61,7 @@ export async function executeJudge0(
     if (apiUrl.includes('rapidapi.com')) {
       headers['X-RapidAPI-Key'] = apiKey;
       headers['X-RapidAPI-Host'] = apiHost;
-    } else {
+    } else if (apiKey) {
       headers['X-Auth-Token'] = apiKey;
     }
 
@@ -72,22 +79,45 @@ export async function executeJudge0(
 
     if (!response.ok) {
       const errText = await response.text();
+      let statusDesc = 'RUNTIME_ERROR';
+      if (response.status === 401 || response.status === 403) {
+        statusDesc = 'JUDGE0_AUTH_ERROR';
+      } else if (response.status === 429) {
+        statusDesc = 'JUDGE0_RATE_LIMITED';
+      } else if (response.status >= 500) {
+        statusDesc = 'JUDGE0_UNAVAILABLE';
+      }
+
       return {
         stdout: null,
         stderr: `Judge0 Server returned HTTP ${response.status}: ${errText}`,
         compile_output: null,
-        status: { id: 11, description: 'Runtime Error' },
+        status: { id: 11, description: statusDesc },
         time: null,
         memory: null,
       };
     }
 
     const data = await response.json();
+    const rawStatusDesc = data.status?.description || 'Accepted';
+    const statusId = data.status?.id || 3;
+
+    let finalStatusDesc = rawStatusDesc;
+    if (statusId === 3) finalStatusDesc = 'SUCCESS';
+    else if (statusId === 5) finalStatusDesc = 'TIME_LIMIT';
+    else if (statusId === 6) finalStatusDesc = 'COMPILATION_ERROR';
+    else if (statusId >= 7 && statusId <= 12) finalStatusDesc = 'RUNTIME_ERROR';
+    else if (statusId === 13) finalStatusDesc = 'JUDGE0_UNAVAILABLE';
+
+    if (data.memory && data.memory > memoryLimitKb) {
+      finalStatusDesc = 'MEMORY_LIMIT';
+    }
+
     return {
       stdout: data.stdout || null,
       stderr: data.stderr || null,
       compile_output: data.compile_output || null,
-      status: data.status || { id: 3, description: 'Accepted' },
+      status: { id: statusId, description: finalStatusDesc },
       time: data.time || '0.00',
       memory: data.memory || 0,
     };
@@ -97,7 +127,7 @@ export async function executeJudge0(
       stdout: null,
       stderr: `Failed to connect to Judge0 execution host: ${msg}`,
       compile_output: null,
-      status: { id: 11, description: 'Connection Error' },
+      status: { id: 11, description: 'NETWORK_ERROR' },
       time: null,
       memory: null,
     };
