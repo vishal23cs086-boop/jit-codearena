@@ -61,6 +61,8 @@ export async function GET(req: NextRequest) {
         test_id: String(r.test_id),
         student_id: String(r.student_id),
         score,
+        max_score: maxScore,
+        total_marks: maxScore,
         percentage,
         started_at: r.start_time ? String(r.start_time) : String(r.created_at),
         completed_at: r.end_time ? String(r.end_time) : null,
