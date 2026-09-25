@@ -9,26 +9,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing attempt or question parameters' }, { status: 400 });
     }
 
+    const { validateStudentAccountAndSession, verifyQuestionForStudentAttempt, getTursoClient } = await import('@/lib/turso');
+
     if (studentId) {
-      const { validateStudentAccountAndSession } = await import('@/lib/turso');
       const verVersion = sessionVersion ?? session_version;
-      const validation = await validateStudentAccountAndSession(
+      const verification = await verifyQuestionForStudentAttempt(
         studentId,
+        questionId,
+        attemptId,
         verVersion !== undefined && verVersion !== null ? Number(verVersion) : undefined
       );
-      if (!validation.valid) {
+      if (!verification.valid) {
         return NextResponse.json(
-          { error: validation.message, message: validation.message },
-          { status: validation.code || 401 }
+          { error: verification.error || 'Auto save rejected.', message: verification.error || 'Auto save rejected.' },
+          { status: verification.code || 401 }
         );
       }
     }
 
     const savedAt = new Date().toISOString();
 
-    // In a production Supabase setup:
-    // UPSERT into student_answers (attempt_id, question_id, saved_code, last_saved_at)
-    // UPDATE test_attempts SET last_saved_at = NOW() WHERE id = attempt_id
+    // Persist code into Turso test_attempts answers JSON
+    try {
+      const client = getTursoClient();
+      const aRes = await client.execute({
+        sql: 'SELECT answers FROM test_attempts WHERE id = ? LIMIT 1',
+        args: [attemptId],
+      });
+      if (aRes.rows.length > 0) {
+        let answers: Record<string, any> = {};
+        try {
+          answers = aRes.rows[0].answers ? JSON.parse(String(aRes.rows[0].answers)) : {};
+        } catch {}
+        answers[questionId] = {
+          code,
+          last_saved_at: savedAt,
+        };
+        await client.execute({
+          sql: 'UPDATE test_attempts SET answers = ? WHERE id = ?',
+          args: [JSON.stringify(answers), attemptId],
+        });
+      }
+    } catch (saveErr) {
+      console.warn('Notice saving code in Turso:', saveErr);
+    }
 
     return NextResponse.json({
       success: true,

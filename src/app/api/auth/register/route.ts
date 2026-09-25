@@ -28,6 +28,9 @@ export async function POST(req: NextRequest) {
       ? rawEmail
       : `${cleanRegNo.toLowerCase()}@student.jit.edu`;
 
+    const { hashPassword } = await import('@/lib/turso');
+    const { signSessionToken } = await import('@/lib/session');
+
     await upsertStudentInDb({
       id: studentId,
       register_number: cleanRegNo,
@@ -37,8 +40,12 @@ export async function POST(req: NextRequest) {
       year: Number(year),
       section: section || 'A',
       phone: phone || '',
-      password_hash: password || 'Student@123',
+      password_hash: hashPassword(password || 'Student@123'),
       status: 'active',
+      is_active: 1,
+      is_archived: 0,
+      account_deleted: 0,
+      session_version: 1,
     });
 
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
@@ -79,13 +86,32 @@ export async function POST(req: NextRequest) {
       section: section || 'A',
       phone: phone || '',
       status: 'active' as const,
+      session_version: 1,
       created_at: new Date().toISOString(),
     };
 
-    return NextResponse.json({
+    const token = await signSessionToken({
+      role: 'student',
+      id: studentId,
+      register_number: cleanRegNo,
+      year: Number(year),
+      session_version: 1,
+    });
+
+    const res = NextResponse.json({
       success: true,
       user: newStudent,
     });
+
+    res.cookies.set('jit_student_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 86400 * 7,
+    });
+
+    return res;
   } catch (error: any) {
     console.error('Registration error:', error);
     return NextResponse.json(

@@ -57,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem('jit_ca_students_v2');
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     } catch {}
   }, []);
 

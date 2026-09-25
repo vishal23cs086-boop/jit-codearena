@@ -92,24 +92,77 @@ export async function saveStudent(student: StudentProfile): Promise<boolean> {
 // ==============================================================================
 
 export async function fetchQuestions(): Promise<Question[]> {
-  return getLocalStore<Question>(STORAGE_KEYS.QUESTIONS);
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/questions');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.questions)) {
+        return data.questions.map((q: any) => ({
+          id: q.id,
+          title: q.title,
+          slug: q.id,
+          description: q.description,
+          input_format: q.input_format || 'Standard Input',
+          output_format: q.output_format || 'Standard Output',
+          constraints: q.constraints || '1 <= n <= 10^5',
+          difficulty: q.difficulty === 'easy' ? 'Easy' : q.difficulty === 'hard' ? 'Hard' : 'Medium',
+          topic: q.topic || 'Algorithms',
+          year: Number(q.year || 2),
+          starter_code: q.initial_code || 'def solution():\n    pass\n',
+          marks: q.marks || 25,
+          time_limit_ms: q.time_limit || 2000,
+          memory_limit_kb: q.memory_limit || 128000,
+          is_active: true,
+          test_cases: typeof q.test_cases === 'string' ? JSON.parse(q.test_cases) : (q.test_cases || []),
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('API fetchQuestions error:', err);
+  }
+  return [];
 }
 
 export async function saveQuestion(question: Question): Promise<boolean> {
-  const existing = getLocalStore<Question>(STORAGE_KEYS.QUESTIONS);
-  const updated = existing.filter((q) => q.id !== question.id);
-  updated.unshift(question);
-  setLocalStore(STORAGE_KEYS.QUESTIONS, updated);
-  return true;
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: question.title,
+          description: question.description,
+          year: question.year || 2,
+          difficulty: question.difficulty?.toLowerCase() || 'medium',
+          topic: question.topic || 'Algorithms',
+          marks: question.marks || 25,
+          initial_code: question.starter_code,
+          test_cases: question.test_cases,
+          time_limit: question.time_limit_ms,
+          memory_limit: question.memory_limit_kb,
+          input_format: question.input_format,
+          output_format: question.output_format,
+          constraints: question.constraints,
+        }),
+      });
+      return res.ok;
+    }
+  } catch (err) {
+    console.warn('API saveQuestion error:', err);
+  }
+  return false;
 }
 
 export async function deleteQuestionById(id: string): Promise<boolean> {
-  const existing = getLocalStore<Question>(STORAGE_KEYS.QUESTIONS);
-  setLocalStore(
-    STORAGE_KEYS.QUESTIONS,
-    existing.filter((q) => q.id !== id)
-  );
-  return true;
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch(`/api/admin/questions/${id}`, { method: 'DELETE' });
+      return res.ok;
+    }
+  } catch (err) {
+    console.warn('API deleteQuestionById error:', err);
+  }
+  return false;
 }
 
 // ==============================================================================
@@ -237,14 +290,21 @@ export async function saveTest(test: Test): Promise<boolean> {
 // ==============================================================================
 
 export async function fetchAttempts(): Promise<TestAttempt[]> {
-  return getLocalStore<TestAttempt>(STORAGE_KEYS.ATTEMPTS);
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/admin/reports');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.attempts)) {
+        return data.attempts;
+      }
+    }
+  } catch (err) {
+    console.warn('API fetchAttempts error:', err);
+  }
+  return [];
 }
 
 export async function saveAttempt(attempt: TestAttempt): Promise<boolean> {
-  const existing = getLocalStore<TestAttempt>(STORAGE_KEYS.ATTEMPTS);
-  const updated = existing.filter((a) => a.id !== attempt.id);
-  updated.push(attempt);
-  setLocalStore(STORAGE_KEYS.ATTEMPTS, updated);
   return true;
 }
 
@@ -255,14 +315,14 @@ export async function saveAttempt(attempt: TestAttempt): Promise<boolean> {
 export async function fetchActivityLogs(): Promise<ActivityLog[]> {
   try {
     if (typeof window !== 'undefined') {
-      const res = await fetch('/api/admin/dashboard-stats');
+      const res = await fetch('/api/admin/logs?limit=200');
       const data = await res.json();
-      if (data.success && data.stats?.recentLogs) {
-        return data.stats.recentLogs.map((l: any) => ({
+      if (data.success && Array.isArray(data.logs)) {
+        return data.logs.map((l: any) => ({
           id: l.id,
           student_id: l.student_id || 'unknown',
           event_type: l.event_type,
-          details: { description: l.description },
+          details: { description: l.description, ...l.metadata },
           created_at: l.timestamp,
         }));
       }
@@ -270,8 +330,7 @@ export async function fetchActivityLogs(): Promise<ActivityLog[]> {
   } catch (err) {
     console.warn('API fetchActivityLogs error:', err);
   }
-
-  return getLocalStore<ActivityLog>(STORAGE_KEYS.LOGS);
+  return [];
 }
 
 export async function recordActivityLog(log: ActivityLog): Promise<boolean> {

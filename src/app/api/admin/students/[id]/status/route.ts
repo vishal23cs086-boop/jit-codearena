@@ -8,9 +8,10 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { status } = body;
+    const rawStatus = (body.status || body.action || '').toString().toLowerCase();
+    const status = rawStatus === 'disable' ? 'disabled' : rawStatus === 'archive' ? 'archived' : rawStatus === 'enable' ? 'active' : rawStatus;
 
-    if (!status || !['active', 'disabled', 'archived'].includes(status.toLowerCase())) {
+    if (!status || !['active', 'disabled', 'archived'].includes(status)) {
       return NextResponse.json(
         { success: false, error: 'Invalid status. Allowed values: active, disabled, archived' },
         { status: 400 }
@@ -19,7 +20,7 @@ export async function POST(
 
     const result = await setStudentStatus(
       id,
-      status.toLowerCase() as 'active' | 'disabled' | 'archived',
+      status as 'active' | 'disabled' | 'archived',
       { name: 'Admin Controller', role: 'admin' }
     );
 
@@ -37,4 +38,4 @@ export async function POST(
   }
 }
 
-export { POST as PATCH };
+export { POST as PATCH, POST as PUT };

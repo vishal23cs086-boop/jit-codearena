@@ -64,7 +64,9 @@ export async function POST(req: NextRequest) {
 
     // Password verification: If password is stored, verify; otherwise allow default test access
     if (student.password_hash && password) {
-      if (student.password_hash !== password) {
+      const { verifyPassword, hashPassword, getTursoClient } = await import('@/lib/turso');
+      const isMatch = verifyPassword(password, student.password_hash);
+      if (!isMatch) {
         return NextResponse.json(
           {
             success: false,
@@ -73,6 +75,18 @@ export async function POST(req: NextRequest) {
           },
           { status: 401 }
         );
+      }
+
+      // If legacy plaintext password, automatically upgrade to salted PBKDF2 hash
+      if (!student.password_hash.startsWith('pbkdf2:')) {
+        try {
+          const client = getTursoClient();
+          const upgradedHash = hashPassword(password);
+          await client.execute({
+            sql: 'UPDATE students SET password_hash = ? WHERE id = ?',
+            args: [upgradedHash, student.id],
+          });
+        } catch {}
       }
     }
 
@@ -132,10 +146,29 @@ export async function POST(req: NextRequest) {
       created_at: student.created_at,
     };
 
-    return NextResponse.json({
+    const { signSessionToken } = await import('@/lib/session');
+    const token = await signSessionToken({
+      role: 'student',
+      id: student.id,
+      register_number: student.register_number,
+      year: Number(student.year),
+      session_version: Number(student.session_version || 1),
+    });
+
+    const res = NextResponse.json({
       success: true,
       user: safeUser,
     });
+
+    res.cookies.set('jit_student_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 86400 * 7,
+    });
+
+    return res;
   } catch (error: any) {
     console.error('Student login error:', error);
     return NextResponse.json(

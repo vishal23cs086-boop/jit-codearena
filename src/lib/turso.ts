@@ -22,6 +22,31 @@ export function getTursoClient(): Client {
   return tursoClientInstance;
 }
 
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
+  return `pbkdf2:10000:${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, storedHash?: string): boolean {
+  if (!storedHash) return false;
+  if (!storedHash.startsWith('pbkdf2:')) {
+    // Backward compatibility for existing plaintext passwords
+    return storedHash === password;
+  }
+  const parts = storedHash.split(':');
+  if (parts.length !== 4) return false;
+  const iterations = parseInt(parts[1], 10);
+  const salt = parts[2];
+  const originalHash = parts[3];
+  const calculatedHash = crypto.pbkdf2Sync(password, salt, iterations, 32, 'sha256').toString('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(originalHash, 'hex'), Buffer.from(calculatedHash, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
 export async function initTursoDb(): Promise<void> {
   if (isInitialized) return;
   const client = getTursoClient();
@@ -184,11 +209,27 @@ export async function initTursoDb(): Promise<void> {
     'ALTER TABLE tests ADD COLUMN question_count INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE test_attempts ADD COLUMN question_seed TEXT;',
     'CREATE INDEX IF NOT EXISTS idx_questions_year ON questions(year);',
+    'CREATE INDEX IF NOT EXISTS idx_questions_test_id ON questions(test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_questions_year_test ON questions(year, test_id);',
     'CREATE INDEX IF NOT EXISTS idx_students_year ON students(year);',
+    'CREATE INDEX IF NOT EXISTS idx_students_is_active ON students(is_active);',
     'CREATE INDEX IF NOT EXISTS idx_tests_year ON tests(year);',
+    'CREATE INDEX IF NOT EXISTS idx_tests_status ON tests(status);',
     'CREATE INDEX IF NOT EXISTS idx_attempt_questions_attempt ON attempt_questions(attempt_id);',
     'CREATE INDEX IF NOT EXISTS idx_attempt_questions_question ON attempt_questions(question_id);',
+    'CREATE INDEX IF NOT EXISTS idx_attempt_questions_order ON attempt_questions(attempt_id, question_order);',
+    'CREATE INDEX IF NOT EXISTS idx_test_attempts_student ON test_attempts(student_id);',
+    'CREATE INDEX IF NOT EXISTS idx_test_attempts_test ON test_attempts(test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_test_attempts_student_test ON test_attempts(student_id, test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_id);',
+    'CREATE INDEX IF NOT EXISTS idx_submissions_test ON submissions(test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_submissions_question ON submissions(question_id);',
+    'CREATE INDEX IF NOT EXISTS idx_activity_logs_student ON activity_logs(student_id);',
+    'CREATE INDEX IF NOT EXISTS idx_activity_logs_test ON activity_logs(test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_student_presence_last_seen ON student_presence(last_seen);',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_students_reg_no_upper ON students(UPPER(TRIM(register_number)));',
+    'ALTER TABLE test_attempts ADD COLUMN ends_at TEXT;',
+    'ALTER TABLE submissions ADD COLUMN attempt_id TEXT;',
   ];
 
   for (const alt of alters) {
@@ -1962,16 +2003,21 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
   // 7. Create attempt in test_attempts
   const attemptId = `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const randomSeed = crypto.randomBytes(8).toString('hex');
-  const now = new Date().toISOString();
+  const durationMinutes = Number(test.duration || 60);
+  const startTimeDate = new Date();
+  const endsAtDate = new Date(startTimeDate.getTime() + durationMinutes * 60 * 1000);
+  const now = startTimeDate.toISOString();
+  const endsAt = endsAtDate.toISOString();
 
   await client.execute({
-    sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, score, max_score, status, question_seed, created_at)
-          VALUES (?, ?, ?, ?, 0, ?, 'in_progress', ?, ?)`,
+    sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, ends_at, score, max_score, status, question_seed, created_at)
+          VALUES (?, ?, ?, ?, ?, 0, ?, 'in_progress', ?, ?)`,
     args: [
       attemptId,
       testId,
       studentId,
       now,
+      endsAt,
       Number(test.total_marks || 100),
       randomSeed,
       now,
@@ -2084,11 +2130,61 @@ export async function verifyQuestionForStudentAttempt(
     return {
       valid: false,
       error: `Question does not belong to your academic year (${studentYear === 2 ? '2nd' : '3rd'} Year).`,
+      code: 403,
     };
   }
 
-  // 3. If attemptId provided, verify it is in attempt_questions (if attempt has recorded question assignments)
+  // 3. If attemptId provided, verify attempt ownership, timer deadline, and assigned questions
   if (attemptId && attemptId !== 'general') {
+    const aRes = await client.execute({
+      sql: 'SELECT ta.*, t.duration FROM test_attempts ta LEFT JOIN tests t ON ta.test_id = t.id WHERE ta.id = ? LIMIT 1',
+      args: [attemptId],
+    });
+
+    if (aRes.rows.length > 0) {
+      const att: any = aRes.rows[0];
+
+      // Ownership guard
+      if (att.student_id && att.student_id !== studentId) {
+        return {
+          valid: false,
+          error: 'Unauthorized attempt access. Attempt belongs to another candidate.',
+          code: 403,
+        };
+      }
+
+      // Status guard
+      if (att.status === 'completed' || att.status === 'submitted' || att.status === 'auto_submitted') {
+        return {
+          valid: false,
+          error: 'Assessment attempt has already concluded.',
+          code: 403,
+        };
+      }
+
+      // Server-authoritative timer deadline check (with 15s network latency buffer)
+      const durationMin = Number(att.duration || 60);
+      const endsAtMs = att.ends_at
+        ? new Date(att.ends_at).getTime()
+        : new Date(att.start_time).getTime() + durationMin * 60 * 1000;
+
+      if (Date.now() > endsAtMs + 15000) {
+        // Auto-finalize expired attempt in Turso
+        try {
+          await client.execute({
+            sql: "UPDATE test_attempts SET status = 'auto_submitted', end_time = ? WHERE id = ?",
+            args: [new Date().toISOString(), attemptId],
+          });
+        } catch {}
+
+        return {
+          valid: false,
+          error: 'Assessment deadline has expired. Your attempt has been automatically finalized.',
+          code: 403,
+        };
+      }
+    }
+
     const countRes = await client.execute({
       sql: 'SELECT COUNT(*) as count FROM attempt_questions WHERE attempt_id = ?',
       args: [attemptId],
@@ -2103,6 +2199,7 @@ export async function verifyQuestionForStudentAttempt(
         return {
           valid: false,
           error: 'Question is not assigned to this assessment attempt.',
+          code: 403,
         };
       }
     }
