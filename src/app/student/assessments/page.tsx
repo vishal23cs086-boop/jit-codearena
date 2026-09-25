@@ -3,42 +3,65 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { fetchTests, fetchAttempts } from '@/lib/db';
-import { Test, TestAttempt } from '@/types';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
   FileCode,
   Clock,
   Award,
   Calendar,
-  ShieldCheck,
   ArrowRight,
   CheckCircle2,
-  AlertCircle,
+  Lock,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
+
+interface StudentAssessmentItem {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+  assessment_code: string;
+  instructions: string;
+  year: number;
+  duration: number;
+  duration_minutes: number;
+  total_marks: number;
+  passing_marks: number;
+  question_count: number;
+  start_time: string;
+  end_time: string;
+  status: string;
+  calculated_status: 'Available' | 'In Progress' | 'Completed' | 'Upcoming' | 'Expired';
+  attempt?: {
+    id: string;
+    status: string;
+    score: number;
+    max_score: number;
+    start_time: string;
+    end_time: string | null;
+  } | null;
+}
 
 export default function StudentAssessmentsPage() {
   const { user } = useAuth();
-  const [tests, setTests] = useState<Test[]>([]);
-  const [attempts, setAttempts] = useState<TestAttempt[]>([]);
+  const [assessments, setAssessments] = useState<StudentAssessmentItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [allTests, allAttempts] = await Promise.all([
-          fetchTests(),
-          fetchAttempts(),
-        ]);
-        const yearFiltered = user?.year
-          ? allTests.filter((t) => Number(t.year || 2) === Number(user.year))
-          : allTests;
-        setTests(yearFiltered);
-        if (user) {
-          setAttempts(allAttempts.filter((a) => a.student_id === user.id));
+        setLoading(true);
+        const res = await fetch('/api/student/assessments');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.assessments)) {
+          setAssessments(data.assessments);
+        } else {
+          setAssessments([]);
         }
       } catch (e) {
-        console.warn('Error loading assessments:', e);
+        console.warn('Error loading student assessments:', e);
+        setAssessments([]);
       } finally {
         setLoading(false);
       }
@@ -46,27 +69,7 @@ export default function StudentAssessmentsPage() {
     loadData();
   }, [user]);
 
-  const getStatus = (test: Test): 'Upcoming' | 'Available' | 'In Progress' | 'Completed' | 'Expired' => {
-    const attempt = attempts.find((a) => a.test_id === test.id);
-    if (attempt?.status === 'submitted' || attempt?.status === 'auto_submitted') {
-      return 'Completed';
-    }
-    if (attempt?.status === 'in_progress') {
-      return 'In Progress';
-    }
-
-    const now = new Date();
-    const startTime = new Date(test.start_time);
-    const endTime = new Date(test.end_time);
-
-    if (now < startTime) return 'Upcoming';
-    if (now > endTime) return 'Expired';
-    if (test.status === 'active') return 'Available';
-    if (test.status === 'published') return 'Upcoming';
-    return 'Expired';
-  };
-
-  const getStatusBadge = (status: ReturnType<typeof getStatus>) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case 'Available':
         return (
@@ -99,20 +102,10 @@ export default function StudentAssessmentsPage() {
       default:
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
-            Expired
+            Closed / Expired
           </span>
         );
     }
-  };
-
-  // Eligibility check
-  const isEligible = (test: Test) => {
-    if (!user) return false;
-    const yearMatch = !test.eligible_years?.length || test.eligible_years.includes(user.year);
-    const deptMatch =
-      !test.eligible_departments?.length ||
-      test.eligible_departments.some((d) => d.toUpperCase() === user.department?.toUpperCase());
-    return yearMatch && deptMatch;
   };
 
   return (
@@ -123,16 +116,20 @@ export default function StudentAssessmentsPage() {
           <span>Institutional Coding Assessments</span>
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          Scheduled examinations and laboratory assessments for your academic cohort
+          Official departmental assessments for your academic cohort ({user?.year === 2 ? '2nd Year' : user?.year === 3 ? '3rd Year' : 'Candidate'})
         </p>
       </div>
 
-      {tests.length > 0 ? (
+      {loading ? (
+        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs">
+          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-xs text-slate-500">Loading your eligible assessments from examination database...</p>
+        </div>
+      ) : assessments.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {tests.map((test) => {
-            const status = getStatus(test);
-            const eligible = isEligible(test);
-            const canStart = eligible && (status === 'Available' || status === 'In Progress');
+          {assessments.map((test) => {
+            const status = test.calculated_status;
+            const canStart = status === 'Available' || status === 'In Progress';
 
             return (
               <div
@@ -153,10 +150,19 @@ export default function StudentAssessmentsPage() {
                     </span>
                   </div>
 
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">{test.title}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
-                    {test.description}
-                  </p>
+                  <h3 className="text-lg font-bold text-slate-900 mb-1">{test.title}</h3>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 font-mono text-[10px] rounded border border-slate-200">
+                      {test.assessment_code || test.code || test.id}
+                    </span>
+                    <span className="text-[11px] text-slate-400">• Passing: {test.passing_marks} / {test.total_marks}</span>
+                  </div>
+
+                  {test.description ? (
+                    <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
+                      {test.description}
+                    </p>
+                  ) : null}
 
                   <div className="grid grid-cols-2 gap-2 mt-4 text-xs font-mono bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-slate-700">
                     <span className="flex items-center gap-1.5">
@@ -167,20 +173,24 @@ export default function StudentAssessmentsPage() {
                       <Award className="w-3.5 h-3.5 text-emerald-600" />
                       Total: {test.total_marks} Marks
                     </span>
-                    <span className="col-span-2 text-[11px] text-slate-500 flex items-center gap-1">
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-blue-600" />
+                      Questions: {test.question_count}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      Pass: {test.passing_marks} Marks
+                    </span>
+                    <span className="col-span-2 text-[11px] text-slate-500 flex items-center gap-1 mt-1">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      Window: {new Date(test.start_time).toLocaleDateString()} – {new Date(test.end_time).toLocaleDateString()}
+                      Window: {test.start_time ? new Date(test.start_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Immediate'} – {test.end_time ? new Date(test.end_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Continuous'}
                     </span>
                   </div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <div className="text-[11px] text-slate-500">
-                    {eligible ? (
-                      <span className="text-emerald-600 font-medium">✓ Eligible Candidate</span>
-                    ) : (
-                      <span className="text-rose-600 font-medium">✕ Department / Year Restriction</span>
-                    )}
+                    <span className="text-emerald-600 font-medium">✓ Eligible Candidate ({user?.year === 2 ? '2nd' : '3rd'} Year)</span>
                   </div>
 
                   {status === 'Completed' ? (
@@ -203,7 +213,7 @@ export default function StudentAssessmentsPage() {
                       disabled
                       className="px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-semibold cursor-not-allowed border border-slate-200"
                     >
-                      {status === 'Upcoming' ? 'Not Started Yet' : status === 'Expired' ? 'Assessment Closed' : 'Ineligible'}
+                      {status === 'Upcoming' ? 'Starts Soon' : 'Assessment Closed'}
                     </button>
                   )}
                 </div>
@@ -213,7 +223,7 @@ export default function StudentAssessmentsPage() {
         </div>
       ) : (
         <EmptyState
-          title="No institutional assessments found"
+          title="No assessments available"
           description="Your scheduled tests will appear here once published by the examination coordinator."
         />
       )}

@@ -172,7 +172,12 @@ export async function deleteQuestionById(id: string): Promise<boolean> {
 export async function fetchTests(): Promise<Test[]> {
   try {
     if (typeof window !== 'undefined') {
-      const res = await fetch('/api/admin/assessments');
+      // Try student endpoint first (authorized for student sessions)
+      let res = await fetch('/api/student/assessments');
+      if (res.status === 401 || res.status === 403) {
+        // Fallback to admin assessments endpoint if caller is admin
+        res = await fetch('/api/admin/assessments');
+      }
       const data = await res.json();
       if (data.success && Array.isArray(data.assessments)) {
         return data.assessments.map((t: any) => ({
@@ -183,11 +188,13 @@ export async function fetchTests(): Promise<Test[]> {
           question_count: Number(t.question_count || 0),
           duration_minutes: Number(t.duration || t.duration_minutes || 60),
           total_marks: Number(t.total_marks || 100),
+          passing_marks: Number(t.passing_marks || 40),
           eligible_years: t.year ? [Number(t.year)] : [1, 2, 3, 4],
           eligible_departments: ['CSE', 'IT', 'AI&DS', 'ECE', 'MECH', 'CIVIL', 'EEE', 'CSBS'],
-          start_time: t.start_time || new Date().toISOString(),
-          end_time: t.end_time || new Date(Date.now() + 86400000 * 7).toISOString(),
-          status: t.status === 'live' ? 'active' : t.status === 'completed' || t.status === 'closed' ? 'ended' : 'published',
+          start_time: t.start_time || '',
+          end_time: t.end_time || '',
+          status: t.status === 'live' || t.status === 'active' || t.status === 'published' ? 'active' : t.status === 'completed' || t.status === 'closed' ? 'ended' : 'published',
+          calculated_status: t.calculated_status,
           created_at: t.created_at,
           questions: [],
         }));
@@ -197,13 +204,16 @@ export async function fetchTests(): Promise<Test[]> {
     console.warn('API fetchTests error:', err);
   }
 
-  return getLocalStore<Test>(STORAGE_KEYS.TESTS);
+  return [];
 }
 
 export async function fetchTestById(id: string): Promise<Test | null> {
   try {
     if (typeof window !== 'undefined') {
-      const res = await fetch(`/api/admin/assessments/${id}`);
+      let res = await fetch(`/api/student/assessments/${id}`);
+      if (res.status === 401 || res.status === 403) {
+        res = await fetch(`/api/admin/assessments/${id}`);
+      }
       const data = await res.json();
       if (data.success && data.assessment) {
         const t = data.assessment;
@@ -215,11 +225,13 @@ export async function fetchTestById(id: string): Promise<Test | null> {
           question_count: Number(t.question_count || 0),
           duration_minutes: Number(t.duration || t.duration_minutes || 60),
           total_marks: Number(t.total_marks || 100),
+          passing_marks: Number(t.passing_marks || 40),
           eligible_years: t.year ? [Number(t.year)] : [1, 2, 3, 4],
           eligible_departments: ['CSE', 'IT', 'AI&DS', 'ECE', 'MECH', 'CIVIL', 'EEE', 'CSBS'],
-          start_time: t.start_time || new Date().toISOString(),
-          end_time: t.end_time || new Date(Date.now() + 86400000 * 7).toISOString(),
-          status: t.status === 'live' ? 'active' : t.status === 'completed' || t.status === 'closed' ? 'ended' : 'published',
+          start_time: t.start_time || '',
+          end_time: t.end_time || '',
+          status: t.status === 'live' || t.status === 'active' || t.status === 'published' ? 'active' : t.status === 'completed' || t.status === 'closed' ? 'ended' : 'published',
+          calculated_status: t.calculated_status,
           created_at: t.created_at,
           questions: (t.questions || []).map((q: any, idx: number) => ({
             id: q.id,
@@ -232,11 +244,11 @@ export async function fetchTestById(id: string): Promise<Test | null> {
               title: q.title,
               slug: q.id,
               description: q.description,
-              input_format: 'Standard Input',
-              output_format: 'Standard Output',
-              constraints: '1 <= n <= 10^5',
+              input_format: q.input_format || 'Standard Input',
+              output_format: q.output_format || 'Standard Output',
+              constraints: q.constraints || '1 <= n <= 10^5',
               difficulty: q.difficulty === 'easy' ? 'Easy' : q.difficulty === 'hard' ? 'Hard' : 'Medium',
-              topic: 'Algorithms',
+              topic: q.topic || 'Algorithms',
               starter_code: q.initial_code || 'def solution():\n    pass\n',
               marks: q.marks || 25,
               time_limit_ms: q.time_limit || 2000,
@@ -252,8 +264,7 @@ export async function fetchTestById(id: string): Promise<Test | null> {
     console.warn('API fetchTestById error:', err);
   }
 
-  const all = await fetchTests();
-  return all.find((t) => t.id === id) || null;
+  return null;
 }
 
 export async function saveTest(test: Test): Promise<boolean> {

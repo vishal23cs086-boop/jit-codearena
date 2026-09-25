@@ -79,6 +79,7 @@ export default function AssessmentManagementPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAssessment, setEditingAssessment] = useState<AssessmentItem | null>(null);
   const [deletingAssessment, setDeletingAssessment] = useState<AssessmentItem | null>(null);
+  const [viewingAssessment, setViewingAssessment] = useState<AssessmentItem | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -138,42 +139,19 @@ export default function AssessmentManagementPage() {
   const openCreateModal = () => {
     setEditingAssessment(null);
     setFormTitle('');
-    setFormCode(`TEST-${Math.floor(1000 + Math.random() * 9000)}`);
+    setFormCode(`JIT-Y2-PY-${Math.floor(1000 + Math.random() * 9000)}`);
     setFormDescription('');
     setFormInstructions('Ensure full screen is maintained. Avoid switching tabs or accessing unauthorized windows.');
     setFormDuration(60);
     setFormTotalMarks(100);
     setFormPassingMarks(40);
     setFormYear(2);
-    setFormQuestionCount(0);
+    setFormQuestionCount(poolStats.year2Count || 4);
     const now = new Date();
     setFormStartTime(now.toISOString().slice(0, 16));
     const nextWeek = new Date(Date.now() + 7 * 86400000);
     setFormEndTime(nextWeek.toISOString().slice(0, 16));
-    setFormQuestions([
-      {
-        title: 'Two Sum in Python',
-        description: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.',
-        difficulty: 'easy',
-        marks: 50,
-        initial_code: 'def solution(nums, target):\n    # Write Python solution\n    return []\n',
-        test_cases: [
-          { input: '[2,7,11,15]\n9', expected_output: '[0, 1]', is_hidden: false },
-          { input: '[3,2,4]\n6', expected_output: '[1, 2]', is_hidden: true },
-        ],
-      },
-      {
-        title: 'Valid Palindrome Filter',
-        description: 'Given a string s, return true if it is a palindrome, after converting all uppercase letters into lowercase letters and removing all non-alphanumeric characters.',
-        difficulty: 'medium',
-        marks: 50,
-        initial_code: 'def is_palindrome(s: str) -> bool:\n    # Return True or False\n    return False\n',
-        test_cases: [
-          { input: '"A man, a plan, a canal: Panama"', expected_output: 'True', is_hidden: false },
-          { input: '"race a car"', expected_output: 'False', is_hidden: true },
-        ],
-      },
-    ]);
+    setFormQuestions([]);
     setShowCreateModal(true);
   };
 
@@ -231,16 +209,49 @@ export default function AssessmentManagementPage() {
   };
 
   const handleSaveAssessment = async (targetStatus: 'draft' | 'live' | 'scheduled') => {
-    if (!formTitle.trim()) {
-      alert('Please provide an assessment title.');
+    const trimmedTitle = formTitle.trim();
+    if (!trimmedTitle) {
+      alert('Assessment title is required.');
       return;
     }
+    const trimmedCode = formCode.trim();
+    if (!trimmedCode) {
+      alert('Assessment code is required.');
+      return;
+    }
+    if (Number(formDuration) <= 0) {
+      alert('Duration must be greater than 0 minutes.');
+      return;
+    }
+    if (Number(formTotalMarks) <= 0) {
+      alert('Total marks must be greater than 0.');
+      return;
+    }
+    if (Number(formPassingMarks) < 0) {
+      alert('Passing marks cannot be negative.');
+      return;
+    }
+    if (Number(formPassingMarks) > Number(formTotalMarks)) {
+      alert('Passing marks cannot exceed total marks.');
+      return;
+    }
+    if (formStartTime && formEndTime && new Date(formStartTime).getTime() >= new Date(formEndTime).getTime()) {
+      alert('End time must be after start time.');
+      return;
+    }
+
+    const currentPool = formYear === 2 ? poolStats.year2Count : poolStats.year3Count;
+    if (formQuestions.length === 0 && Number(formQuestionCount) > currentPool) {
+      alert(`Only ${currentPool} questions are available in the Year ${formYear} question bank.`);
+      return;
+    }
+
     setActionLoading(true);
 
     try {
       const payload = {
-        title: formTitle.trim(),
-        code: formCode.trim(),
+        title: trimmedTitle,
+        code: trimmedCode,
         description: formDescription.trim(),
         instructions: formInstructions.trim(),
         duration: Number(formDuration),
@@ -604,6 +615,15 @@ export default function AssessmentManagementPage() {
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="inline-flex items-center gap-1">
+                          {/* View Details */}
+                          <button
+                            onClick={() => setViewingAssessment(test)}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
+                            title="View Assessment Details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* Live Toggle */}
                           {isLive ? (
                             <button
@@ -656,6 +676,104 @@ export default function AssessmentManagementPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ASSESSMENT DETAILS VIEW MODAL */}
+      {viewingAssessment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-indigo-600 font-bold">
+                  Assessment Details Record
+                </span>
+                <h2 className="text-xl font-bold text-slate-900 mt-0.5">{viewingAssessment.title}</h2>
+              </div>
+              <button
+                onClick={() => setViewingAssessment(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Assessment Code</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{viewingAssessment.code || viewingAssessment.id}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Academic Year</span>
+                <span className="font-bold text-indigo-700">{viewingAssessment.year === 2 ? '2nd Year Assessment' : '3rd Year Assessment'}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Status</span>
+                <span className="font-bold uppercase text-emerald-700">{viewingAssessment.status}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Available in Question Bank</span>
+                <span className="font-bold text-indigo-600">
+                  {viewingAssessment.year === 2 ? poolStats.year2Count : poolStats.year3Count} questions
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Questions Assigned</span>
+                <span className="font-mono font-bold text-slate-900">{viewingAssessment.question_count} questions</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Duration</span>
+                <span className="font-mono font-bold text-slate-900">{viewingAssessment.duration} Minutes</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Total Marks Target</span>
+                <span className="font-mono font-bold text-slate-900">{viewingAssessment.total_marks} Marks</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Passing Marks</span>
+                <span className="font-mono font-bold text-emerald-700">{viewingAssessment.passing_marks} Marks</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Candidate Attempts</span>
+                <span className="font-mono font-bold text-slate-900">{viewingAssessment.participant_count} candidates</span>
+              </div>
+              <div className="col-span-2 sm:col-span-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Assessment Window</span>
+                <span className="font-mono text-slate-700">
+                  {viewingAssessment.start_time ? new Date(viewingAssessment.start_time).toLocaleString() : 'Immediate'} —{' '}
+                  {viewingAssessment.end_time ? new Date(viewingAssessment.end_time).toLocaleString() : 'Continuous'}
+                </span>
+              </div>
+              {viewingAssessment.description && (
+                <div className="col-span-2 sm:col-span-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Description</span>
+                  <p className="text-slate-700 text-xs leading-relaxed">{viewingAssessment.description}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setViewingAssessment(null)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = viewingAssessment;
+                  setViewingAssessment(null);
+                  openEditModal(target);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit Assessment</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -778,17 +896,26 @@ export default function AssessmentManagementPage() {
                   </label>
                   <input
                     type="number"
-                    min={0}
-                    placeholder="0 for all questions in pool"
+                    min={1}
+                    max={formYear === 2 ? poolStats.year2Count : poolStats.year3Count}
+                    placeholder="Enter question count"
                     value={formQuestionCount}
                     onChange={(e) => setFormQuestionCount(Number(e.target.value))}
-                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
+                    className={`w-full bg-white border rounded-xl p-2.5 font-mono text-slate-900 focus:outline-none ${
+                      formQuestionCount > (formYear === 2 ? poolStats.year2Count : poolStats.year3Count)
+                        ? 'border-rose-400 bg-rose-50/40 text-rose-900'
+                        : 'border-slate-200 focus:border-indigo-500'
+                    }`}
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    {formQuestionCount > 0
-                      ? `Each candidate receives ${formQuestionCount} randomly selected questions from the Year ${formYear} pool.`
-                      : 'Candidates receive all available questions from the pool in randomized order.'}
-                  </p>
+                  {formQuestionCount > (formYear === 2 ? poolStats.year2Count : poolStats.year3Count) ? (
+                    <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                      Only {formYear === 2 ? poolStats.year2Count : poolStats.year3Count} questions are available in the Year {formYear} question bank.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Each candidate receives {formQuestionCount} randomly selected questions from the Year {formYear} pool.
+                    </p>
+                  )}
                 </div>
               </div>
 

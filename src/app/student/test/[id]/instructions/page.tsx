@@ -3,8 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { fetchTests } from '@/lib/db';
-import { Test } from '@/types';
 import {
   ShieldAlert,
   Clock,
@@ -16,45 +14,57 @@ import {
   Lock,
   ArrowRight,
   Loader2,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
+
+interface AssessmentDetails {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+  assessment_code: string;
+  instructions: string;
+  year: number;
+  duration_minutes: number;
+  total_marks: number;
+  passing_marks: number;
+  question_count: number;
+  start_time: string;
+  end_time: string;
+  status: string;
+  calculated_status: string;
+}
 
 export default function TestInstructionsPage() {
   const router = useRouter();
   const params = useParams();
   const { user } = useAuth();
   const [agreed, setAgreed] = useState(false);
-  const [test, setTest] = useState<Test | null>(null);
+  const [test, setTest] = useState<AssessmentDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const testId = typeof params?.id === 'string' ? params.id : '';
 
   useEffect(() => {
     async function loadTest() {
+      if (!testId) return;
       setLoading(true);
+      setErrorMessage(null);
       try {
-        const tests = await fetchTests();
-        const found = tests.find((t) => t.id === testId);
-        if (found) {
-          setTest(found);
-        } else if (tests.length > 0) {
-          setTest(tests[0]);
+        const res = await fetch(`/api/student/assessments/${testId}`);
+        const data = await res.json();
+        if (res.ok && data.success && data.assessment) {
+          setTest(data.assessment);
         } else {
-          // If tests database has no tests yet, build standard placeholder
-          setTest({
-            id: testId || 'jit-py-exam',
-            title: 'JIT Institutional Python Assessment',
-            description: 'Official departmental Python programming assessment. Candidates must solve algorithmic challenges within the allotted time.',
-            duration_minutes: 60,
-            total_marks: 100,
-            eligible_years: [2, 3],
-            eligible_departments: ['CSE', 'IT', 'AI&DS', 'ECE'],
-            start_time: new Date().toISOString(),
-            end_time: new Date(Date.now() + 3600000).toISOString(),
-            status: 'active',
-          });
+          setTest(null);
+          setErrorMessage(data.error || 'Assessment not found or not available for your academic year.');
         }
       } catch (err) {
         console.error('Error loading test:', err);
+        setTest(null);
+        setErrorMessage('Failed to load assessment details from server.');
       } finally {
         setLoading(false);
       }
@@ -84,6 +94,28 @@ export default function TestInstructionsPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (errorMessage || !test) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900">Assessment Unavailable</h2>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {errorMessage || 'The requested assessment could not be loaded or is not available for your cohort.'}
+        </p>
+        <div>
+          <button
+            onClick={() => router.push('/student/assessments')}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
+          >
+            Return to My Assessments
+          </button>
+        </div>
       </div>
     );
   }
@@ -152,29 +184,32 @@ export default function TestInstructionsPage() {
             </div>
           </div>
         </div>
-        <p className="text-sm text-slate-600 leading-relaxed relative z-10">{test?.description}</p>
 
-        {/* Candidate Badge */}
-        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex flex-wrap items-center justify-between gap-4 text-xs font-mono relative z-10">
+        {test?.description ? (
+          <p className="text-sm text-slate-600 leading-relaxed relative z-10">{test.description}</p>
+        ) : null}
+
+        {/* Candidate & Assessment autoritative details */}
+        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono relative z-10">
           <div>
-            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Candidate Name:</span>
-            <span className="text-slate-900 font-bold text-sm">{user?.full_name || 'Candidate'}</span>
+            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Candidate:</span>
+            <span className="text-slate-900 font-bold text-xs block truncate">{user?.full_name || 'Candidate'}</span>
+            <span className="text-indigo-600 font-bold text-[11px] block">{user?.register_number}</span>
           </div>
           <div>
-            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Register Number:</span>
-            <span className="text-indigo-600 font-bold text-sm">
-              {user?.register_number || 'Registered Candidate'}
-            </span>
+            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Assessment Code:</span>
+            <span className="text-slate-900 font-bold text-xs block">{test.assessment_code || test.code}</span>
+            <span className="text-slate-500 text-[11px] block">Year {test.year}</span>
           </div>
           <div>
-            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Department & Year:</span>
-            <span className="text-slate-700 font-medium">
-              {user?.department || 'Engineering'} • Year {user?.year || '2/3'}
-            </span>
+            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Duration & Questions:</span>
+            <span className="text-indigo-600 font-bold text-xs block">{test.duration_minutes} Minutes</span>
+            <span className="text-slate-600 text-[11px] block">{test.question_count} Questions</span>
           </div>
           <div>
-            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Total Marks:</span>
-            <span className="text-emerald-600 font-bold text-sm">{test?.total_marks || 100} Marks</span>
+            <span className="text-slate-500 font-sans block mb-0.5 text-[11px]">Marks & Passing:</span>
+            <span className="text-emerald-600 font-bold text-xs block">Total: {test.total_marks}</span>
+            <span className="text-slate-600 text-[11px] block">Passing: {test.passing_marks}</span>
           </div>
         </div>
       </div>
@@ -213,7 +248,7 @@ export default function TestInstructionsPage() {
               <span>3. Clipboard Restrictions</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Copying, cutting, and pasting code are strictly blocked. Code must be authored in the Monaco editor.
+              Copying, cutting, and pasting code are strictly blocked. Code must be authored directly in the IDE.
             </p>
           </div>
 
@@ -223,14 +258,14 @@ export default function TestInstructionsPage() {
               <span>4. Server-Controlled Timer & Auto-Submit</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Your test duration is {test?.duration_minutes || 60} minutes. Your progress is auto-saved periodically. If time elapses, your code will be automatically submitted.
+              Your test duration is {test.duration_minutes} minutes. Your progress is auto-saved periodically. If time elapses, your code will be automatically finalized and submitted.
             </p>
           </div>
         </div>
 
         {/* Warning disclaimer */}
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 leading-relaxed">
-          <strong>Notice:</strong> Browser deterrents and logs are active to preserve assessment integrity. Candidates involved in unauthorized practices will be reported directly to the Examination Disciplinary Cell.
+          <strong>Notice:</strong> Browser deterrents and telemetry are active to preserve examination integrity. Candidates involved in unauthorized practices will be reported directly to the Examination Disciplinary Cell.
         </div>
 
         {/* Honor Code Checkbox */}

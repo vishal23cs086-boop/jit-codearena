@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssessmentsFromDb, createAssessmentInDb, getQuestionsFromDb } from '@/lib/turso';
+import { getAssessmentsFromDb, createAssessmentInDb } from '@/lib/turso';
 
 export async function GET(req: NextRequest) {
   try {
@@ -28,57 +28,64 @@ export async function POST(req: NextRequest) {
       title,
       description,
       code,
+      assessment_code,
+      assessmentCode,
       instructions,
       duration,
+      duration_minutes,
+      durationMinutes,
+      duration_seconds,
+      durationSeconds,
       total_marks,
+      totalMarks,
       passing_marks,
+      passingMarks,
       start_time,
+      start_at,
+      startAt,
       end_time,
+      end_at,
+      endAt,
       status,
       year,
       question_count,
+      questionCount,
       questions,
     } = body;
 
-    if (!title || !title.trim()) {
-      return NextResponse.json(
-        { success: false, error: 'Assessment title is required.' },
-        { status: 400 }
-      );
-    }
+    const normalizedCode = code || assessment_code || assessmentCode;
+    const normalizedDuration =
+      duration !== undefined
+        ? Number(duration)
+        : duration_minutes !== undefined
+        ? Number(duration_minutes)
+        : durationMinutes !== undefined
+        ? Number(durationMinutes)
+        : duration_seconds !== undefined
+        ? Math.round(Number(duration_seconds) / 60)
+        : durationSeconds !== undefined
+        ? Math.round(Number(durationSeconds) / 60)
+        : undefined;
 
-    const parsedYear = Number(year) === 3 ? 3 : 2;
-    const parsedCount = Number(question_count || 0);
-
-    // Validate available questions in pool if a specific count is required
-    if (parsedCount > 0) {
-      const pool = await getQuestionsFromDb({ year: parsedYear });
-      const attachedCount = Array.isArray(questions) ? questions.length : 0;
-      const totalAvailable = Math.max(pool.length, attachedCount);
-      if (totalAvailable < parsedCount) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Insufficient questions for this assessment. Required: ${parsedCount}. Available for ${parsedYear === 2 ? '2nd' : '3rd'} Year: ${totalAvailable}.`,
-          },
-          { status: 400 }
-        );
-      }
-    }
+    const normalizedTotal = total_marks !== undefined ? Number(total_marks) : totalMarks !== undefined ? Number(totalMarks) : undefined;
+    const normalizedPassing = passing_marks !== undefined ? Number(passing_marks) : passingMarks !== undefined ? Number(passingMarks) : undefined;
+    const normalizedStart = start_time || start_at || startAt;
+    const normalizedEnd = end_time || end_at || endAt;
+    const normalizedQuestionCount = question_count !== undefined ? Number(question_count) : questionCount !== undefined ? Number(questionCount) : undefined;
 
     const created = await createAssessmentInDb({
-      title: title.trim(),
+      title: title || '',
       description,
-      code,
+      code: normalizedCode,
       instructions,
-      duration: duration ? Number(duration) : 60,
-      total_marks: total_marks ? Number(total_marks) : 100,
-      passing_marks: passing_marks ? Number(passing_marks) : 40,
-      start_time,
-      end_time,
+      duration: normalizedDuration,
+      total_marks: normalizedTotal,
+      passing_marks: normalizedPassing,
+      start_time: normalizedStart,
+      end_time: normalizedEnd,
       status: status || 'draft',
-      year: parsedYear,
-      question_count: parsedCount,
+      year: year !== undefined ? Number(year) : 2,
+      question_count: normalizedQuestionCount,
       questions: questions || [],
     });
 
@@ -88,9 +95,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Create assessment error:', error);
+    const statusCode = error?.status && typeof error.status === 'number' ? error.status : 400;
     return NextResponse.json(
       { success: false, error: error?.message || 'Failed to create assessment' },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }

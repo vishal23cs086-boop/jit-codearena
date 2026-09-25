@@ -230,6 +230,8 @@ export async function initTursoDb(): Promise<void> {
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_students_reg_no_upper ON students(UPPER(TRIM(register_number)));',
     'ALTER TABLE test_attempts ADD COLUMN ends_at TEXT;',
     'ALTER TABLE submissions ADD COLUMN attempt_id TEXT;',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_tests_code_upper ON tests(UPPER(TRIM(code))) WHERE code IS NOT NULL AND TRIM(code) != "";',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_test_attempts_active_unique ON test_attempts(student_id, test_id) WHERE status = "in_progress" OR status = "not_started";',
   ];
 
   for (const alt of alters) {
@@ -1192,13 +1194,17 @@ export async function getAssessmentsFromDb(includeArchived = false) {
       title: String(row.title),
       description: row.description ? String(row.description) : '',
       code: row.code ? String(row.code) : '',
+      assessment_code: row.code ? String(row.code) : '',
       instructions: row.instructions ? String(row.instructions) : '',
       duration: Number(row.duration || 60),
       duration_minutes: Number(row.duration || 60),
+      duration_seconds: Number(row.duration || 60) * 60,
       total_marks: Number(row.total_marks || 100),
       passing_marks: Number(row.passing_marks || 40),
       start_time: row.start_time ? String(row.start_time) : '',
+      start_at: row.start_time ? String(row.start_time) : '',
       end_time: row.end_time ? String(row.end_time) : '',
+      end_at: row.end_time ? String(row.end_time) : '',
       status: String(row.status || 'draft'),
       year: Number(row.year || 2),
       question_count: Number(row.question_count || questionCount),
@@ -1259,13 +1265,17 @@ export async function getAssessmentWithQuestions(id: string) {
     title: String(testRow.title),
     description: testRow.description ? String(testRow.description) : '',
     code: testRow.code ? String(testRow.code) : '',
+    assessment_code: testRow.code ? String(testRow.code) : '',
     instructions: testRow.instructions ? String(testRow.instructions) : '',
     duration: Number(testRow.duration || 60),
     duration_minutes: Number(testRow.duration || 60),
+    duration_seconds: Number(testRow.duration || 60) * 60,
     total_marks: Number(testRow.total_marks || 100),
     passing_marks: Number(testRow.passing_marks || 40),
     start_time: testRow.start_time ? String(testRow.start_time) : '',
+    start_at: testRow.start_time ? String(testRow.start_time) : '',
     end_time: testRow.end_time ? String(testRow.end_time) : '',
+    end_at: testRow.end_time ? String(testRow.end_time) : '',
     status: String(testRow.status || 'draft'),
     year: Number(testRow.year || 2),
     question_count: Number(testRow.question_count || questions.length),
@@ -1282,12 +1292,17 @@ export async function createAssessmentInDb(data: {
   title: string;
   description?: string;
   code?: string;
+  assessment_code?: string;
   instructions?: string;
   duration?: number;
+  duration_minutes?: number;
+  duration_seconds?: number;
   total_marks?: number;
   passing_marks?: number;
   start_time?: string;
+  start_at?: string;
   end_time?: string;
+  end_at?: string;
   status?: string;
   year?: number;
   question_count?: number;
@@ -1305,25 +1320,124 @@ export async function createAssessmentInDb(data: {
 }) {
   await initTursoDb();
   const client = getTursoClient();
+
+  // 1. Title validation (required, trimmed, reject empty/whitespace)
+  const title = (data.title || '').trim();
+  if (!title) {
+    const err: any = new Error('Assessment title is required.');
+    err.status = 400;
+    throw err;
+  }
+
+  // 2. Academic year validation (strictly 2 or 3)
+  const testYear = Number(data.year !== undefined ? data.year : 2);
+  if (testYear !== 2 && testYear !== 3) {
+    const err: any = new Error('Academic year must be 2 (2nd Year) or 3 (3rd Year).');
+    err.status = 400;
+    throw err;
+  }
+
+  // 3. Assessment code normalization & uniqueness
+  const rawCode = (data.code || data.assessment_code || '').trim();
+  let code = rawCode.toUpperCase();
+  if (!code) {
+    code = `JIT-Y${testYear}-PY-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  const dupRes = await client.execute({
+    sql: 'SELECT id FROM tests WHERE UPPER(TRIM(code)) = ? LIMIT 1',
+    args: [code],
+  });
+  if (dupRes.rows.length > 0) {
+    const err: any = new Error(`Assessment code '${code}' already exists.`);
+    err.status = 409;
+    throw err;
+  }
+
+  // 4. Duration validation (> 0 minutes)
+  const duration = Number(
+    data.duration !== undefined
+      ? data.duration
+      : data.duration_minutes !== undefined
+      ? data.duration_minutes
+      : data.duration_seconds !== undefined
+      ? Math.round(data.duration_seconds / 60)
+      : 60
+  );
+  if (isNaN(duration) || duration <= 0) {
+    const err: any = new Error('Duration must be greater than 0 minutes.');
+    err.status = 400;
+    throw err;
+  }
+
+  // 5. Total marks validation (> 0)
+  const totalMarks = Number(data.total_marks !== undefined ? data.total_marks : 100);
+  if (isNaN(totalMarks) || totalMarks <= 0) {
+    const err: any = new Error('Total marks must be greater than 0.');
+    err.status = 400;
+    throw err;
+  }
+
+  // 6. Passing marks validation (0 <= passing_marks <= total_marks)
+  const passingMarks = Number(data.passing_marks !== undefined ? data.passing_marks : 40);
+  if (isNaN(passingMarks) || passingMarks < 0) {
+    const err: any = new Error('Passing marks cannot be negative.');
+    err.status = 400;
+    throw err;
+  }
+  if (passingMarks > totalMarks) {
+    const err: any = new Error('Passing marks cannot exceed total marks.');
+    err.status = 400;
+    throw err;
+  }
+
+  // 7. Start / End window validation
+  const startTime = data.start_time || data.start_at || null;
+  const endTime = data.end_time || data.end_at || null;
+  if (startTime && endTime) {
+    const sMs = new Date(startTime).getTime();
+    const eMs = new Date(endTime).getTime();
+    if (!isNaN(sMs) && !isNaN(eMs) && sMs >= eMs) {
+      const err: any = new Error('End time must be after start time.');
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  // 8. Available Question Pool & Count Validation
+  const pool = await getQuestionsFromDb({ year: testYear });
+  const attachedCount = Array.isArray(data.questions) ? data.questions.length : 0;
+  const availablePoolCount = Math.max(pool.length, attachedCount);
+  let qCount = Number(data.question_count || 0);
+
+  if (qCount > availablePoolCount) {
+    const err: any = new Error(
+      `Only ${availablePoolCount} questions are available in the Year ${testYear} question bank.`
+    );
+    err.status = 400;
+    throw err;
+  }
+  if (qCount <= 0) {
+    qCount = availablePoolCount; // Automatically allocate full pool
+  }
+
   const testId = data.id || `test-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
-  const testYear = data.year ? Number(data.year) : 2;
-  const qCount = data.question_count ? Number(data.question_count) : (data.questions?.length || 0);
 
   await client.execute({
     sql: `INSERT INTO tests (id, title, description, code, instructions, duration, total_marks, passing_marks, start_time, end_time, status, year, question_count, is_archived, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     args: [
       testId,
-      data.title,
-      data.description || '',
-      data.code || `TEST-${Date.now().toString().slice(-4)}`,
+      title,
+      data.description ? data.description.trim() : '',
+      code,
       data.instructions || 'Ensure fullscreen remains active. Avoid switching tabs.',
-      data.duration || 60,
-      data.total_marks || 100,
-      data.passing_marks || 40,
-      data.start_time || null,
-      data.end_time || null,
+      duration,
+      totalMarks,
+      passingMarks,
+      startTime,
+      endTime,
       data.status || 'draft',
       testYear,
       qCount,
@@ -1342,8 +1456,8 @@ export async function createAssessmentInDb(data: {
         args: [
           qId,
           testId,
-          q.title,
-          q.description,
+          q.title.trim(),
+          q.description || '',
           q.difficulty || 'medium',
           q.marks || 20,
           q.initial_code || 'def solution():\n    pass\n',
@@ -1367,12 +1481,17 @@ export async function updateAssessmentInDb(
     title?: string;
     description?: string;
     code?: string;
+    assessment_code?: string;
     instructions?: string;
     duration?: number;
+    duration_minutes?: number;
+    duration_seconds?: number;
     total_marks?: number;
     passing_marks?: number;
     start_time?: string;
+    start_at?: string;
     end_time?: string;
+    end_at?: string;
     status?: string;
     year?: number;
     question_count?: number;
@@ -1394,63 +1513,177 @@ export async function updateAssessmentInDb(
   const client = getTursoClient();
   const now = new Date().toISOString();
 
-  // Check attempt count
-  const aCountRes = await client.execute({
-    sql: 'SELECT COUNT(*) as count FROM test_attempts WHERE test_id = ?',
-    args: [id],
-  });
-  const attemptsCount = Number(aCountRes.rows[0]?.count || 0);
+  // Load existing assessment
+  const existing = await getAssessmentWithQuestions(id);
+  if (!existing) {
+    const err: any = new Error('Assessment not found');
+    err.status = 404;
+    throw err;
+  }
 
+  const attemptsCount = Number(existing.participant_count || 0);
   const updates: string[] = ['updated_at = ?'];
   const args: any[] = [now];
 
+  // 1. Title validation
   if (data.title !== undefined) {
+    const trimmed = data.title.trim();
+    if (!trimmed) {
+      const err: any = new Error('Assessment title is required.');
+      err.status = 400;
+      throw err;
+    }
     updates.push('title = ?');
-    args.push(data.title);
+    args.push(trimmed);
   }
+
+  // 2. Code validation & uniqueness
+  const codeCandidate = data.code !== undefined ? data.code : data.assessment_code;
+  if (codeCandidate !== undefined) {
+    const trimmedCode = codeCandidate.trim().toUpperCase();
+    if (!trimmedCode) {
+      const err: any = new Error('Assessment code cannot be empty.');
+      err.status = 400;
+      throw err;
+    }
+    const dupRes = await client.execute({
+      sql: 'SELECT id FROM tests WHERE UPPER(TRIM(code)) = ? AND id != ? LIMIT 1',
+      args: [trimmedCode, id],
+    });
+    if (dupRes.rows.length > 0) {
+      const err: any = new Error(`Assessment code '${trimmedCode}' already exists.`);
+      err.status = 409;
+      throw err;
+    }
+    updates.push('code = ?');
+    args.push(trimmedCode);
+  }
+
+  // 3. Year validation & protection
+  const targetYear = data.year !== undefined ? Number(data.year) : existing.year;
+  if (data.year !== undefined) {
+    if (targetYear !== 2 && targetYear !== 3) {
+      const err: any = new Error('Academic year must be 2 (2nd Year) or 3 (3rd Year).');
+      err.status = 400;
+      throw err;
+    }
+    if (attemptsCount > 0 && targetYear !== existing.year) {
+      const err: any = new Error('Cannot change academic year because student attempts already exist for this assessment.');
+      err.status = 400;
+      throw err;
+    }
+    updates.push('year = ?');
+    args.push(targetYear);
+  }
+
+  // 4. Duration validation
+  const durationCandidate =
+    data.duration !== undefined
+      ? data.duration
+      : data.duration_minutes !== undefined
+      ? data.duration_minutes
+      : data.duration_seconds !== undefined
+      ? Math.round(data.duration_seconds / 60)
+      : undefined;
+  if (durationCandidate !== undefined) {
+    const d = Number(durationCandidate);
+    if (isNaN(d) || d <= 0) {
+      const err: any = new Error('Duration must be greater than 0 minutes.');
+      err.status = 400;
+      throw err;
+    }
+    updates.push('duration = ?');
+    args.push(d);
+  }
+
+  // 5. Marks validation
+  const targetTotal = data.total_marks !== undefined ? Number(data.total_marks) : existing.total_marks;
+  if (data.total_marks !== undefined) {
+    if (isNaN(targetTotal) || targetTotal <= 0) {
+      const err: any = new Error('Total marks must be greater than 0.');
+      err.status = 400;
+      throw err;
+    }
+    updates.push('total_marks = ?');
+    args.push(targetTotal);
+  }
+
+  const targetPassing = data.passing_marks !== undefined ? Number(data.passing_marks) : existing.passing_marks;
+  if (data.passing_marks !== undefined) {
+    if (isNaN(targetPassing) || targetPassing < 0) {
+      const err: any = new Error('Passing marks cannot be negative.');
+      err.status = 400;
+      throw err;
+    }
+    if (targetPassing > targetTotal) {
+      const err: any = new Error('Passing marks cannot exceed total marks.');
+      err.status = 400;
+      throw err;
+    }
+    updates.push('passing_marks = ?');
+    args.push(targetPassing);
+  }
+
+  // 6. Window validation
+  const newStart =
+    data.start_time !== undefined
+      ? data.start_time
+      : data.start_at !== undefined
+      ? data.start_at
+      : existing.start_time;
+  const newEnd =
+    data.end_time !== undefined
+      ? data.end_time
+      : data.end_at !== undefined
+      ? data.end_at
+      : existing.end_time;
+  if (newStart && newEnd) {
+    const sMs = new Date(newStart).getTime();
+    const eMs = new Date(newEnd).getTime();
+    if (!isNaN(sMs) && !isNaN(eMs) && sMs >= eMs) {
+      const err: any = new Error('End time must be after start time.');
+      err.status = 400;
+      throw err;
+    }
+  }
+  if (data.start_time !== undefined || data.start_at !== undefined) {
+    updates.push('start_time = ?');
+    args.push(data.start_time || data.start_at || null);
+  }
+  if (data.end_time !== undefined || data.end_at !== undefined) {
+    updates.push('end_time = ?');
+    args.push(data.end_time || data.end_at || null);
+  }
+
   if (data.description !== undefined) {
     updates.push('description = ?');
-    args.push(data.description);
-  }
-  if (data.code !== undefined) {
-    updates.push('code = ?');
-    args.push(data.code);
+    args.push(data.description ? data.description.trim() : '');
   }
   if (data.instructions !== undefined) {
     updates.push('instructions = ?');
     args.push(data.instructions);
   }
-  if (data.duration !== undefined) {
-    updates.push('duration = ?');
-    args.push(data.duration);
-  }
-  if (data.total_marks !== undefined) {
-    updates.push('total_marks = ?');
-    args.push(data.total_marks);
-  }
-  if (data.passing_marks !== undefined) {
-    updates.push('passing_marks = ?');
-    args.push(data.passing_marks);
-  }
-  if (data.start_time !== undefined) {
-    updates.push('start_time = ?');
-    args.push(data.start_time);
-  }
-  if (data.end_time !== undefined) {
-    updates.push('end_time = ?');
-    args.push(data.end_time);
-  }
   if (data.status !== undefined) {
     updates.push('status = ?');
     args.push(data.status);
   }
-  if (data.year !== undefined) {
-    updates.push('year = ?');
-    args.push(Number(data.year));
-  }
+
+  // 7. Question pool validation
+  const pool = await getQuestionsFromDb({ year: targetYear });
+  const attachedCount = Array.isArray(data.questions) ? data.questions.length : (existing.questions?.length || 0);
+  const availablePoolCount = Math.max(pool.length, attachedCount);
+
   if (data.question_count !== undefined) {
+    const qc = Number(data.question_count);
+    if (qc > availablePoolCount) {
+      const err: any = new Error(
+        `Only ${availablePoolCount} questions are available in the Year ${targetYear} question bank.`
+      );
+      err.status = 400;
+      throw err;
+    }
     updates.push('question_count = ?');
-    args.push(Number(data.question_count));
+    args.push(qc <= 0 ? availablePoolCount : qc);
   }
 
   args.push(id);
@@ -1461,6 +1694,11 @@ export async function updateAssessmentInDb(
 
   // If questions are provided and no active attempts, replace questions
   if (data.questions && data.questions.length > 0) {
+    if (attemptsCount > 0) {
+      const err: any = new Error('Assessment questions cannot be modified because candidate attempts already exist.');
+      err.status = 400;
+      throw err;
+    }
     await client.execute({
       sql: 'DELETE FROM questions WHERE test_id = ?',
       args: [id],
@@ -1474,15 +1712,15 @@ export async function updateAssessmentInDb(
         args: [
           qId,
           id,
-          q.title,
-          q.description,
+          q.title.trim(),
+          q.description || '',
           q.difficulty || 'medium',
           q.marks || 20,
           q.initial_code || 'def solution():\n    pass\n',
           q.solution_code || '',
           JSON.stringify(q.test_cases || []),
           i,
-          q.year ? Number(q.year) : (data.year ? Number(data.year) : 2),
+          q.year ? Number(q.year) : targetYear,
           q.topic || 'Algorithms',
           now,
         ],
@@ -1853,14 +2091,35 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
   const test: any = tRes.rows[0];
   const testYear = Number(test.year || 2);
 
-  // 3. Strict Server-Side Academic Year Guard
+  // 3. Status Guard: Must be live/active/published
+  const testStatus = String(test.status || 'draft').toLowerCase();
+  if (testStatus !== 'live' && testStatus !== 'active' && testStatus !== 'published') {
+    const err: any = new Error('This assessment is not currently active.');
+    err.status = 403;
+    throw err;
+  }
+
+  // 4. Server-Authoritative Assessment Window Guard
+  const nowMs = Date.now();
+  if (test.start_time && nowMs < new Date(test.start_time).getTime()) {
+    const err: any = new Error('Assessment window has not started.');
+    err.status = 403;
+    throw err;
+  }
+  if (test.end_time && nowMs > new Date(test.end_time).getTime()) {
+    const err: any = new Error('Assessment window has closed.');
+    err.status = 403;
+    throw err;
+  }
+
+  // 5. Strict Server-Side Academic Year Guard
   if (studentYear !== testYear) {
     const err: any = new Error('This assessment is not available for your academic year.');
     err.status = 403;
     throw err;
   }
 
-  // 4. Check for active attempt in progress
+  // 6. Check for active attempt in progress
   const attRes = await client.execute({
     sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND (status = 'in_progress' OR status = 'not_started') ORDER BY start_time DESC LIMIT 1",
     args: [studentId, testId],
@@ -1941,7 +2200,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     }
   }
 
-  // 5. Query eligible question pool strictly for student's year
+  // 7. Query eligible question pool strictly for student's year
   const poolRes = await client.execute({
     sql: `SELECT * FROM questions
           WHERE year = ? AND (test_id = ? OR test_id = 'bank' OR test_id = '' OR test_id IS NULL)
@@ -1983,7 +2242,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     throw err;
   }
 
-  // 6. Cryptographically secure server-side randomization (Fisher-Yates)
+  // 8. Cryptographically secure server-side randomization (Fisher-Yates)
   // Ensure every question selected has question.year === studentYear
   const eligiblePool = pool.filter((q) => q.year === studentYear);
   for (let i = eligiblePool.length - 1; i > 0; i--) {
@@ -2000,7 +2259,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     [selectedQuestions[i], selectedQuestions[j]] = [selectedQuestions[j], selectedQuestions[i]];
   }
 
-  // 7. Create attempt in test_attempts
+  // 9. Create attempt in test_attempts (atomic with double-click race condition protection)
   const attemptId = `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const randomSeed = crypto.randomBytes(8).toString('hex');
   const durationMinutes = Number(test.duration || 60);
@@ -2009,20 +2268,32 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
   const now = startTimeDate.toISOString();
   const endsAt = endsAtDate.toISOString();
 
-  await client.execute({
-    sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, ends_at, score, max_score, status, question_seed, created_at)
-          VALUES (?, ?, ?, ?, ?, 0, ?, 'in_progress', ?, ?)`,
-    args: [
-      attemptId,
-      testId,
-      studentId,
-      now,
-      endsAt,
-      Number(test.total_marks || 100),
-      randomSeed,
-      now,
-    ],
-  });
+  try {
+    await client.execute({
+      sql: `INSERT INTO test_attempts (id, test_id, student_id, start_time, ends_at, score, max_score, status, question_seed, created_at)
+            VALUES (?, ?, ?, ?, ?, 0, ?, 'in_progress', ?, ?)`,
+      args: [
+        attemptId,
+        testId,
+        studentId,
+        now,
+        endsAt,
+        Number(test.total_marks || 100),
+        randomSeed,
+        now,
+      ],
+    });
+  } catch (insertErr: any) {
+    // If a concurrent request created an attempt at the exact same millisecond, return the existing attempt
+    const concurrentCheck = await client.execute({
+      sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND (status = 'in_progress' OR status = 'not_started') ORDER BY start_time DESC LIMIT 1",
+      args: [studentId, testId],
+    });
+    if (concurrentCheck.rows.length > 0) {
+      return await startOrGetAssessmentAttempt(testId, studentId, sessionVersion);
+    }
+    throw insertErr;
+  }
 
   // 8. Freeze assigned questions in attempt_questions table
   for (let idx = 0; idx < selectedQuestions.length; idx++) {

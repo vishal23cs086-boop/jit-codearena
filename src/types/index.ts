@@ -140,15 +140,20 @@ export interface Test {
   id: string;
   title: string;
   description: string;
+  code?: string;
+  assessment_code?: string;
   year?: number; // 2 or 3 (Academic Year restriction)
   question_count?: number; // Configured number of questions to assign from pool
   duration_minutes: number;
+  duration_seconds?: number;
   total_marks: number;
+  passing_marks?: number;
   eligible_years: number[];
   eligible_departments: string[];
   start_time: string;
   end_time: string;
   status: TestStatus;
+  calculated_status?: string;
   scoring_config?: ScoringConfig;
   questions?: TestQuestion[];
   created_at?: string;
