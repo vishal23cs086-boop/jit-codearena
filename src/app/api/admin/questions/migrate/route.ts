@@ -3,7 +3,14 @@ import { migrateQuestionsToThreeTestCasesAndCleanStarterCode } from '@/lib/turso
 
 export async function POST(req: NextRequest) {
   try {
-    const result = await migrateQuestionsToThreeTestCasesAndCleanStarterCode();
+    let resetStudentIds: string[] | undefined = undefined;
+    try {
+      const body = await req.json();
+      if (Array.isArray(body?.resetStudentIds)) {
+        resetStudentIds = body.resetStudentIds;
+      }
+    } catch {}
+    const result = await migrateQuestionsToThreeTestCasesAndCleanStarterCode(resetStudentIds);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('Migrate questions error:', error);

@@ -3495,9 +3495,18 @@ export async function replaceStudentsWithRoster(
 // -------------------------------------------------------------
 // QUESTION TEST CASE & STARTER CODE CLEANUP / MIGRATION
 // -------------------------------------------------------------
-export async function migrateQuestionsToThreeTestCasesAndCleanStarterCode() {
+export async function migrateQuestionsToThreeTestCasesAndCleanStarterCode(resetStudentIds?: string[]) {
   await initTursoDb();
   const client = getTursoClient();
+
+  if (Array.isArray(resetStudentIds) && resetStudentIds.length > 0) {
+    for (const sId of resetStudentIds) {
+      await client.execute({ sql: 'DELETE FROM test_attempts WHERE student_id = ?', args: [sId] });
+      await client.execute({ sql: 'DELETE FROM submissions WHERE student_id = ?', args: [sId] });
+      await client.execute({ sql: 'DELETE FROM activity_logs WHERE student_id = ?', args: [sId] });
+      await client.execute({ sql: 'DELETE FROM code_executions WHERE student_id = ?', args: [sId] });
+    }
+  }
 
   // 1. Move existing initial_code to solution_code if solution_code is empty
   await client.execute(`
