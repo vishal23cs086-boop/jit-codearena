@@ -340,7 +340,13 @@ export async function validateStudentAccountAndSession(
 export async function getStudentsFromDb() {
   await initTursoDb();
   const client = getTursoClient();
-  const res = await client.execute('SELECT * FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) ORDER BY register_number ASC');
+  const res = await client.execute(`
+    SELECT * FROM students 
+    WHERE (account_deleted = 0 OR account_deleted IS NULL)
+      AND (is_archived = 0 OR is_archived IS NULL)
+      AND (status != 'archived' OR status IS NULL)
+    ORDER BY register_number ASC
+  `);
   return res.rows.map((row: any) => ({
     id: String(row.id),
     email: String(row.email),
@@ -455,7 +461,13 @@ export async function upsertStudentInDb(student: {
 export async function getStudentsWithDetails() {
   await initTursoDb();
   const client = getTursoClient();
-  const res = await client.execute('SELECT * FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) ORDER BY register_number ASC');
+  const res = await client.execute(`
+    SELECT * FROM students 
+    WHERE (account_deleted = 0 OR account_deleted IS NULL)
+      AND (is_archived = 0 OR is_archived IS NULL)
+      AND (status != 'archived' OR status IS NULL)
+    ORDER BY register_number ASC
+  `);
   const students = [];
 
   for (const row of res.rows) {
@@ -2680,7 +2692,7 @@ export async function getDashboardStatsFromDb() {
   const client = getTursoClient();
 
   const [studentsRes, presenceRes, attemptsRes, violationsRes] = await Promise.all([
-    client.execute('SELECT COUNT(*) as count FROM students'),
+    client.execute("SELECT COUNT(*) as count FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"),
     getPresenceListFromDb(),
     client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE status = 'completed' OR status = 'submitted'"),
     client.execute('SELECT SUM(violation_count) as total_violations FROM student_presence'),
@@ -2723,6 +2735,7 @@ export async function getDashboardDrilldownFromDb(category: string) {
         FROM students s
         WHERE (s.account_deleted = 0 OR s.account_deleted IS NULL)
           AND (s.is_archived = 0 OR s.is_archived IS NULL)
+          AND (s.status != 'archived' OR s.status IS NULL)
         ORDER BY s.full_name ASC
       `);
       return res.rows.map((r: any) => ({
@@ -3259,5 +3272,194 @@ export async function getStudentAssessmentResultFromDb(testId: string, studentId
     fullscreen_exit_count: Number(att.fullscreen_exits || 0),
     copy_paste_count: Number(att.violation_count || 0),
     questions,
+  };
+}
+
+// -------------------------------------------------------------
+// OFFICIAL ROSTER REPLACEMENT & ARCHIVAL ENGINE
+// -------------------------------------------------------------
+export interface RosterStudent {
+  name: string;
+  roll_number: string;
+  department?: string;
+  year?: number;
+  section?: string;
+  email?: string;
+  password?: string;
+}
+
+export async function replaceStudentsWithRoster(
+  roster: RosterStudent[],
+  adminInfo: { name: string; role: string } = { name: 'Administrator', role: 'admin' }
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const now = new Date().toISOString();
+
+  // 1. Normalize roster entries
+  const normalizedRoster = roster.map((s) => {
+    const roll = s.roll_number.trim().toUpperCase();
+    const name = s.name.trim();
+    const department = (s.department || 'CSE').trim().toUpperCase();
+    const year = Number(s.year || 2);
+    const section = (s.section || 'A').trim().toUpperCase();
+    const email = (s.email || `${roll.toLowerCase()}@student.jit.edu`).trim().toLowerCase();
+    const password = s.password ? s.password.trim() : roll;
+    return {
+      roll,
+      name,
+      department,
+      year,
+      section,
+      email,
+      password,
+    };
+  });
+
+  const rosterRollSet = new Set(normalizedRoster.map((s) => s.roll));
+
+  // 2. Fetch all current students in DB
+  const existingRes = await client.execute('SELECT id, register_number, full_name, status FROM students');
+  const existingStudents = existingRes.rows.map((r: any) => ({
+    id: String(r.id),
+    register_number: String(r.register_number).trim().toUpperCase(),
+    full_name: String(r.full_name),
+    status: String(r.status || 'active'),
+  }));
+
+  let archivedCount = 0;
+  let deletedCount = 0;
+  const archivedDetails: any[] = [];
+  const deletedDetails: any[] = [];
+
+  // 3. Deactivate/archive/delete students NOT in the roster
+  for (const s of existingStudents) {
+    if (!rosterRollSet.has(s.register_number)) {
+      // Check if student has exam history
+      const history = await checkStudentExamHistory(s.id);
+      if (history.hasHistory) {
+        // Safe Archive: Preserve academic records and results, revoke login credentials
+        await client.execute({
+          sql: `UPDATE students 
+                SET is_active = 0, is_archived = 1, status = 'archived',
+                    session_version = session_version + 1, updated_at = ?
+                WHERE id = ?`,
+          args: [now, s.id],
+        });
+        await client.execute({ sql: 'DELETE FROM student_presence WHERE student_id = ?', args: [s.id] });
+        await recordActivityLogInDb({
+          student_id: s.id,
+          student_name: s.full_name,
+          register_number: s.register_number,
+          event_type: 'STUDENT_ARCHIVED',
+          description: `${adminInfo.name} safely archived candidate ${s.register_number} (${s.full_name}) during official roster import. Academic history preserved.`,
+          metadata: { attemptsCount: history.attemptsCount, submissionsCount: history.submissionsCount },
+        });
+        archivedCount++;
+        archivedDetails.push({ id: s.id, roll: s.register_number, name: s.full_name, attempts: history.attemptsCount });
+      } else {
+        // 0 history: Safe to delete
+        await client.execute({ sql: 'DELETE FROM student_presence WHERE student_id = ?', args: [s.id] });
+        await client.execute({ sql: 'DELETE FROM login_activity WHERE user_id = ? OR UPPER(TRIM(register_number)) = ?', args: [s.id, s.register_number] });
+        await client.execute({ sql: 'DELETE FROM activity_logs WHERE student_id = ?', args: [s.id] });
+        await client.execute({ sql: 'DELETE FROM test_attempts WHERE student_id = ?', args: [s.id] });
+        await client.execute({ sql: 'DELETE FROM students WHERE id = ?', args: [s.id] });
+        await recordActivityLogInDb({
+          student_id: s.id,
+          student_name: s.full_name,
+          register_number: s.register_number,
+          event_type: 'STUDENT_DELETED',
+          description: `${adminInfo.name} removed demo account ${s.register_number} (${s.full_name}) during official roster import.`,
+          metadata: { zeroHistory: true },
+        });
+        deletedCount++;
+        deletedDetails.push({ id: s.id, roll: s.register_number, name: s.full_name });
+      }
+    }
+  }
+
+  // 4. Pre-register / update all students from the official roster
+  let insertedCount = 0;
+  let updatedCount = 0;
+
+  for (const s of normalizedRoster) {
+    const passwordHash = hashPassword(s.password);
+    const existing = await client.execute({
+      sql: 'SELECT id FROM students WHERE UPPER(TRIM(register_number)) = ? LIMIT 1',
+      args: [s.roll],
+    });
+
+    if (existing.rows.length > 0) {
+      // Update existing student with official roster credentials
+      const studentId = String(existing.rows[0].id);
+      await client.execute({
+        sql: `UPDATE students
+              SET full_name = ?, email = ?, department = ?, year = ?, section = ?,
+                  password_hash = ?, status = 'active', is_active = 1, is_archived = 0,
+                  account_deleted = 0, updated_at = ?
+              WHERE id = ?`,
+        args: [s.name, s.email, s.department, s.year, s.section, passwordHash, now, studentId],
+      });
+      updatedCount++;
+    } else {
+      // Insert new student
+      const studentId = `std-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await client.execute({
+        sql: `INSERT INTO students (
+                id, register_number, full_name, email, department, year, section,
+                password_hash, status, is_active, is_archived, account_deleted,
+                session_version, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, 0, 0, 1, ?, ?)`,
+        args: [studentId, s.roll, s.name, s.email, s.department, s.year, s.section, passwordHash, now, now],
+      });
+      insertedCount++;
+    }
+  }
+
+  // 5. Clean up student_presence of any non-active students
+  await client.execute(`
+    DELETE FROM student_presence 
+    WHERE student_id NOT IN (
+      SELECT id FROM students 
+      WHERE (account_deleted = 0 OR account_deleted IS NULL)
+        AND (is_archived = 0 OR is_archived IS NULL)
+        AND status = 'active'
+    )
+  `).catch(() => {});
+
+  // 6. Verification counts from DB
+  const [activeRes, totalDbRes, qTotalRes, qY2Res, qY3Res, assessmentsRes] = await Promise.all([
+    client.execute("SELECT COUNT(*) as count FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"),
+    client.execute("SELECT COUNT(*) as count FROM students"),
+    client.execute("SELECT COUNT(*) as count FROM questions"),
+    client.execute("SELECT COUNT(*) as count FROM questions WHERE year = 2"),
+    client.execute("SELECT COUNT(*) as count FROM questions WHERE year = 3"),
+    client.execute("SELECT COUNT(*) as count FROM tests WHERE is_archived = 0"),
+  ]);
+
+  const activeCount = Number(activeRes.rows[0]?.count || 0);
+  const totalDbCount = Number(totalDbRes.rows[0]?.count || 0);
+  const totalQuestions = Number(qTotalRes.rows[0]?.count || 0);
+  const y2Questions = Number(qY2Res.rows[0]?.count || 0);
+  const y3Questions = Number(qY3Res.rows[0]?.count || 0);
+  const assessmentsCount = Number(assessmentsRes.rows[0]?.count || 0);
+
+  return {
+    success: true,
+    roster_size: normalizedRoster.length,
+    active_students: activeCount,
+    total_students_in_db: totalDbCount,
+    inserted: insertedCount,
+    updated: updatedCount,
+    archived: archivedCount,
+    deleted: deletedCount,
+    archived_details: archivedDetails,
+    deleted_details: deletedDetails,
+    questions_pool: {
+      total: totalQuestions,
+      year2: y2Questions,
+      year3: y3Questions,
+    },
+    active_assessments: assessmentsCount,
   };
 }
