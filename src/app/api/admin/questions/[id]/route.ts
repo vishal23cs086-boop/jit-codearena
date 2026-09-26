@@ -28,6 +28,12 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
+    if (body.academic_year !== undefined && body.year === undefined) {
+      body.year = body.academic_year;
+    }
+    if (body.starter_code !== undefined && body.initial_code === undefined) {
+      body.initial_code = body.starter_code;
+    }
 
     if (body.year !== undefined) {
       const y = Number(body.year);

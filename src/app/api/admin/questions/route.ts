@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
       success: true,
       count: questions.length,
       stats,
+      poolStats: stats,
       questions,
     });
   } catch (error: any) {
@@ -41,10 +42,12 @@ export async function POST(req: NextRequest) {
       title,
       description,
       year,
+      academic_year,
       difficulty,
       topic,
       marks,
       initial_code,
+      starter_code,
       solution_code,
       test_cases,
       time_limit,
@@ -61,7 +64,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const parsedYear = Number(year);
+    const rawYear = year !== undefined ? year : academic_year;
+    const parsedYear = Number(rawYear);
     if (parsedYear !== 2 && parsedYear !== 3) {
       return NextResponse.json(
         { success: false, error: 'Academic year must be 2 (2nd Year) or 3 (3rd Year).' },
@@ -93,6 +97,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const codeToUse = starter_code || initial_code || 'def solution():\n    pass\n';
+
     const created = await createQuestionInDb({
       title: title.trim(),
       description: description || '',
@@ -100,7 +106,7 @@ export async function POST(req: NextRequest) {
       difficulty: normalizedDifficulty,
       topic: topic || 'Algorithms',
       marks: parsedMarks,
-      initial_code: initial_code || 'def solution():\n    pass\n',
+      initial_code: codeToUse,
       solution_code: solution_code || '',
       test_cases: Array.isArray(test_cases) ? test_cases : [],
       time_limit: time_limit ? Number(time_limit) : 2000,
@@ -113,6 +119,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       question: created,
+      questionId: created?.id,
     });
   } catch (error: any) {
     console.error('Create question error:', error);

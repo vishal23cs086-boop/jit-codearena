@@ -2707,19 +2707,19 @@ export async function getDashboardDrilldownFromDb(category: string) {
     case 'totalStudents': {
       // TOTAL STUDENTS: Show actual student records from Turso
       const res = await client.execute(`
-        SELECT s.id, s.full_name, s.name, s.register_number, s.email, s.department, s.year, s.section,
+        SELECT s.id, s.full_name, s.register_number, s.email, s.department, s.year, s.section,
                s.status, s.created_at,
                (SELECT COUNT(*) FROM test_attempts WHERE student_id = s.id) as attempts_count,
                (SELECT MAX(created_at) FROM test_attempts WHERE student_id = s.id) as last_attempt_at
         FROM students s
         WHERE (s.account_deleted = 0 OR s.account_deleted IS NULL)
           AND (s.is_archived = 0 OR s.is_archived IS NULL)
-        ORDER BY s.full_name ASC, s.name ASC
+        ORDER BY s.full_name ASC
       `);
       return res.rows.map((r: any) => ({
         id: String(r.id),
-        name: String(r.full_name || r.name || 'Candidate'),
-        student_name: String(r.full_name || r.name || 'Candidate'),
+        name: String(r.full_name || 'Candidate'),
+        student_name: String(r.full_name || 'Candidate'),
         register_number: String(r.register_number),
         email: String(r.email || ''),
         department: String(r.department || 'CSE'),
@@ -2763,7 +2763,7 @@ export async function getDashboardDrilldownFromDb(category: string) {
       const res = await client.execute(`
         SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.status,
                ta.tab_switches, ta.fullscreen_exits, ta.violation_count,
-               s.full_name as student_name, s.name as alt_name, s.register_number, s.department, s.year,
+               s.full_name as student_name, s.register_number, s.department, s.year,
                t.title as test_title, t.code as test_code, t.duration as test_duration,
                sp.current_question_title, sp.last_seen
         FROM test_attempts ta
@@ -2778,8 +2778,8 @@ export async function getDashboardDrilldownFromDb(category: string) {
         attempt_id: String(r.attempt_id),
         test_id: String(r.test_id),
         student_id: String(r.student_id),
-        name: String(r.student_name || r.alt_name || 'Candidate'),
-        student_name: String(r.student_name || r.alt_name || 'Candidate'),
+        name: String(r.student_name || 'Candidate'),
+        student_name: String(r.student_name || 'Candidate'),
         register_number: String(r.register_number),
         department: String(r.department || 'CSE'),
         year: Number(r.year || 2),
@@ -2800,23 +2800,23 @@ export async function getDashboardDrilldownFromDb(category: string) {
       // COMPLETED: Show students/attempts that have actually completed assessments
       const res = await client.execute(`
         SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.end_time,
-               ta.completed_at, ta.score, ta.max_score, ta.percentage, ta.status,
+               ta.score, ta.max_score, ta.percentage, ta.status,
                ta.tab_switches, ta.fullscreen_exits, ta.time_taken_seconds, ta.completion_rank,
-               s.full_name as student_name, s.name as alt_name, s.register_number, s.department, s.year,
+               s.full_name as student_name, s.register_number, s.department, s.year,
                t.title as test_title, t.code as test_code, t.passing_marks
         FROM test_attempts ta
         INNER JOIN students s ON ta.student_id = s.id
         LEFT JOIN tests t ON ta.test_id = t.id
         WHERE ta.status IN ('completed', 'submitted', 'auto_submitted')
-        ORDER BY COALESCE(ta.completed_at, ta.end_time, ta.created_at) DESC
+        ORDER BY ta.end_time DESC
       `);
       return res.rows.map((r: any) => ({
         id: String(r.student_id),
         attempt_id: String(r.attempt_id),
         test_id: String(r.test_id),
         student_id: String(r.student_id),
-        name: String(r.student_name || r.alt_name || 'Candidate'),
-        student_name: String(r.student_name || r.alt_name || 'Candidate'),
+        name: String(r.student_name || 'Candidate'),
+        student_name: String(r.student_name || 'Candidate'),
         register_number: String(r.register_number),
         department: String(r.department || 'CSE'),
         year: Number(r.year || 2),
@@ -2826,7 +2826,7 @@ export async function getDashboardDrilldownFromDb(category: string) {
         max_score: Number(r.max_score || 100),
         percentage: Number(r.percentage || (r.max_score ? Math.round((Number(r.score || 0) / Number(r.max_score)) * 100) : 0)),
         status: String(r.status),
-        completed_at: r.completed_at ? String(r.completed_at) : String(r.end_time || ''),
+        completed_at: String(r.end_time || ''),
         time_taken_seconds: Number(r.time_taken_seconds || 0),
         completion_rank: Number(r.completion_rank || 1),
         tab_switches: Number(r.tab_switches || 0),
@@ -2893,6 +2893,7 @@ export async function getDashboardDrilldownFromDb(category: string) {
           assessment_title: String(r.test_title || 'Python Evaluation'),
           violation_type: String(r.event_type).toUpperCase(),
           timestamp: String(r.timestamp),
+          created_at: String(r.timestamp),
           time_formatted: formattedTime,
           question: questionName,
           warning_count: warningCount,
