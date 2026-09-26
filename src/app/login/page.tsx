@@ -36,7 +36,7 @@ export default function LoginPage() {
 
     const cleanRegNo = registerNumber.trim().toUpperCase();
     if (!cleanRegNo) {
-      setError('Please enter your College Register Number.');
+      setError('Please enter your College Roll Number.');
       return;
     }
 
@@ -57,7 +57,7 @@ export default function LoginPage() {
       if (res.success) {
         router.push('/student/dashboard');
       } else {
-        setError(res.error || 'Invalid credentials. Please verify your Register Number and password.');
+        setError(res.error || 'Invalid credentials. Please verify your Roll Number and password.');
       }
     } catch (err: any) {
       setError(err?.message || 'Login failed. Please check your credentials.');
@@ -97,15 +97,15 @@ export default function LoginPage() {
         <div className="max-w-md space-y-6 my-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold shadow-xs">
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Academic Year 2025–2026 Portal</span>
+            <span>Academic Year 2026–2027 Portal</span>
           </div>
 
           <h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight">
             Code.{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600">
-              Think.
+              Secure.
             </span>{' '}
-            Perform.
+            Era.
           </h2>
 
           <p className="text-sm text-slate-600 leading-relaxed">
@@ -165,7 +165,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div>
               <label className="text-slate-700 font-semibold block mb-1.5">
-                College Register Number
+                College Roll Number
               </label>
               <input
                 type="text"

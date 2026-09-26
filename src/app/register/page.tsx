@@ -74,7 +74,7 @@ export default function RegisterPage() {
 
     const cleanRegNo = registerNumber.trim().toUpperCase();
     if (!cleanRegNo) {
-      setError('Register number is required.');
+      setError('Roll number is required.');
       return;
     }
 
@@ -161,7 +161,7 @@ export default function RegisterPage() {
 
           <div>
             <label className="text-slate-700 font-semibold block mb-1">
-              College Register Number (Unique)
+              College Roll Number (Unique)
             </label>
             <input
               type="text"
@@ -306,7 +306,7 @@ export default function RegisterPage() {
         <div className="text-center pt-3 border-t border-slate-100 text-xs text-slate-500">
           Already registered?{' '}
           <Link href="/login" className="text-indigo-600 font-semibold hover:underline">
-            Sign In with Register Number
+            Sign In with Roll Number
           </Link>
         </div>
       </div>

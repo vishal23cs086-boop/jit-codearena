@@ -840,7 +840,7 @@ export default function AssessmentManagementPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Python Data Structures Midterm 2025"
+                    placeholder="e.g. Python Data Structures Midterm 2026"
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
                     className="w-full glass-input rounded-xl p-2.5 text-slate-900 focus:outline-none"
@@ -850,7 +850,7 @@ export default function AssessmentManagementPage() {
                   <label className="block text-slate-700 font-semibold mb-1">Assessment Code</label>
                   <input
                     type="text"
-                    placeholder="e.g. PY-2025-01"
+                    placeholder="e.g. PY-2026-01"
                     value={formCode}
                     onChange={(e) => setFormCode(e.target.value)}
                     className="w-full glass-input rounded-xl p-2.5 font-mono uppercase text-slate-900 focus:outline-none"

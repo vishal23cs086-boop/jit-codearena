@@ -48,7 +48,7 @@ export default function HomePage() {
 
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold mb-6 backdrop-blur-md shadow-xs">
             <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
-            <span>Academic Year 2025–2026 • 2nd & 3rd Year Assessment Portal</span>
+            <span>Academic Year 2026–2027 • 2nd & 3rd Year Assessment Portal</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-tight sm:leading-none mb-3">
@@ -141,7 +141,7 @@ export default function HomePage() {
               <div className="space-y-2.5 pt-3 border-t border-slate-100 text-xs text-slate-700">
                 <div className="flex items-center gap-2.5">
                   <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Register Number + Academic Password sign-in</span>
+                  <span>Roll Number + Academic Password sign-in</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />

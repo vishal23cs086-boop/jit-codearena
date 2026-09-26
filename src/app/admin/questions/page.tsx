@@ -17,6 +17,7 @@ import {
   Layers,
   GraduationCap,
   Sparkles,
+  Edit3,
 } from 'lucide-react';
 
 const TOPICS: QuestionTopic[] = [
@@ -44,12 +45,12 @@ export default function QuestionBankPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Form states for new question
+  // Form states for new question (3 test cases)
   const [newTitle, setNewTitle] = useState('');
   const [newYear, setNewYear] = useState<2 | 3>(2);
   const [newDifficulty, setNewDifficulty] = useState<DifficultyLevel>('Easy');
   const [newTopic, setNewTopic] = useState<QuestionTopic>('Lists');
-  const [newMarks, setNewMarks] = useState(25);
+  const [newMarks, setNewMarks] = useState(20);
   const [newDescription, setNewDescription] = useState('');
   const [newInputFormat, setNewInputFormat] = useState('');
   const [newOutputFormat, setNewOutputFormat] = useState('');
@@ -57,10 +58,32 @@ export default function QuestionBankPage() {
   const [newStarterCode, setNewStarterCode] = useState(
     'def solution():\n    # Implement solution\n    pass\n\nif __name__ == "__main__":\n    solution()\n'
   );
-  const [publicInput, setPublicInput] = useState('');
-  const [publicOutput, setPublicOutput] = useState('');
-  const [hiddenInput, setHiddenInput] = useState('');
-  const [hiddenOutput, setHiddenOutput] = useState('');
+  // 3 Test Cases for New Question
+  const [newTc1Input, setNewTc1Input] = useState('');
+  const [newTc1Output, setNewTc1Output] = useState('');
+  const [newTc2Input, setNewTc2Input] = useState('');
+  const [newTc2Output, setNewTc2Output] = useState('');
+  const [newTc3Input, setNewTc3Input] = useState('');
+  const [newTc3Output, setNewTc3Output] = useState('');
+
+  // Form states for editing question
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editYear, setEditYear] = useState<2 | 3>(2);
+  const [editDifficulty, setEditDifficulty] = useState<DifficultyLevel>('Easy');
+  const [editTopic, setEditTopic] = useState<QuestionTopic>('Lists');
+  const [editMarks, setEditMarks] = useState(20);
+  const [editDescription, setEditDescription] = useState('');
+  const [editInputFormat, setEditInputFormat] = useState('');
+  const [editOutputFormat, setEditOutputFormat] = useState('');
+  const [editConstraints, setEditConstraints] = useState('');
+  const [editStarterCode, setEditStarterCode] = useState('');
+  const [editTc1Input, setEditTc1Input] = useState('');
+  const [editTc1Output, setEditTc1Output] = useState('');
+  const [editTc2Input, setEditTc2Input] = useState('');
+  const [editTc2Output, setEditTc2Output] = useState('');
+  const [editTc3Input, setEditTc3Input] = useState('');
+  const [editTc3Output, setEditTc3Output] = useState('');
 
   const loadQuestions = async () => {
     try {
@@ -113,26 +136,42 @@ export default function QuestionBankPage() {
     const testCases: TestCase[] = [];
     const questionId = `q-${Date.now()}`;
 
-    if (publicInput && publicOutput) {
+    if (newTc1Input || newTc1Output) {
       testCases.push({
-        id: `tc-pub-${Date.now()}`,
+        id: `tc-1-${Date.now()}`,
         question_id: questionId,
-        input: publicInput,
-        expected_output: publicOutput,
+        input: newTc1Input,
+        expected_output: newTc1Output,
         is_hidden: false,
         weight: 1,
       });
     }
 
-    if (hiddenInput && hiddenOutput) {
+    if (newTc2Input || newTc2Output) {
       testCases.push({
-        id: `tc-hid-${Date.now()}`,
+        id: `tc-2-${Date.now()}`,
         question_id: questionId,
-        input: hiddenInput,
-        expected_output: hiddenOutput,
+        input: newTc2Input,
+        expected_output: newTc2Output,
+        is_hidden: false,
+        weight: 1,
+      });
+    }
+
+    if (newTc3Input || newTc3Output) {
+      testCases.push({
+        id: `tc-3-${Date.now()}`,
+        question_id: questionId,
+        input: newTc3Input,
+        expected_output: newTc3Output,
         is_hidden: true,
         weight: 1,
       });
+    }
+
+    if (testCases.length === 0) {
+      alert('At least one testcase is required (recommended 3 test cases).');
+      return;
     }
 
     try {
@@ -166,16 +205,121 @@ export default function QuestionBankPage() {
         setNewInputFormat('');
         setNewOutputFormat('');
         setNewConstraints('');
-        setPublicInput('');
-        setPublicOutput('');
-        setHiddenInput('');
-        setHiddenOutput('');
+        setNewTc1Input('');
+        setNewTc1Output('');
+        setNewTc2Input('');
+        setNewTc2Output('');
+        setNewTc3Input('');
+        setNewTc3Output('');
         setNewYear(2);
       } else {
         alert(data.error || 'Failed to save question');
       }
     } catch (err: any) {
       alert(err?.message || 'Error creating question');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openEditModal = (q: Question) => {
+    setEditingQuestion(q);
+    setEditTitle(q.title);
+    setEditYear((Number(q.year) === 3 ? 3 : 2) as 2 | 3);
+    setEditDifficulty((q.difficulty || 'Medium') as DifficultyLevel);
+    setEditTopic((q.topic || 'Algorithms') as QuestionTopic);
+    setEditMarks(Number(q.marks || 20));
+    setEditDescription(q.description || '');
+    setEditInputFormat(q.input_format || '');
+    setEditOutputFormat(q.output_format || '');
+    setEditConstraints(q.constraints || '');
+    setEditStarterCode(q.starter_code || (q as any).initial_code || 'def solution():\n    pass\n');
+
+    const tcs = Array.isArray(q.test_cases) ? q.test_cases : [];
+    setEditTc1Input(tcs[0]?.input || '');
+    setEditTc1Output(tcs[0]?.expected_output || (tcs[0] as any)?.output || '');
+    setEditTc2Input(tcs[1]?.input || '');
+    setEditTc2Output(tcs[1]?.expected_output || (tcs[1] as any)?.output || '');
+    setEditTc3Input(tcs[2]?.input || '');
+    setEditTc3Output(tcs[2]?.expected_output || (tcs[2] as any)?.output || '');
+  };
+
+  const handleUpdateQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQuestion) return;
+
+    if (Number(editYear) !== 2 && Number(editYear) !== 3) {
+      alert('Academic year must be 2 (2nd Year) or 3 (3rd Year).');
+      return;
+    }
+    if (Number(editMarks) <= 0) {
+      alert('Marks must be greater than 0.');
+      return;
+    }
+
+    const updatedTestCases: TestCase[] = [];
+    if (editTc1Input || editTc1Output) {
+      updatedTestCases.push({
+        id: `tc-1-${Date.now()}`,
+        question_id: editingQuestion.id,
+        input: editTc1Input,
+        expected_output: editTc1Output,
+        is_hidden: false,
+        weight: 1,
+      });
+    }
+    if (editTc2Input || editTc2Output) {
+      updatedTestCases.push({
+        id: `tc-2-${Date.now()}`,
+        question_id: editingQuestion.id,
+        input: editTc2Input,
+        expected_output: editTc2Output,
+        is_hidden: false,
+        weight: 1,
+      });
+    }
+    if (editTc3Input || editTc3Output) {
+      updatedTestCases.push({
+        id: `tc-3-${Date.now()}`,
+        question_id: editingQuestion.id,
+        input: editTc3Input,
+        expected_output: editTc3Output,
+        is_hidden: true,
+        weight: 1,
+      });
+    }
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/admin/questions/${editingQuestion.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDescription,
+          year: Number(editYear),
+          difficulty: editDifficulty,
+          topic: editTopic,
+          marks: Number(editMarks),
+          initial_code: editStarterCode,
+          test_cases: updatedTestCases,
+          input_format: editInputFormat,
+          output_format: editOutputFormat,
+          constraints: editConstraints,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.question) {
+        setQuestions((prev) =>
+          prev.map((q) => (q.id === editingQuestion.id ? { ...q, ...data.question } : q))
+        );
+        setEditingQuestion(null);
+      } else {
+        alert(data.error || 'Failed to update question');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error updating question');
     } finally {
       setActionLoading(false);
     }
@@ -373,6 +517,13 @@ export default function QuestionBankPage() {
                       </td>
                       <td className="py-4 px-4 text-right">
                         <button
+                          onClick={() => openEditModal(q)}
+                          className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-xl transition border border-transparent hover:border-indigo-200 mr-1"
+                          title="Edit Question"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => handleDelete(q.id)}
                           className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition border border-transparent hover:border-rose-200"
                           title="Delete Question"
@@ -543,29 +694,32 @@ export default function QuestionBankPage() {
                 />
               </div>
 
-              {/* Public Test Case */}
+              {/* Public Test Case 1 */}
               <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200/60 space-y-3">
-                <div className="font-semibold text-blue-900 flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-blue-600" />
-                  <span>Public Sample Test Case (Visible to candidate)</span>
+                <div className="font-semibold text-blue-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-blue-600" />
+                    <span>Test Case 1 (Public Sample • Visible to Candidate)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-800">PUBLIC</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-slate-600 block mb-1">Standard Input</label>
                     <textarea
                       rows={2}
-                      value={publicInput}
-                      onChange={(e) => setPublicInput(e.target.value)}
+                      value={newTc1Input}
+                      onChange={(e) => setNewTc1Input(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
-                      placeholder="e.g. [2,7,11,15]\n9"
+                      placeholder="e.g. [2, 7, 11, 15]\n9"
                     />
                   </div>
                   <div>
                     <label className="text-slate-600 block mb-1">Expected Output</label>
                     <textarea
                       rows={2}
-                      value={publicOutput}
-                      onChange={(e) => setPublicOutput(e.target.value)}
+                      value={newTc1Output}
+                      onChange={(e) => setNewTc1Output(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
                       placeholder="e.g. [0, 1]"
                     />
@@ -573,31 +727,67 @@ export default function QuestionBankPage() {
                 </div>
               </div>
 
-              {/* Hidden Test Case */}
-              <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/60 space-y-3">
-                <div className="font-semibold text-amber-900 flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-amber-600" />
-                  <span>Hidden Test Case (Automated scoring only)</span>
+              {/* Public Test Case 2 */}
+              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200/60 space-y-3">
+                <div className="font-semibold text-indigo-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-indigo-600" />
+                    <span>Test Case 2 (Public Sample • Visible to Candidate)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">PUBLIC</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-slate-600 block mb-1">Standard Input</label>
                     <textarea
                       rows={2}
-                      value={hiddenInput}
-                      onChange={(e) => setHiddenInput(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-amber-500"
-                      placeholder="e.g. [3,2,4]\n6"
+                      value={newTc2Input}
+                      onChange={(e) => setNewTc2Input(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                      placeholder="e.g. [3, 2, 4]\n6"
                     />
                   </div>
                   <div>
                     <label className="text-slate-600 block mb-1">Expected Output</label>
                     <textarea
                       rows={2}
-                      value={hiddenOutput}
-                      onChange={(e) => setHiddenOutput(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                      value={newTc2Output}
+                      onChange={(e) => setNewTc2Output(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
                       placeholder="e.g. [1, 2]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Hidden Test Case 3 */}
+              <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/60 space-y-3">
+                <div className="font-semibold text-amber-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span>Test Case 3 (Hidden Evaluation • Automated Scoring Only)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-800">HIDDEN</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-600 block mb-1">Standard Input</label>
+                    <textarea
+                      rows={2}
+                      value={newTc3Input}
+                      onChange={(e) => setNewTc3Input(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                      placeholder="e.g. [3, 3]\n6"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-600 block mb-1">Expected Output</label>
+                    <textarea
+                      rows={2}
+                      value={newTc3Output}
+                      onChange={(e) => setNewTc3Output(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                      placeholder="e.g. [0, 1]"
                     />
                   </div>
                 </div>
@@ -617,6 +807,258 @@ export default function QuestionBankPage() {
                   className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow-xs flex items-center gap-2 disabled:opacity-50"
                 >
                   {actionLoading ? 'Saving...' : 'Save to Question Bank'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Question Modal (Requirement 8) */}
+      {editingQuestion && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-900 text-base">Edit Question</h3>
+                <span className="font-mono text-xs text-slate-400">({editingQuestion.id})</span>
+              </div>
+              <button
+                onClick={() => setEditingQuestion(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateQuestion} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs pr-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="text-slate-700 font-semibold block mb-1.5">Problem Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">
+                    Academic Year Pool <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={editYear}
+                    onChange={(e) => setEditYear(Number(e.target.value) as 2 | 3)}
+                    className="w-full bg-slate-50 border border-indigo-200 rounded-xl p-3 text-slate-800 font-bold focus:bg-white focus:outline-none focus:border-indigo-500 shadow-xs"
+                  >
+                    <option value={2}>2nd Year (Pool 2)</option>
+                    <option value={3}>3rd Year (Pool 3)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">Topic</label>
+                  <select
+                    value={editTopic}
+                    onChange={(e) => setEditTopic(e.target.value as QuestionTopic)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500"
+                  >
+                    {TOPICS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">Difficulty</label>
+                  <select
+                    value={editDifficulty}
+                    onChange={(e) => setEditDifficulty(e.target.value as DifficultyLevel)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Hard">Hard</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">Marks</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editMarks}
+                    onChange={(e) => setEditMarks(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-semibold block mb-1.5">Problem Statement / Description</label>
+                <textarea
+                  rows={4}
+                  required
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">Input Format</label>
+                  <input
+                    type="text"
+                    value={editInputFormat}
+                    onChange={(e) => setEditInputFormat(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">Output Format</label>
+                  <input
+                    type="text"
+                    value={editOutputFormat}
+                    onChange={(e) => setEditOutputFormat(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-semibold block mb-1.5">Constraints</label>
+                  <input
+                    type="text"
+                    value={editConstraints}
+                    onChange={(e) => setEditConstraints(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-semibold block mb-1.5">Python Starter Code</label>
+                <textarea
+                  rows={4}
+                  value={editStarterCode}
+                  onChange={(e) => setEditStarterCode(e.target.value)}
+                  className="w-full bg-slate-900 text-slate-100 font-mono text-xs rounded-xl p-3 focus:outline-none border border-slate-800"
+                />
+              </div>
+
+              {/* Public Test Case 1 */}
+              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200/60 space-y-3">
+                <div className="font-semibold text-blue-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-blue-600" />
+                    <span>Test Case 1 (Public Sample • Visible to Candidate)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-800">PUBLIC</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-600 block mb-1">Standard Input</label>
+                    <textarea
+                      rows={2}
+                      value={editTc1Input}
+                      onChange={(e) => setEditTc1Input(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-600 block mb-1">Expected Output</label>
+                    <textarea
+                      rows={2}
+                      value={editTc1Output}
+                      onChange={(e) => setEditTc1Output(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Public Test Case 2 */}
+              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200/60 space-y-3">
+                <div className="font-semibold text-indigo-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-indigo-600" />
+                    <span>Test Case 2 (Public Sample • Visible to Candidate)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">PUBLIC</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-600 block mb-1">Standard Input</label>
+                    <textarea
+                      rows={2}
+                      value={editTc2Input}
+                      onChange={(e) => setEditTc2Input(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-600 block mb-1">Expected Output</label>
+                    <textarea
+                      rows={2}
+                      value={editTc2Output}
+                      onChange={(e) => setEditTc2Output(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Hidden Test Case 3 */}
+              <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/60 space-y-3">
+                <div className="font-semibold text-amber-900 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span>Test Case 3 (Hidden Evaluation • Automated Scoring Only)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-800">HIDDEN</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-600 block mb-1">Standard Input</label>
+                    <textarea
+                      rows={2}
+                      value={editTc3Input}
+                      onChange={(e) => setEditTc3Input(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-600 block mb-1">Expected Output</label>
+                    <textarea
+                      rows={2}
+                      value={editTc3Output}
+                      onChange={(e) => setEditTc3Output(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2.5 font-mono text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingQuestion(null)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow-xs flex items-center gap-2 disabled:opacity-50"
+                >
+                  {actionLoading ? 'Updating...' : 'Save Changes'}
                 </button>
               </div>
             </form>

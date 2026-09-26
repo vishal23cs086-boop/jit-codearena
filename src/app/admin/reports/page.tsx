@@ -65,7 +65,7 @@ export default function AdminReportsPage() {
   const handleExportAllResults = () => {
     if (reportRows.length === 0) return;
     const csvData = reportRows.map((r) => ({
-      'Register Number': r.registerNumber,
+      'Roll Number': r.registerNumber,
       Name: r.name,
       Department: r.department,
       Year: r.year,
@@ -84,7 +84,7 @@ export default function AdminReportsPage() {
 
   const handleExportProctoringIncidents = () => {
     const incidents = reportRows.filter((r) => r.tabSwitches > 0 || r.fullscreenExits > 0).map((r) => ({
-      'Register Number': r.registerNumber,
+      'Roll Number': r.registerNumber,
       'Student Name': r.name,
       Department: r.department,
       'Tab Switches': r.tabSwitches,
@@ -217,7 +217,7 @@ export default function AdminReportsPage() {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/75 text-slate-500 uppercase tracking-wider font-semibold text-[11px]">
-                    <th className="py-3.5 px-3">Reg No</th>
+                    <th className="py-3.5 px-3">Roll No</th>
                     <th className="py-3.5 px-3">Name</th>
                     <th className="py-3.5 px-2">Dept</th>
                     <th className="py-3.5 px-2 text-center">Year</th>

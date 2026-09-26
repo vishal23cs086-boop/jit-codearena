@@ -131,7 +131,7 @@ export default function FirstCompletionTrackingPage() {
       'Completion Order': `${r.completionOrder}`,
       'Score Rank': `#${r.rankByScore}`,
       'Student Name': r.studentName,
-      'Register Number': r.registerNumber,
+      'Roll Number': r.registerNumber,
       Department: r.department,
       Year: r.year,
       'Server Completed At': r.completedAt,
@@ -235,7 +235,7 @@ export default function FirstCompletionTrackingPage() {
                   <th className="py-4 px-4 text-center">Completion Order</th>
                   <th className="py-4 px-3 text-center">Score Rank</th>
                   <th className="py-4 px-4">Student Name</th>
-                  <th className="py-4 px-3">Reg Number</th>
+                  <th className="py-4 px-3">Roll Number</th>
                   <th className="py-4 px-3">Department</th>
                   <th className="py-4 px-3 text-center">Completed At</th>
                   <th className="py-4 px-3 text-center">Time Taken</th>

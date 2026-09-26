@@ -20,6 +20,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DashboardDrilldownModal, DrilldownCategory } from '@/components/admin/DashboardDrilldownModal';
+import { StudentProfileDrawer } from '@/components/admin/StudentProfileDrawer';
 
 interface DashboardStats {
   totalStudents: number;
@@ -49,6 +51,8 @@ export default function AdminDashboardPage() {
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [drilldownCategory, setDrilldownCategory] = useState<DrilldownCategory | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
   const loadData = async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -140,11 +144,15 @@ export default function AdminDashboardPage() {
       {/* Main KPI Statistics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         {/* Total Students */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+        <div
+          onClick={() => setDrilldownCategory('totalStudents')}
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-indigo-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          title="Click to drill down into actual student records"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Total Students</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center">
-              <Users className="w-4 h-4 text-indigo-600" />
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Total Students</span>
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
+              <Users className="w-4 h-4 text-indigo-600 group-hover:text-white transition-colors" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900">{stats.totalStudents}</div>
@@ -152,9 +160,13 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Online Now */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+        <div
+          onClick={() => setDrilldownCategory('online')}
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-emerald-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          title="Click to drill down into online student heartbeats"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Online Now</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-emerald-600 transition-colors">Online Now</span>
             <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             </div>
@@ -164,11 +176,15 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* In Assessment */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+        <div
+          onClick={() => setDrilldownCategory('in_assessment')}
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-blue-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          title="Click to drill down into active test attempts"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">In Assessment</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center">
-              <Activity className="w-4 h-4 text-blue-600" />
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-blue-600 transition-colors">In Assessment</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+              <Activity className="w-4 h-4 text-blue-600 group-hover:text-white transition-colors" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-blue-600">{stats.inAssessmentCount}</div>
@@ -176,11 +192,15 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Completed Attempts */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+        <div
+          onClick={() => setDrilldownCategory('completed')}
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-purple-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          title="Click to drill down into completed assessment submissions"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Completed</span>
-            <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4 text-purple-600" />
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-purple-600 transition-colors">Completed</span>
+            <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
+              <CheckCircle2 className="w-4 h-4 text-purple-600 group-hover:text-white transition-colors" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-purple-600">{stats.completedAttempts}</div>
@@ -188,11 +208,15 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Security Warnings */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-slate-300 transition-all">
+        <div
+          onClick={() => setDrilldownCategory('violations')}
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-rose-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          title="Click to drill down into security & proctoring violation records"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Violations</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center">
-              <ShieldAlert className="w-4 h-4 text-rose-600" />
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-rose-600 transition-colors">Violations</span>
+            <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all">
+              <ShieldAlert className="w-4 h-4 text-rose-600 group-hover:text-white transition-colors" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-rose-600">{stats.totalViolations}</div>
@@ -285,8 +309,15 @@ export default function AdminDashboardPage() {
 
           {stats.recentLogs && stats.recentLogs.length > 0 ? (
             <div className="space-y-3 font-mono text-xs max-h-96 overflow-y-auto pr-1">
-              {stats.recentLogs.map((l) => (
-                <div key={l.id} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1 hover:border-slate-300 transition">
+              {stats.recentLogs.map((l: any) => (
+                <div
+                  key={l.id}
+                  onClick={() => l.student_id && setSelectedStudentId(l.student_id)}
+                  className={`p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1 hover:border-indigo-300 transition ${
+                    l.student_id ? 'cursor-pointer hover:bg-slate-50' : ''
+                  }`}
+                  title={l.student_id ? 'Click to inspect candidate security history' : undefined}
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-[11px] truncate max-w-[150px]">
                       {l.student_name || l.register_number}
@@ -312,6 +343,21 @@ export default function AdminDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* DASHBOARD DRILL-DOWN MODAL */}
+      <DashboardDrilldownModal
+        category={drilldownCategory}
+        onClose={() => setDrilldownCategory(null)}
+        onSelectStudent={(studentId) => {
+          setSelectedStudentId(studentId);
+        }}
+      />
+
+      {/* STUDENT PROFILE DRAWER */}
+      <StudentProfileDrawer
+        studentId={selectedStudentId}
+        onClose={() => setSelectedStudentId(null)}
+      />
     </div>
   );
 }

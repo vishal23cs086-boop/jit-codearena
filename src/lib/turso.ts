@@ -256,6 +256,9 @@ export async function initTursoDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_code_executions_attempt ON code_executions(attempt_id);',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_tests_code_upper ON tests(UPPER(TRIM(code))) WHERE code IS NOT NULL AND TRIM(code) != "";',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_test_attempts_active_unique ON test_attempts(student_id, test_id) WHERE status = "in_progress" OR status = "not_started";',
+    'ALTER TABLE questions ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;',
+    'ALTER TABLE questions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
+    'CREATE INDEX IF NOT EXISTS idx_questions_is_archived ON questions(is_archived);',
   ];
 
   for (const alt of alters) {
@@ -582,6 +585,66 @@ export async function getStudentProfileDetails(studentId: string) {
     ? Math.max(...attempts.map((a) => a.score))
     : 0;
 
+  // 6. Proctoring Security History
+  const presRes = await client.execute({
+    sql: 'SELECT * FROM student_presence WHERE student_id = ? OR register_number = ? LIMIT 1',
+    args: [studentId, s.register_number],
+  });
+  const presRow: any = presRes.rows[0] || null;
+
+  const activeOrLatestAttempt = attempts[0] || null;
+  const violationEventTypes = [
+    'TAB_SWITCH',
+    'FULLSCREEN_EXIT',
+    'COPY',
+    'PASTE',
+    'CUT',
+    'WINDOW_BLUR',
+    'WARNING_TRIGGERED',
+    'DEVTOOLS_OPEN',
+    'RIGHT_CLICK',
+    'DEV_TOOLS',
+  ];
+
+  const securityLogs = logs.filter(
+    (l) =>
+      violationEventTypes.includes(l.event_type.toUpperCase()) ||
+      l.event_type.toUpperCase().includes('VIOLATION') ||
+      l.event_type.toUpperCase().includes('TAB') ||
+      l.event_type.toUpperCase().includes('FULLSCREEN')
+  );
+
+  const calculatedWarningCount = Math.min(
+    3,
+    presRow ? Number(presRow.violation_count || 0) : activeOrLatestAttempt ? Number(activeOrLatestAttempt.violation_count || 0) : 0
+  );
+
+  const securityHistory = {
+    student_name: String(s.full_name),
+    register_number: String(s.register_number),
+    department: String(s.department),
+    year: Number(s.year),
+    assessment_title: activeOrLatestAttempt ? activeOrLatestAttempt.test_title : 'General Examination',
+    assessment_status: activeOrLatestAttempt ? activeOrLatestAttempt.status.toUpperCase() : 'NO_ATTEMPTS',
+    warning_count: calculatedWarningCount,
+    max_warning_limit: 3,
+    total_security_events: securityLogs.length,
+    events: securityLogs.map((l) => {
+      const d = new Date(l.timestamp);
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      return {
+        formatted: `${hours}:${minutes}:${seconds} — ${l.event_type.toUpperCase()}`,
+        event_type: l.event_type.toUpperCase(),
+        timestamp: l.timestamp,
+        time_formatted: `${hours}:${minutes}:${seconds}`,
+        description: l.description,
+        metadata: l.metadata,
+      };
+    }),
+  };
+
   return {
     student: {
       id: String(s.id),
@@ -610,6 +673,7 @@ export async function getStudentProfileDetails(studentId: string) {
     },
     recent_assessments: attempts.slice(0, 10),
     recent_activity: logs,
+    security_history: securityHistory,
   };
 }
 
@@ -1835,7 +1899,7 @@ export async function getQuestionsFromDb(filters?: {
   await initTursoDb();
   const client = getTursoClient();
 
-  let sql = 'SELECT * FROM questions WHERE 1=1';
+  let sql = 'SELECT * FROM questions WHERE (is_archived = 0 OR is_archived IS NULL)';
   const args: any[] = [];
 
   if (filters?.year) {
@@ -2067,20 +2131,53 @@ export async function updateQuestionInDb(
 export async function deleteQuestionInDb(id: string) {
   await initTursoDb();
   const client = getTursoClient();
-  await client.execute({
-    sql: 'DELETE FROM questions WHERE id = ?',
-    args: [id],
-  });
-  return { success: true };
+
+  // Check if question is referenced in attempts, submissions, or code executions
+  const [attQRes, subRes] = await Promise.all([
+    client.execute({
+      sql: 'SELECT COUNT(*) as count FROM attempt_questions WHERE question_id = ?',
+      args: [id],
+    }),
+    client.execute({
+      sql: 'SELECT COUNT(*) as count FROM submissions WHERE question_id = ?',
+      args: [id],
+    }),
+  ]);
+
+  const usedInHistory = Number(attQRes.rows[0]?.count || 0) + Number(subRes.rows[0]?.count || 0);
+
+  if (usedInHistory > 0) {
+    // If used in student attempts/submissions, archive/deactivate preserving historical attempts
+    await client.execute({
+      sql: 'UPDATE questions SET is_archived = 1, is_active = 0 WHERE id = ?',
+      args: [id],
+    });
+    return {
+      success: true,
+      archived: true,
+      message: 'Question has historical student attempt records. It has been safely archived and deactivated.',
+    };
+  } else {
+    // If unused, permanently delete
+    await client.execute({
+      sql: 'DELETE FROM questions WHERE id = ?',
+      args: [id],
+    });
+    return {
+      success: true,
+      deleted: true,
+      message: 'Question permanently deleted.',
+    };
+  }
 }
 
 export async function getQuestionPoolStats() {
   await initTursoDb();
   const client = getTursoClient();
   const [y2Res, y3Res, totalRes] = await Promise.all([
-    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 2'),
-    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 3'),
-    client.execute('SELECT COUNT(*) as count FROM questions'),
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 2 AND (is_archived = 0 OR is_archived IS NULL)'),
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 3 AND (is_archived = 0 OR is_archived IS NULL)'),
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE (is_archived = 0 OR is_archived IS NULL)'),
   ]);
 
   return {
@@ -2596,6 +2693,218 @@ export async function getDashboardStatsFromDb() {
     totalViolations,
     recentLogs,
   };
+}
+
+// -------------------------------------------------------------
+// DASHBOARD DRILL-DOWN QUERIES (ACTUAL DB RECORDS)
+// -------------------------------------------------------------
+export async function getDashboardDrilldownFromDb(category: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  switch (category) {
+    case 'students':
+    case 'totalStudents': {
+      // TOTAL STUDENTS: Show actual student records from Turso
+      const res = await client.execute(`
+        SELECT s.id, s.full_name, s.name, s.register_number, s.email, s.department, s.year, s.section,
+               s.status, s.created_at,
+               (SELECT COUNT(*) FROM test_attempts WHERE student_id = s.id) as attempts_count,
+               (SELECT MAX(created_at) FROM test_attempts WHERE student_id = s.id) as last_attempt_at
+        FROM students s
+        WHERE (s.account_deleted = 0 OR s.account_deleted IS NULL)
+          AND (s.is_archived = 0 OR s.is_archived IS NULL)
+        ORDER BY s.full_name ASC, s.name ASC
+      `);
+      return res.rows.map((r: any) => ({
+        id: String(r.id),
+        name: String(r.full_name || r.name || 'Candidate'),
+        student_name: String(r.full_name || r.name || 'Candidate'),
+        register_number: String(r.register_number),
+        email: String(r.email || ''),
+        department: String(r.department || 'CSE'),
+        year: Number(r.year || 2),
+        section: String(r.section || 'A'),
+        status: String(r.status || 'active'),
+        attempts_count: Number(r.attempts_count || 0),
+        created_at: String(r.created_at || ''),
+        last_attempt_at: r.last_attempt_at ? String(r.last_attempt_at) : null,
+      }));
+    }
+
+    case 'online':
+    case 'onlineCount': {
+      // ONLINE NOW: Show students whose latest heartbeat indicates they are online
+      const presenceList = await getPresenceListFromDb();
+      return presenceList
+        .filter((p) => p.session_status === 'ONLINE' || p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING')
+        .map((p) => ({
+          student_id: p.student_id,
+          id: p.student_id,
+          name: p.full_name || 'Candidate',
+          student_name: p.full_name || 'Candidate',
+          register_number: p.register_number,
+          department: p.department,
+          year: p.year,
+          session_status: p.session_status,
+          assessment_title: p.active_assessment_id ? 'Active Examination' : 'Active on Portal',
+          current_question: `Question ${(p.current_question_index || 0) + 1}`,
+          violation_count: p.violation_count || 0,
+          tab_switch_count: (p as any).tab_switch_count || 0,
+          fullscreen_exit_count: (p as any).fullscreen_exit_count || 0,
+          last_seen: p.last_seen,
+          last_seen_formatted: new Date(p.last_seen).toLocaleTimeString(),
+        }));
+    }
+
+    case 'in_assessment':
+    case 'inAssessmentCount': {
+      // IN ASSESSMENT: Show students with currently active assessment attempts
+      const res = await client.execute(`
+        SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.status,
+               ta.tab_switches, ta.fullscreen_exits, ta.violation_count,
+               s.full_name as student_name, s.name as alt_name, s.register_number, s.department, s.year,
+               t.title as test_title, t.code as test_code, t.duration as test_duration,
+               sp.current_question_title, sp.last_seen
+        FROM test_attempts ta
+        INNER JOIN students s ON ta.student_id = s.id
+        LEFT JOIN tests t ON ta.test_id = t.id
+        LEFT JOIN student_presence sp ON ta.student_id = sp.student_id
+        WHERE ta.status = 'in_progress' OR ta.status = 'not_started'
+        ORDER BY ta.start_time DESC
+      `);
+      return res.rows.map((r: any) => ({
+        id: String(r.student_id),
+        attempt_id: String(r.attempt_id),
+        test_id: String(r.test_id),
+        student_id: String(r.student_id),
+        name: String(r.student_name || r.alt_name || 'Candidate'),
+        student_name: String(r.student_name || r.alt_name || 'Candidate'),
+        register_number: String(r.register_number),
+        department: String(r.department || 'CSE'),
+        year: Number(r.year || 2),
+        assessment_title: String(r.test_title || 'Examination'),
+        test_code: r.test_code ? String(r.test_code) : '',
+        duration: Number(r.test_duration || 60),
+        status: String(r.status),
+        start_time: String(r.start_time),
+        tab_switches: Number(r.tab_switches || 0),
+        fullscreen_exits: Number(r.fullscreen_exits || 0),
+        violation_count: Number(r.violation_count || 0),
+        current_question: r.current_question_title ? String(r.current_question_title) : 'Active In Exam',
+      }));
+    }
+
+    case 'completed':
+    case 'completedAttempts': {
+      // COMPLETED: Show students/attempts that have actually completed assessments
+      const res = await client.execute(`
+        SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.end_time,
+               ta.completed_at, ta.score, ta.max_score, ta.percentage, ta.status,
+               ta.tab_switches, ta.fullscreen_exits, ta.time_taken_seconds, ta.completion_rank,
+               s.full_name as student_name, s.name as alt_name, s.register_number, s.department, s.year,
+               t.title as test_title, t.code as test_code, t.passing_marks
+        FROM test_attempts ta
+        INNER JOIN students s ON ta.student_id = s.id
+        LEFT JOIN tests t ON ta.test_id = t.id
+        WHERE ta.status IN ('completed', 'submitted', 'auto_submitted')
+        ORDER BY COALESCE(ta.completed_at, ta.end_time, ta.created_at) DESC
+      `);
+      return res.rows.map((r: any) => ({
+        id: String(r.student_id),
+        attempt_id: String(r.attempt_id),
+        test_id: String(r.test_id),
+        student_id: String(r.student_id),
+        name: String(r.student_name || r.alt_name || 'Candidate'),
+        student_name: String(r.student_name || r.alt_name || 'Candidate'),
+        register_number: String(r.register_number),
+        department: String(r.department || 'CSE'),
+        year: Number(r.year || 2),
+        assessment_title: String(r.test_title || 'Examination'),
+        test_code: r.test_code ? String(r.test_code) : '',
+        score: Number(r.score || 0),
+        max_score: Number(r.max_score || 100),
+        percentage: Number(r.percentage || (r.max_score ? Math.round((Number(r.score || 0) / Number(r.max_score)) * 100) : 0)),
+        status: String(r.status),
+        completed_at: r.completed_at ? String(r.completed_at) : String(r.end_time || ''),
+        time_taken_seconds: Number(r.time_taken_seconds || 0),
+        completion_rank: Number(r.completion_rank || 1),
+        tab_switches: Number(r.tab_switches || 0),
+        fullscreen_exits: Number(r.fullscreen_exits || 0),
+      }));
+    }
+
+    case 'violations':
+    case 'totalViolations': {
+      // VIOLATIONS: Show the actual security/proctoring violations recorded in database
+      // Fields: Student Name, Roll Number, Department, Year, Assessment, Violation Type, Timestamp, Question, Warning count, Total events
+      const res = await client.execute(`
+        SELECT al.id as log_id, al.student_id, al.student_name, al.register_number,
+               al.test_id, al.event_type, al.description, al.metadata, al.timestamp,
+               s.department, s.year, s.full_name as db_student_name,
+               t.title as test_title,
+               sp.violation_count as current_warning_count,
+               (
+                 SELECT COUNT(*) FROM activity_logs sub 
+                 WHERE (sub.student_id = al.student_id OR sub.register_number = al.register_number)
+                   AND (
+                     sub.event_type IN ('TAB_SWITCH', 'FULLSCREEN_EXIT', 'COPY', 'PASTE', 'CUT', 'WINDOW_BLUR', 'WARNING_TRIGGERED', 'DEVTOOLS_OPEN', 'RIGHT_CLICK')
+                     OR sub.event_type LIKE '%VIOLATION%'
+                     OR sub.event_type LIKE '%TAB%'
+                     OR sub.event_type LIKE '%FULLSCREEN%'
+                   )
+               ) as student_total_events
+        FROM activity_logs al
+        LEFT JOIN students s ON (al.student_id = s.id OR al.register_number = s.register_number)
+        LEFT JOIN tests t ON al.test_id = t.id
+        LEFT JOIN student_presence sp ON (al.student_id = sp.student_id OR al.register_number = sp.register_number)
+        WHERE al.event_type IN ('TAB_SWITCH', 'FULLSCREEN_EXIT', 'COPY', 'PASTE', 'CUT', 'WINDOW_BLUR', 'WARNING_TRIGGERED', 'DEVTOOLS_OPEN', 'RIGHT_CLICK')
+           OR al.event_type LIKE '%VIOLATION%'
+           OR al.event_type LIKE '%TAB%'
+           OR al.event_type LIKE '%FULLSCREEN%'
+        ORDER BY al.timestamp DESC
+        LIMIT 200
+      `);
+
+      return res.rows.map((r: any) => {
+        let meta: any = {};
+        try {
+          meta = r.metadata ? JSON.parse(String(r.metadata)) : {};
+        } catch {}
+
+        const questionName = meta.question_title || meta.question || meta.currentQuestion || 'Assessment Question';
+        const d = new Date(r.timestamp);
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const seconds = String(d.getSeconds()).padStart(2, '0');
+        const formattedTime = `${hours}:${minutes}:${seconds}`;
+
+        const warningCount = Math.min(3, Math.max(1, Number(r.current_warning_count || meta.warningCount || meta.warning_count || 1)));
+
+        return {
+          id: String(r.student_id),
+          log_id: String(r.log_id),
+          student_id: String(r.student_id),
+          name: String(r.db_student_name || r.student_name || 'Candidate'),
+          student_name: String(r.db_student_name || r.student_name || 'Candidate'),
+          register_number: String(r.register_number || ''),
+          department: String(r.department || 'CSE'),
+          year: Number(r.year || 2),
+          assessment_title: String(r.test_title || 'Python Evaluation'),
+          violation_type: String(r.event_type).toUpperCase(),
+          timestamp: String(r.timestamp),
+          time_formatted: formattedTime,
+          question: questionName,
+          warning_count: warningCount,
+          total_events: Number(r.student_total_events || 1),
+          description: String(r.description || ''),
+        };
+      });
+    }
+
+    default:
+      return [];
+  }
 }
 
 // -------------------------------------------------------------

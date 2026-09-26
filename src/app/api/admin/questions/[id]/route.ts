@@ -39,6 +39,35 @@ export async function PUT(
       }
     }
 
+    if (body.difficulty !== undefined) {
+      const diffUpper = String(body.difficulty).toUpperCase();
+      if (!['EASY', 'MEDIUM', 'HARD'].includes(diffUpper)) {
+        return NextResponse.json(
+          { success: false, error: 'Difficulty must be EASY, MEDIUM, or HARD.' },
+          { status: 400 }
+        );
+      }
+      body.difficulty = diffUpper.charAt(0) + diffUpper.slice(1).toLowerCase();
+    }
+
+    if (body.marks !== undefined) {
+      const parsedMarks = Number(body.marks);
+      if (isNaN(parsedMarks) || parsedMarks <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'Marks must be a positive number greater than 0.' },
+          { status: 400 }
+        );
+      }
+      body.marks = parsedMarks;
+    }
+
+    if (body.test_cases !== undefined && !Array.isArray(body.test_cases)) {
+      return NextResponse.json(
+        { success: false, error: 'Test cases must be a valid array.' },
+        { status: 400 }
+      );
+    }
+
     const updated = await updateQuestionInDb(id, body);
     return NextResponse.json({ success: true, question: updated });
   } catch (error: any) {
@@ -56,8 +85,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await deleteQuestionInDb(id);
-    return NextResponse.json({ success: true, message: 'Question deleted successfully' });
+    const result = await deleteQuestionInDb(id);
+    return NextResponse.json({
+      success: true,
+      archived: result.archived,
+      deleted: result.deleted,
+      message: result.message || 'Question processed successfully',
+    });
   } catch (error: any) {
     console.error('Delete question error:', error);
     return NextResponse.json(

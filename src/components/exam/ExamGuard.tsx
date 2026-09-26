@@ -44,7 +44,7 @@ export const ExamGuardModal: React.FC<ExamGuardProps> = ({
             <div className="bg-slate-50 rounded-2xl p-4 mb-6 text-left border border-slate-200/80 text-xs text-slate-700 space-y-1.5 font-mono">
               <p>• Do not switch tabs or minimize your browser window.</p>
               <p>• Copying, cutting, or pasting code is disabled.</p>
-              <p>• Incidents are logged with your Register Number and timestamp.</p>
+              <p>• Incidents are logged with your Roll Number and timestamp.</p>
             </div>
             <button
               onClick={onRequestFullscreen}

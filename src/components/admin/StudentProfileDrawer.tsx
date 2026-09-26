@@ -16,6 +16,7 @@ import {
   Globe,
   Layers,
   TrendingUp,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface StudentProfileData {
@@ -67,6 +68,25 @@ interface StudentProfileData {
     metadata: any;
     timestamp: string;
   }>;
+  security_history?: {
+    student_name: string;
+    register_number: string;
+    department: string;
+    year: number;
+    assessment_title: string;
+    assessment_status: string;
+    warning_count: number;
+    max_warning_limit: number;
+    total_security_events: number;
+    events: Array<{
+      formatted: string;
+      event_type: string;
+      timestamp: string;
+      time_formatted: string;
+      description: string;
+      metadata: any;
+    }>;
+  };
 }
 
 interface Props {
@@ -282,6 +302,75 @@ export function StudentProfileDrawer({ studentId, onClose }: Props) {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Security History & Proctoring Violations (Requirement 3) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-600" />
+                  <span>Security History & Proctoring Violations</span>
+                </h3>
+                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-bold">
+                  Warnings: {data.security_history?.warning_count ?? 0} / {data.security_history?.max_warning_limit ?? 3} Max
+                </span>
+              </div>
+
+              <div className="p-4 bg-rose-50/40 border border-rose-200/80 rounded-2xl space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Assessment:</span>
+                    <span className="font-bold text-slate-900 block truncate">{data.security_history?.assessment_title || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Assessment Status:</span>
+                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-white text-slate-800 border border-slate-200 mt-0.5">
+                      {data.security_history?.assessment_status || 'NONE'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Total Security Events:</span>
+                    <span className="font-mono font-black text-rose-600 text-sm">{data.security_history?.total_security_events ?? 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Warning Status:</span>
+                    <span className={`text-[11px] font-bold ${
+                      (data.security_history?.warning_count ?? 0) >= 3 ? 'text-rose-700' : 'text-amber-700'
+                    }`}>
+                      {(data.security_history?.warning_count ?? 0) >= 3 ? 'TERMINATION LIMIT REACHED' : 'NORMAL IN ASSESSMENT'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Timestamped events list */}
+                <div className="pt-2 border-t border-rose-200/60">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1.5">
+                    Timestamped Security Events ({data.security_history?.events?.length ?? 0}):
+                  </span>
+                  {(!data.security_history?.events || data.security_history.events.length === 0) ? (
+                    <div className="p-3 bg-white/80 rounded-xl text-center text-slate-400 text-xs border border-rose-100">
+                      Clean record: No security violations logged for this candidate.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {data.security_history.events.map((ev, idx) => (
+                        <div
+                          key={ev.timestamp + idx}
+                          className="p-2 bg-white rounded-xl border border-rose-200/70 flex items-center justify-between text-xs font-mono"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                            <span className="font-bold text-slate-900">{ev.formatted}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-sans truncate max-w-[180px]">
+                            {ev.description}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Recent Activity Telemetry Stream */}

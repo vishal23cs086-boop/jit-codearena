@@ -300,7 +300,7 @@ export default function StudentManagementPage() {
     e.preventDefault();
     const cleanRegNo = addRegNo.trim().toUpperCase();
     if (!cleanRegNo || !addName.trim()) {
-      showToast('error', 'Name and Register Number are required.');
+      showToast('error', 'Name and Roll Number are required.');
       return;
     }
 
@@ -483,7 +483,7 @@ export default function StudentManagementPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by name or register number..."
+              placeholder="Search by name or roll number..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
@@ -498,7 +498,7 @@ export default function StudentManagementPage() {
               onChange={(e: any) => setSortBy(e.target.value)}
               className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700"
             >
-              <option value="register_number">Register No</option>
+              <option value="register_number">Roll No</option>
               <option value="name">Name</option>
               <option value="created_at">Registration Date</option>
               <option value="last_login">Last Login</option>
@@ -678,7 +678,7 @@ export default function StudentManagementPage() {
                     />
                   </th>
                   <th className="py-3.5 px-3">Student</th>
-                  <th className="py-3.5 px-3 font-mono">Register No</th>
+                  <th className="py-3.5 px-3 font-mono">Roll No</th>
                   <th className="py-3.5 px-3">Department & Year</th>
                   <th className="py-3.5 px-3 text-center">Attempts & Score</th>
                   <th className="py-3.5 px-3">Last Active</th>
@@ -908,7 +908,7 @@ export default function StudentManagementPage() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">College Register Number *</label>
+                <label className="block text-slate-700 font-semibold mb-1">College Roll Number *</label>
                 <input
                   type="text"
                   required
@@ -1020,7 +1020,7 @@ export default function StudentManagementPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Min 6 characters (e.g. Student@2025)"
+                  placeholder="Min 6 characters (e.g. Student@2026)"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full glass-input rounded-xl p-2.5 font-mono text-slate-900"
@@ -1191,7 +1191,7 @@ export default function StudentManagementPage() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">College Register Number *</label>
+                <label className="block text-slate-700 font-semibold mb-1">College Roll Number *</label>
                 <input
                   type="text"
                   required

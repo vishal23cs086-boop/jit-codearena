@@ -78,11 +78,11 @@ export default function StudentProfilePage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
             <span className="text-slate-500 flex items-center justify-between">
-              <span>Register Number</span>
+              <span>Roll Number</span>
               <Lock className="w-3 h-3 text-slate-400" />
             </span>
             <div className="text-sm font-bold text-slate-900 font-mono">{user.register_number}</div>
-            <span className="text-[10px] text-slate-400">Official college registration key</span>
+            <span className="text-[10px] text-slate-400">Official college roll key</span>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
@@ -113,7 +113,7 @@ export default function StudentProfilePage() {
         <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl text-xs text-indigo-900 leading-relaxed flex items-start gap-2.5">
           <Shield className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
           <p>
-            <strong>Examination Integrity Policy:</strong> Register Number, Department, and Academic Year are verified academic identifiers and cannot be altered by students. If your details require correction, please submit an official request to the Exam Cell.
+            <strong>Examination Integrity Policy:</strong> Roll Number, Department, and Academic Year are verified academic identifiers and cannot be altered by students. If your details require correction, please submit an official request to the Exam Cell.
           </p>
         </div>
       </div>

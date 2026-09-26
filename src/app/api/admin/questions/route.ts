@@ -69,13 +69,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const diffUpper = String(difficulty || 'Medium').toUpperCase();
+    if (!['EASY', 'MEDIUM', 'HARD'].includes(diffUpper)) {
+      return NextResponse.json(
+        { success: false, error: 'Difficulty must be EASY, MEDIUM, or HARD.' },
+        { status: 400 }
+      );
+    }
+    const normalizedDifficulty = diffUpper.charAt(0) + diffUpper.slice(1).toLowerCase();
+
+    const parsedMarks = Number(marks !== undefined ? marks : 20);
+    if (isNaN(parsedMarks) || parsedMarks <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'Marks must be a positive number greater than 0.' },
+        { status: 400 }
+      );
+    }
+
+    if (test_cases !== undefined && !Array.isArray(test_cases)) {
+      return NextResponse.json(
+        { success: false, error: 'Test cases must be a valid array.' },
+        { status: 400 }
+      );
+    }
+
     const created = await createQuestionInDb({
       title: title.trim(),
       description: description || '',
       year: parsedYear,
-      difficulty: difficulty || 'Easy',
+      difficulty: normalizedDifficulty,
       topic: topic || 'Algorithms',
-      marks: marks ? Number(marks) : 20,
+      marks: parsedMarks,
       initial_code: initial_code || 'def solution():\n    pass\n',
       solution_code: solution_code || '',
       test_cases: Array.isArray(test_cases) ? test_cases : [],
