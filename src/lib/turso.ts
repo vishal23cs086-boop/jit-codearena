@@ -2765,7 +2765,7 @@ export async function getDashboardDrilldownFromDb(category: string) {
                ta.tab_switches, ta.fullscreen_exits, ta.violation_count,
                s.full_name as student_name, s.register_number, s.department, s.year,
                t.title as test_title, t.code as test_code, t.duration as test_duration,
-               sp.current_question_title, sp.last_seen
+               sp.current_question_index, sp.last_seen
         FROM test_attempts ta
         INNER JOIN students s ON ta.student_id = s.id
         LEFT JOIN tests t ON ta.test_id = t.id
@@ -2791,7 +2791,9 @@ export async function getDashboardDrilldownFromDb(category: string) {
         tab_switches: Number(r.tab_switches || 0),
         fullscreen_exits: Number(r.fullscreen_exits || 0),
         violation_count: Number(r.violation_count || 0),
-        current_question: r.current_question_title ? String(r.current_question_title) : 'Active In Exam',
+        current_question: (r.current_question_index !== null && r.current_question_index !== undefined)
+          ? `Question ${Number(r.current_question_index) + 1}`
+          : 'Active In Exam',
       }));
     }
 
