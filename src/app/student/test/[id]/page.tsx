@@ -116,7 +116,7 @@ export default function CodingTestPage() {
 
         // Initialize code map:
         // Priority 1: Student's own autosaved code for this attempt & question (if existing attempt)
-        // Priority 2: Question's legitimate configured starter code (if any)
+        // Priority 2: Question's legitimate intentionally configured starter code (if any)
         // Priority 3: Clean empty editor (NO random/boilerplate/demo code!)
         const savedAnswers = (data.attempt?.answers && typeof data.attempt.answers === 'object') ? data.attempt.answers : {};
         const initialMap: Record<string, string> = {};
@@ -128,8 +128,6 @@ export default function CodingTestPage() {
             initialMap[q.id] = studentSaved;
           } else if (q.starter_code && q.starter_code.trim()) {
             initialMap[q.id] = q.starter_code;
-          } else if ((q as any).initial_code && (q as any).initial_code.trim()) {
-            initialMap[q.id] = (q as any).initial_code;
           } else {
             initialMap[q.id] = '';
           }

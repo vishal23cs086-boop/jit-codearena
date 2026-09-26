@@ -258,6 +258,7 @@ export async function initTursoDb(): Promise<void> {
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_test_attempts_active_unique ON test_attempts(student_id, test_id) WHERE status = "in_progress" OR status = "not_started";',
     'ALTER TABLE questions ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE questions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
+    'ALTER TABLE questions ADD COLUMN starter_code TEXT;',
     'CREATE INDEX IF NOT EXISTS idx_questions_is_archived ON questions(is_archived);',
   ];
 
@@ -1417,6 +1418,7 @@ export async function createAssessmentInDb(data: {
     difficulty?: string;
     marks?: number;
     initial_code?: string;
+    starter_code?: string;
     solution_code?: string;
     test_cases?: any[];
     year?: number;
@@ -1565,7 +1567,7 @@ export async function createAssessmentInDb(data: {
           q.description || '',
           q.difficulty || 'medium',
           q.marks || 20,
-          q.initial_code || 'def solution():\n    pass\n',
+          q.starter_code || q.initial_code || '',
           q.solution_code || '',
           JSON.stringify(q.test_cases || []),
           i,
@@ -1944,8 +1946,8 @@ export async function getQuestionsFromDb(filters?: {
     difficulty: String(row.difficulty),
     topic: String(row.topic || 'Algorithms'),
     marks: Number(row.marks || 20),
-    initial_code: row.initial_code ? String(row.initial_code) : '',
-    starter_code: row.initial_code ? String(row.initial_code) : '',
+    initial_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
+    starter_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
     solution_code: row.solution_code ? String(row.solution_code) : undefined,
     test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
     time_limit: Number(row.time_limit || 2000),
@@ -1980,8 +1982,8 @@ export async function getQuestionByIdFromDb(id: string) {
     difficulty: String(row.difficulty),
     topic: String(row.topic || 'Algorithms'),
     marks: Number(row.marks || 20),
-    initial_code: row.initial_code ? String(row.initial_code) : '',
-    starter_code: row.initial_code ? String(row.initial_code) : '',
+    initial_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
+    starter_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
     solution_code: row.solution_code ? String(row.solution_code) : undefined,
     test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
     time_limit: Number(row.time_limit || 2000),
@@ -2005,6 +2007,7 @@ export async function createQuestionInDb(data: {
   difficulty?: string;
   topic?: string;
   marks?: number;
+  starter_code?: string;
   initial_code?: string;
   solution_code?: string;
   test_cases?: any[];
@@ -2020,9 +2023,17 @@ export async function createQuestionInDb(data: {
   const now = new Date().toISOString();
   const qYear = Number(data.year) === 3 ? 3 : 2; // Strict 2 or 3
 
+  if (!Array.isArray(data.test_cases) || data.test_cases.length !== 3) {
+    const err: any = new Error('Every coding question must have exactly 3 test cases.');
+    err.status = 400;
+    throw err;
+  }
+
+  const starterCode = data.starter_code !== undefined ? data.starter_code : (data.initial_code || '');
+
   await client.execute({
-    sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, solution_code, test_cases, time_limit, memory_limit, order_index, year, topic, input_format, output_format, constraints, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO questions (id, test_id, title, description, difficulty, marks, initial_code, starter_code, solution_code, test_cases, time_limit, memory_limit, order_index, year, topic, input_format, output_format, constraints, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
     args: [
       qId,
       data.test_id || 'bank',
@@ -2030,9 +2041,10 @@ export async function createQuestionInDb(data: {
       data.description || '',
       data.difficulty || 'Easy',
       data.marks || 20,
-      data.initial_code || 'def solution():\n    pass\n',
+      starterCode,
+      starterCode,
       data.solution_code || '',
-      JSON.stringify(data.test_cases || []),
+      JSON.stringify(data.test_cases),
       data.time_limit || 2000,
       data.memory_limit || 128,
       qYear,
@@ -2056,6 +2068,7 @@ export async function updateQuestionInDb(
     difficulty?: string;
     topic?: string;
     marks?: number;
+    starter_code?: string;
     initial_code?: string;
     solution_code?: string;
     test_cases?: any[];
@@ -2068,6 +2081,14 @@ export async function updateQuestionInDb(
 ) {
   await initTursoDb();
   const client = getTursoClient();
+
+  if (data.test_cases !== undefined) {
+    if (!Array.isArray(data.test_cases) || data.test_cases.length !== 3) {
+      const err: any = new Error('Every coding question must have exactly 3 test cases.');
+      err.status = 400;
+      throw err;
+    }
+  }
 
   const updates: string[] = [];
   const args: any[] = [];
@@ -2096,7 +2117,14 @@ export async function updateQuestionInDb(
     updates.push('marks = ?');
     args.push(Number(data.marks));
   }
-  if (data.initial_code !== undefined) {
+  if (data.starter_code !== undefined) {
+    updates.push('starter_code = ?');
+    args.push(data.starter_code);
+    updates.push('initial_code = ?');
+    args.push(data.starter_code);
+  } else if (data.initial_code !== undefined) {
+    updates.push('starter_code = ?');
+    args.push(data.initial_code);
     updates.push('initial_code = ?');
     args.push(data.initial_code);
   }
@@ -2300,8 +2328,8 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
           topic: String(row.topic || 'Algorithms'),
           marks: Number(row.marks || 20),
           year: Number(row.year),
-          initial_code: row.initial_code ? String(row.initial_code) : '',
-          starter_code: row.initial_code ? String(row.initial_code) : '',
+          initial_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
+          starter_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
           input_format: String(row.input_format || ''),
           output_format: String(row.output_format || ''),
           constraints: String(row.constraints || ''),
@@ -2364,8 +2392,8 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     topic: String(row.topic || 'Algorithms'),
     marks: Number(row.marks || 20),
     year: Number(row.year),
-    initial_code: row.initial_code ? String(row.initial_code) : '',
-    starter_code: row.initial_code ? String(row.initial_code) : '',
+    initial_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
+    starter_code: row.starter_code ? String(row.starter_code) : (row.initial_code ? String(row.initial_code) : ''),
     input_format: String(row.input_format || ''),
     output_format: String(row.output_format || ''),
     constraints: String(row.constraints || ''),
@@ -3461,5 +3489,101 @@ export async function replaceStudentsWithRoster(
       year3: y3Questions,
     },
     active_assessments: assessmentsCount,
+  };
+}
+
+// -------------------------------------------------------------
+// QUESTION TEST CASE & STARTER CODE CLEANUP / MIGRATION
+// -------------------------------------------------------------
+export async function migrateQuestionsToThreeTestCasesAndCleanStarterCode() {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // 1. Move existing initial_code to solution_code if solution_code is empty
+  await client.execute(`
+    UPDATE questions 
+    SET solution_code = initial_code 
+    WHERE (solution_code IS NULL OR solution_code = '') 
+      AND initial_code IS NOT NULL 
+      AND initial_code != ''
+  `);
+
+  // 2. Clear initial_code and starter_code for questions so they default to empty
+  await client.execute(`
+    UPDATE questions 
+    SET initial_code = '', starter_code = ''
+  `);
+
+  // 3. Migrate the 6 questions with != 3 test cases to have exactly 3 test cases
+  const specificTestCases: Record<string, any[]> = {
+    // 1. Two Sum in Python
+    'q-1790330297341-0-o400': [
+      { id: 'tc-1', input: '[2,7,11,15]\n9', expected_output: '[0, 1]', is_hidden: false, weight: 1 },
+      { id: 'tc-2', input: '[3,2,4]\n6', expected_output: '[1, 2]', is_hidden: false, weight: 1 },
+      { id: 'tc-3', input: '[3,3]\n6', expected_output: '[0, 1]', is_hidden: true, weight: 1 },
+    ],
+    // 2. Valid Palindrome Filter
+    'q-1790330297374-1-drfq': [
+      { id: 'tc-1', input: '"A man, a plan, a canal: Panama"', expected_output: 'True', is_hidden: false, weight: 1 },
+      { id: 'tc-2', input: '"race a car"', expected_output: 'False', is_hidden: false, weight: 1 },
+      { id: 'tc-3', input: '" "', expected_output: 'True', is_hidden: true, weight: 1 },
+    ],
+    // 3. LRU Cache Access Simulator
+    'q-1790239649494-1tnt7': [
+      { id: 'tc-1', input: '2 6\nPUT 1 1\nPUT 2 2\nGET 1\nPUT 3 3\nGET 2\nGET 3', expected_output: '1\n-1\n3', is_hidden: false, weight: 1 },
+      { id: 'tc-2', input: '1 4\nPUT 1 10\nGET 1\nPUT 2 20\nGET 1', expected_output: '10\n-1', is_hidden: false, weight: 1 },
+      { id: 'tc-3', input: '2 5\nPUT 1 5\nPUT 2 10\nGET 2\nPUT 3 15\nGET 1', expected_output: '10\n-1', is_hidden: true, weight: 1 },
+    ],
+    // 4. Maximum Circular Subarray Sum
+    'q-1790239649114-m18c6': [
+      { id: 'tc-1', input: '1 -2 3 -2', expected_output: '3', is_hidden: false, weight: 1 },
+      { id: 'tc-2', input: '5 -3 5', expected_output: '10', is_hidden: false, weight: 1 },
+      { id: 'tc-3', input: '-3 -2 -3', expected_output: '-2', is_hidden: true, weight: 1 },
+    ],
+    // 5. Matrix Diagonal Sum
+    'q-1790239647921-hev67': [
+      { id: 'tc-1', input: '3\n1 2 3\n4 5 6\n7 8 9', expected_output: '25', is_hidden: false, weight: 1 },
+      { id: 'tc-2', input: '4\n1 1 1 1\n1 1 1 1\n1 1 1 1\n1 1 1 1', expected_output: '8', is_hidden: false, weight: 1 },
+      { id: 'tc-3', input: '1\n5', expected_output: '5', is_hidden: true, weight: 1 },
+    ],
+    // 6. Valid Anagram Pairs
+    'q-1790239647529-w8iox': [
+      { id: 'tc-1', input: 'anagram\nnagaram', expected_output: 'true', is_hidden: false, weight: 1 },
+      { id: 'tc-2', input: 'rat\ncar', expected_output: 'false', is_hidden: false, weight: 1 },
+      { id: 'tc-3', input: 'listen\nsilent', expected_output: 'true', is_hidden: true, weight: 1 },
+    ],
+  };
+
+  let migratedCount = 0;
+  for (const [qId, cases] of Object.entries(specificTestCases)) {
+    await client.execute({
+      sql: 'UPDATE questions SET test_cases = ? WHERE id = ?',
+      args: [JSON.stringify(cases), qId],
+    });
+    migratedCount++;
+  }
+
+  // 4. Verify all questions in DB
+  const allQ = await client.execute('SELECT id, title, test_cases, initial_code, starter_code FROM questions');
+  const summary = allQ.rows.map((r: any) => {
+    const tcs = r.test_cases ? JSON.parse(String(r.test_cases)) : [];
+    return {
+      id: String(r.id),
+      title: String(r.title),
+      testCasesCount: tcs.length,
+      starterCodeLength: (r.starter_code || r.initial_code || '').length,
+    };
+  });
+
+  const allHave3 = summary.every((s) => s.testCasesCount === 3);
+  const allStarterClean = summary.every((s) => s.starterCodeLength === 0);
+
+  return {
+    success: true,
+    totalQuestions: summary.length,
+    allQuestionsHaveExactlyThreeTestCases: allHave3,
+    allQuestionsHaveCleanStarterCode: allStarterClean,
+    migratedSpecificQuestionsCount: migratedCount,
+    summary,
   };
 }

@@ -55,9 +55,7 @@ export default function QuestionBankPage() {
   const [newInputFormat, setNewInputFormat] = useState('');
   const [newOutputFormat, setNewOutputFormat] = useState('');
   const [newConstraints, setNewConstraints] = useState('');
-  const [newStarterCode, setNewStarterCode] = useState(
-    'def solution():\n    # Implement solution\n    pass\n\nif __name__ == "__main__":\n    solution()\n'
-  );
+  const [newStarterCode, setNewStarterCode] = useState('');
   // 3 Test Cases for New Question
   const [newTc1Input, setNewTc1Input] = useState('');
   const [newTc1Output, setNewTc1Output] = useState('');
@@ -136,43 +134,43 @@ export default function QuestionBankPage() {
     const testCases: TestCase[] = [];
     const questionId = `q-${Date.now()}`;
 
-    if (newTc1Input || newTc1Output) {
-      testCases.push({
-        id: `tc-1-${Date.now()}`,
-        question_id: questionId,
-        input: newTc1Input,
-        expected_output: newTc1Output,
-        is_hidden: false,
-        weight: 1,
-      });
-    }
-
-    if (newTc2Input || newTc2Output) {
-      testCases.push({
-        id: `tc-2-${Date.now()}`,
-        question_id: questionId,
-        input: newTc2Input,
-        expected_output: newTc2Output,
-        is_hidden: false,
-        weight: 1,
-      });
-    }
-
-    if (newTc3Input || newTc3Output) {
-      testCases.push({
-        id: `tc-3-${Date.now()}`,
-        question_id: questionId,
-        input: newTc3Input,
-        expected_output: newTc3Output,
-        is_hidden: true,
-        weight: 1,
-      });
-    }
-
-    if (testCases.length === 0) {
-      alert('At least one testcase is required (recommended 3 test cases).');
+    if (!newTc1Output.trim()) {
+      alert('Test Case 1 Expected Output is required. Every coding question must have exactly 3 test cases.');
       return;
     }
+    if (!newTc2Output.trim()) {
+      alert('Test Case 2 Expected Output is required. Every coding question must have exactly 3 test cases.');
+      return;
+    }
+    if (!newTc3Output.trim()) {
+      alert('Test Case 3 Expected Output is required. Every coding question must have exactly 3 test cases.');
+      return;
+    }
+
+    testCases.push({
+      id: `tc-1-${Date.now()}`,
+      question_id: questionId,
+      input: newTc1Input,
+      expected_output: newTc1Output.trim(),
+      is_hidden: false,
+      weight: 1,
+    });
+    testCases.push({
+      id: `tc-2-${Date.now()}`,
+      question_id: questionId,
+      input: newTc2Input,
+      expected_output: newTc2Output.trim(),
+      is_hidden: false,
+      weight: 1,
+    });
+    testCases.push({
+      id: `tc-3-${Date.now()}`,
+      question_id: questionId,
+      input: newTc3Input,
+      expected_output: newTc3Output.trim(),
+      is_hidden: true,
+      weight: 1,
+    });
 
     try {
       setActionLoading(true);
@@ -233,7 +231,7 @@ export default function QuestionBankPage() {
     setEditInputFormat(q.input_format || '');
     setEditOutputFormat(q.output_format || '');
     setEditConstraints(q.constraints || '');
-    setEditStarterCode(q.starter_code || (q as any).initial_code || 'def solution():\n    pass\n');
+    setEditStarterCode(q.starter_code || (q as any).initial_code || '');
 
     const tcs = Array.isArray(q.test_cases) ? q.test_cases : [];
     setEditTc1Input(tcs[0]?.input || '');
@@ -257,37 +255,45 @@ export default function QuestionBankPage() {
       return;
     }
 
-    const updatedTestCases: TestCase[] = [];
-    if (editTc1Input || editTc1Output) {
-      updatedTestCases.push({
+    if (!editTc1Output.trim()) {
+      alert('Test Case 1 Expected Output is required. Every coding question must have exactly 3 test cases.');
+      return;
+    }
+    if (!editTc2Output.trim()) {
+      alert('Test Case 2 Expected Output is required. Every coding question must have exactly 3 test cases.');
+      return;
+    }
+    if (!editTc3Output.trim()) {
+      alert('Test Case 3 Expected Output is required. Every coding question must have exactly 3 test cases.');
+      return;
+    }
+
+    const updatedTestCases: TestCase[] = [
+      {
         id: `tc-1-${Date.now()}`,
         question_id: editingQuestion.id,
         input: editTc1Input,
-        expected_output: editTc1Output,
+        expected_output: editTc1Output.trim(),
         is_hidden: false,
         weight: 1,
-      });
-    }
-    if (editTc2Input || editTc2Output) {
-      updatedTestCases.push({
+      },
+      {
         id: `tc-2-${Date.now()}`,
         question_id: editingQuestion.id,
         input: editTc2Input,
-        expected_output: editTc2Output,
+        expected_output: editTc2Output.trim(),
         is_hidden: false,
         weight: 1,
-      });
-    }
-    if (editTc3Input || editTc3Output) {
-      updatedTestCases.push({
+      },
+      {
         id: `tc-3-${Date.now()}`,
         question_id: editingQuestion.id,
         input: editTc3Input,
-        expected_output: editTc3Output,
+        expected_output: editTc3Output.trim(),
         is_hidden: true,
         weight: 1,
-      });
-    }
+      },
+    ];
 
     try {
       setActionLoading(true);
@@ -301,6 +307,7 @@ export default function QuestionBankPage() {
           difficulty: editDifficulty,
           topic: editTopic,
           marks: Number(editMarks),
+          starter_code: editStarterCode,
           initial_code: editStarterCode,
           test_cases: updatedTestCases,
           input_format: editInputFormat,
@@ -685,11 +692,12 @@ export default function QuestionBankPage() {
               </div>
 
               <div>
-                <label className="text-slate-700 font-semibold block mb-1.5">Python Starter Code</label>
+                <label className="text-slate-700 font-semibold block mb-1.5">Python Starter Code (Optional)</label>
                 <textarea
                   rows={4}
                   value={newStarterCode}
                   onChange={(e) => setNewStarterCode(e.target.value)}
+                  placeholder="Optional starter code. Leave completely empty for clean blank editor."
                   className="w-full bg-slate-900 text-slate-100 font-mono text-xs rounded-xl p-3 focus:outline-none border border-slate-800"
                 />
               </div>
@@ -943,11 +951,12 @@ export default function QuestionBankPage() {
               </div>
 
               <div>
-                <label className="text-slate-700 font-semibold block mb-1.5">Python Starter Code</label>
+                <label className="text-slate-700 font-semibold block mb-1.5">Python Starter Code (Optional)</label>
                 <textarea
                   rows={4}
                   value={editStarterCode}
                   onChange={(e) => setEditStarterCode(e.target.value)}
+                  placeholder="Optional starter code. Leave completely empty for clean blank editor."
                   className="w-full bg-slate-900 text-slate-100 font-mono text-xs rounded-xl p-3 focus:outline-none border border-slate-800"
                 />
               </div>

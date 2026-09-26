@@ -102,7 +102,7 @@ export default function AssessmentManagementPage() {
   const [newQDesc, setNewQDesc] = useState('');
   const [newQDiff, setNewQDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [newQMarks, setNewQMarks] = useState(25);
-  const [newQInitialCode, setNewQInitialCode] = useState('def solution():\n    # Write your code here\n    pass\n');
+  const [newQInitialCode, setNewQInitialCode] = useState('');
   const [newQInput, setNewQInput] = useState('');
   const [newQOutput, setNewQOutput] = useState('');
   const [showAddQuestion, setShowAddQuestion] = useState(false);

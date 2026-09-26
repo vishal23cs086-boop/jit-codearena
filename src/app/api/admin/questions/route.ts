@@ -90,14 +90,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (test_cases !== undefined && !Array.isArray(test_cases)) {
+    if (!Array.isArray(test_cases) || test_cases.length !== 3) {
       return NextResponse.json(
-        { success: false, error: 'Test cases must be a valid array.' },
+        { success: false, error: 'Every coding question must have exactly 3 test cases.' },
         { status: 400 }
       );
     }
 
-    const codeToUse = starter_code || initial_code || 'def solution():\n    pass\n';
+    for (let i = 0; i < 3; i++) {
+      const tc = test_cases[i];
+      if (!tc || typeof tc.expected_output !== 'string' || !tc.expected_output.trim()) {
+        return NextResponse.json(
+          { success: false, error: `Test Case ${i + 1} Expected Output is required.` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const codeToUse = starter_code !== undefined ? starter_code : (initial_code || '');
 
     const created = await createQuestionInDb({
       title: title.trim(),
@@ -106,9 +116,10 @@ export async function POST(req: NextRequest) {
       difficulty: normalizedDifficulty,
       topic: topic || 'Algorithms',
       marks: parsedMarks,
+      starter_code: codeToUse,
       initial_code: codeToUse,
       solution_code: solution_code || '',
-      test_cases: Array.isArray(test_cases) ? test_cases : [],
+      test_cases,
       time_limit: time_limit ? Number(time_limit) : 2000,
       memory_limit: memory_limit ? Number(memory_limit) : 128,
       input_format: input_format || '',

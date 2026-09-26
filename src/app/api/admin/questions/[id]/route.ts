@@ -67,11 +67,22 @@ export async function PUT(
       body.marks = parsedMarks;
     }
 
-    if (body.test_cases !== undefined && !Array.isArray(body.test_cases)) {
-      return NextResponse.json(
-        { success: false, error: 'Test cases must be a valid array.' },
-        { status: 400 }
-      );
+    if (body.test_cases !== undefined) {
+      if (!Array.isArray(body.test_cases) || body.test_cases.length !== 3) {
+        return NextResponse.json(
+          { success: false, error: 'Every coding question must have exactly 3 test cases.' },
+          { status: 400 }
+        );
+      }
+      for (let i = 0; i < 3; i++) {
+        const tc = body.test_cases[i];
+        if (!tc || typeof tc.expected_output !== 'string' || !tc.expected_output.trim()) {
+          return NextResponse.json(
+            { success: false, error: `Test Case ${i + 1} Expected Output is required.` },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     const updated = await updateQuestionInDb(id, body);
