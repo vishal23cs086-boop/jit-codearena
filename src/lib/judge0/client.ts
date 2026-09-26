@@ -43,10 +43,9 @@ export async function executeJudge0(
   if (apiUrl.includes('rapidapi.com') && (!apiKey || apiKey.length === 0 || apiKey.includes('your_'))) {
     return {
       stdout: null,
-      stderr:
-        'Execution Error: Judge0 API credentials (JUDGE0_API_KEY) are not configured on the server. Please configure your Judge0 API key in environment variables to execute Python code via RapidAPI.',
+      stderr: 'Python execution service is not configured. Please contact the examination administrator.',
       compile_output: null,
-      status: { id: 13, description: 'JUDGE0_NOT_CONFIGURED' },
+      status: { id: 13, description: 'CONFIGURATION_ERROR' },
       time: null,
       memory: null,
       notConfigured: true,
@@ -65,6 +64,8 @@ export async function executeJudge0(
       headers['X-Auth-Token'] = apiKey;
     }
 
+    const wallTimeSec = Math.max(3, Math.ceil(timeLimitSec * 2));
+
     const response = await fetch(`${apiUrl}/submissions?base64_encoded=false&wait=true`, {
       method: 'POST',
       headers,
@@ -73,28 +74,34 @@ export async function executeJudge0(
         language_id: PYTHON_LANGUAGE_ID,
         stdin: stdin || '',
         cpu_time_limit: timeLimitSec,
+        wall_time_limit: wallTimeSec,
         memory_limit: memoryLimitKb,
       }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
       let statusDesc = 'RUNTIME_ERROR';
+      let userMsg = 'Python execution service encountered an error.';
+
       if (response.status === 401 || response.status === 403) {
-        statusDesc = 'JUDGE0_AUTH_ERROR';
+        statusDesc = 'CONFIGURATION_ERROR';
+        userMsg = 'Python execution service is not configured. Please contact the examination administrator.';
       } else if (response.status === 429) {
         statusDesc = 'JUDGE0_RATE_LIMITED';
+        userMsg = 'Python execution service rate limit reached. Please wait a moment and try again.';
       } else if (response.status >= 500) {
         statusDesc = 'JUDGE0_UNAVAILABLE';
+        userMsg = 'Python execution service is currently unavailable. Please contact the examination administrator.';
       }
 
       return {
         stdout: null,
-        stderr: `Judge0 Server returned HTTP ${response.status}: ${errText}`,
+        stderr: userMsg,
         compile_output: null,
         status: { id: 11, description: statusDesc },
         time: null,
         memory: null,
+        notConfigured: statusDesc === 'CONFIGURATION_ERROR',
       };
     }
 
@@ -121,13 +128,12 @@ export async function executeJudge0(
       time: data.time || '0.00',
       memory: data.memory || 0,
     };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch {
     return {
       stdout: null,
-      stderr: `Failed to connect to Judge0 execution host: ${msg}`,
+      stderr: 'Python execution service connection failed. Please contact the examination administrator.',
       compile_output: null,
-      status: { id: 11, description: 'NETWORK_ERROR' },
+      status: { id: 11, description: 'JUDGE0_UNAVAILABLE' },
       time: null,
       memory: null,
     };
@@ -175,8 +181,8 @@ export async function runTestCases(
   for (const tc of testCases) {
     const execRes = await executeJudge0(code, tc.input);
 
-    if (execRes.notConfigured) {
-      configurationErrorMsg = execRes.stderr || 'Judge0 API is not configured on the assessment server.';
+    if (execRes.notConfigured || execRes.status.description === 'CONFIGURATION_ERROR') {
+      configurationErrorMsg = 'Python execution service is not configured. Please contact the examination administrator.';
       return {
         allPassed: false,
         testCasesPassed: 0,
@@ -186,6 +192,19 @@ export async function runTestCases(
         maxMemoryKb: 0,
         overallStatus: 'Execution Error',
         errorDetails: configurationErrorMsg,
+      };
+    }
+
+    if (execRes.status.description === 'JUDGE0_UNAVAILABLE' || execRes.status.description === 'NETWORK_ERROR') {
+      return {
+        allPassed: false,
+        testCasesPassed: 0,
+        totalTestCases: testCases.length,
+        results: [],
+        averageTimeMs: 0,
+        maxMemoryKb: 0,
+        overallStatus: 'Execution Error',
+        errorDetails: 'Python execution service is currently unavailable. Please contact the examination administrator.',
       };
     }
 

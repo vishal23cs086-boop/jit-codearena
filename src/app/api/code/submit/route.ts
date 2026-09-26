@@ -102,6 +102,29 @@ export async function POST(req: NextRequest) {
     // 2. Execute code on all test cases (both public and hidden)
     const execSummary = await runTestCases(code, allTestCases, true);
 
+    // If Judge0 infrastructure failure or misconfiguration, do NOT penalize student with 0 marks
+    if (execSummary.overallStatus === 'Execution Error') {
+      if (studentId) {
+        await recordActivityLogInDb({
+          test_id: targetTestId || null,
+          student_id: studentId,
+          event_type: 'INFRASTRUCTURE_ERROR',
+          description: `Execution engine error during submission evaluation for question ${questionId}.`,
+          metadata: { questionId, error: execSummary.errorDetails },
+        }).catch(() => {});
+      }
+
+      return NextResponse.json(
+        {
+          success: false,
+          status: 'Execution Error',
+          isInfrastructureError: true,
+          error: execSummary.errorDetails || 'Python execution service is unavailable. Your submission has not been penalized.',
+        },
+        { status: 503 }
+      );
+    }
+
     // 3. Compute official server-side score
     const scoreResult = calculateSubmissionScore({
       totalTestCases: execSummary.totalTestCases,

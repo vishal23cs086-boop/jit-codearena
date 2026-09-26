@@ -168,40 +168,75 @@ export const ConsolePanel: React.FC<ConsolePanelProps> = ({
             ) : lastRunResult ? (
               <div className="space-y-4">
                 {/* Result Summary Banner */}
-                <div
-                  className={`p-3.5 rounded-2xl border flex items-center justify-between ${
-                    lastRunResult.status === 'Accepted' || lastRunResult.status === 'SUCCESS'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border-rose-200 text-rose-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 font-sans">
-                    {lastRunResult.status === 'Accepted' || lastRunResult.status === 'SUCCESS' ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
-                    )}
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">
-                        {lastRunResult.status || 'Execution Finished'}
-                      </h4>
-                      <p className="text-xs opacity-90 text-slate-600">
-                        {lastRunResult.passedCases !== undefined && lastRunResult.totalCases !== undefined
-                          ? `${lastRunResult.passedCases}/${lastRunResult.totalCases} Test Cases Passed`
-                          : lastRunResult.status === 'Accepted' || lastRunResult.status === 'SUCCESS'
-                          ? 'Code executed successfully'
-                          : lastRunResult.status === 'JUDGE0_NOT_CONFIGURED'
-                          ? 'Execution engine credentials missing on server'
-                          : lastRunResult.status === 'COMPILATION_ERROR'
-                          ? 'Syntax / Compilation error in code'
-                          : lastRunResult.status === 'RUNTIME_ERROR'
-                          ? 'Runtime exception encountered'
-                          : lastRunResult.status === 'TIME_LIMIT'
-                          ? 'Execution time limit exceeded'
-                          : 'Execution failed'}
-                      </p>
-                    </div>
-                  </div>
+                {/* Result Summary Banner */}
+                {(() => {
+                  const s = String(lastRunResult.status || '').toUpperCase();
+                  const isAccepted = s === 'ACCEPTED' || s === 'SUCCESS';
+                  const isConfigError = s === 'CONFIGURATION_ERROR' || s === 'JUDGE0_NOT_CONFIGURED';
+                  const isServiceError = s === 'JUDGE0_UNAVAILABLE' || s === 'EXECUTION ERROR' || s === 'EXECUTION_ERROR' || s === 'SUBMISSION ERROR';
+                  const isTimeLimit = s === 'TIME_LIMIT' || s === 'TIME LIMIT EXCEEDED';
+                  const isCompilation = s === 'COMPILATION_ERROR' || s === 'COMPILATION ERROR';
+                  const isRuntime = s === 'RUNTIME_ERROR' || s === 'RUNTIME ERROR';
+                  const isWrong = s === 'WRONG ANSWER' || s === 'WRONG_ANSWER';
+
+                  let displayTitle = lastRunResult.status || 'Execution Finished';
+                  let displayDesc = 'Execution completed';
+
+                  if (isAccepted) {
+                    displayTitle = 'SUCCESS';
+                    displayDesc = lastRunResult.passedCases !== undefined && lastRunResult.totalCases !== undefined
+                      ? `All ${lastRunResult.totalCases} Test Cases Passed`
+                      : 'Code executed successfully';
+                  } else if (isTimeLimit) {
+                    displayTitle = 'TIME LIMIT EXCEEDED';
+                    displayDesc = 'Program exceeded maximum execution time limit';
+                  } else if (isCompilation) {
+                    displayTitle = 'COMPILATION ERROR';
+                    displayDesc = 'Syntax or structure error in Python code';
+                  } else if (isRuntime) {
+                    displayTitle = 'RUNTIME ERROR';
+                    displayDesc = 'Runtime exception raised during execution';
+                  } else if (isWrong) {
+                    displayTitle = 'WRONG ANSWER';
+                    displayDesc = lastRunResult.passedCases !== undefined && lastRunResult.totalCases !== undefined
+                      ? `${lastRunResult.passedCases}/${lastRunResult.totalCases} Test Cases Passed`
+                      : 'Output did not match expected solution output';
+                  } else if (isConfigError) {
+                    displayTitle = 'CONFIGURATION ERROR';
+                    displayDesc = 'Python execution service is not configured. Please contact the examination administrator.';
+                  } else if (isServiceError) {
+                    displayTitle = 'EXECUTION SERVICE ERROR';
+                    displayDesc = 'Python execution service is currently unavailable. Please contact the examination administrator.';
+                  } else {
+                    displayTitle = lastRunResult.status || 'EXECUTION FAILED';
+                    displayDesc = 'Execution failed';
+                  }
+
+                  return (
+                    <div
+                      className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                        isAccepted
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                          : isTimeLimit
+                          ? 'bg-amber-50 border-amber-200 text-amber-800'
+                          : 'bg-rose-50 border-rose-200 text-rose-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 font-sans">
+                        {isAccepted ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                        ) : (
+                          <XCircle className={`w-5 h-5 flex-shrink-0 ${isTimeLimit ? 'text-amber-600' : 'text-rose-600'}`} />
+                        )}
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-900">
+                            {displayTitle}
+                          </h4>
+                          <p className="text-xs opacity-90 text-slate-600">
+                            {displayDesc}
+                          </p>
+                        </div>
+                      </div>
 
                   {/* Execution Metrics */}
                   <div className="flex items-center gap-2.5 text-[11px] font-mono text-slate-700">
@@ -217,6 +252,8 @@ export const ConsolePanel: React.FC<ConsolePanelProps> = ({
                     )}
                   </div>
                 </div>
+              );
+            })()}
 
                 {/* Test case breakdown list */}
                 {lastRunResult.caseResults && lastRunResult.caseResults.length > 0 && (

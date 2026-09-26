@@ -85,3 +85,23 @@ button:active:not(:disabled) {
   transform: scale(0.985);
 }
 
+/* Subtle Floating Logo Animation */
+@keyframes subtleFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-subtle-float {
+  animation: subtleFloat 3.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-subtle-float {
+    animation: none !important;
+  }
+}
+

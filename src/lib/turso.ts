@@ -1932,8 +1932,8 @@ export async function getQuestionsFromDb(filters?: {
     difficulty: String(row.difficulty),
     topic: String(row.topic || 'Algorithms'),
     marks: Number(row.marks || 20),
-    initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
-    starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    initial_code: row.initial_code ? String(row.initial_code) : '',
+    starter_code: row.initial_code ? String(row.initial_code) : '',
     solution_code: row.solution_code ? String(row.solution_code) : undefined,
     test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
     time_limit: Number(row.time_limit || 2000),
@@ -1968,8 +1968,8 @@ export async function getQuestionByIdFromDb(id: string) {
     difficulty: String(row.difficulty),
     topic: String(row.topic || 'Algorithms'),
     marks: Number(row.marks || 20),
-    initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
-    starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    initial_code: row.initial_code ? String(row.initial_code) : '',
+    starter_code: row.initial_code ? String(row.initial_code) : '',
     solution_code: row.solution_code ? String(row.solution_code) : undefined,
     test_cases: row.test_cases ? JSON.parse(String(row.test_cases)) : [],
     time_limit: Number(row.time_limit || 2000),
@@ -2288,8 +2288,8 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
           topic: String(row.topic || 'Algorithms'),
           marks: Number(row.marks || 20),
           year: Number(row.year),
-          initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
-          starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+          initial_code: row.initial_code ? String(row.initial_code) : '',
+          starter_code: row.initial_code ? String(row.initial_code) : '',
           input_format: String(row.input_format || ''),
           output_format: String(row.output_format || ''),
           constraints: String(row.constraints || ''),
@@ -2299,6 +2299,13 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
           test_cases: sanitizedCases,
         };
       });
+
+      let answers: Record<string, any> = {};
+      if (existingAttempt.answers) {
+        try {
+          answers = JSON.parse(String(existingAttempt.answers));
+        } catch {}
+      }
 
       return {
         isExisting: true,
@@ -2310,6 +2317,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
           status: String(existingAttempt.status),
           score: Number(existingAttempt.score || 0),
           max_score: Number(existingAttempt.max_score || 100),
+          answers,
         },
         test: {
           id: String(test.id),
@@ -2344,8 +2352,8 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     topic: String(row.topic || 'Algorithms'),
     marks: Number(row.marks || 20),
     year: Number(row.year),
-    initial_code: String(row.initial_code || 'def solution():\n    pass\n'),
-    starter_code: String(row.initial_code || 'def solution():\n    pass\n'),
+    initial_code: row.initial_code ? String(row.initial_code) : '',
+    starter_code: row.initial_code ? String(row.initial_code) : '',
     input_format: String(row.input_format || ''),
     output_format: String(row.output_format || ''),
     constraints: String(row.constraints || ''),
@@ -2480,6 +2488,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
       status: 'in_progress',
       score: 0,
       max_score: Number(test.total_marks || 100),
+      answers: {},
     },
     test: {
       id: String(test.id),

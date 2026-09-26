@@ -114,10 +114,25 @@ export default function CodingTestPage() {
         setTest(data.test);
         setQuestions(data.questions || []);
 
-        // Initialize code map with starter codes
+        // Initialize code map:
+        // Priority 1: Student's own autosaved code for this attempt & question (if existing attempt)
+        // Priority 2: Question's legitimate configured starter code (if any)
+        // Priority 3: Clean empty editor (NO random/boilerplate/demo code!)
+        const savedAnswers = (data.attempt?.answers && typeof data.attempt.answers === 'object') ? data.attempt.answers : {};
         const initialMap: Record<string, string> = {};
         (data.questions || []).forEach((q: Question) => {
-          initialMap[q.id] = q.starter_code || 'def solution():\n    pass\n';
+          const studentSaved = savedAnswers[q.id];
+          if (studentSaved && typeof studentSaved.code === 'string') {
+            initialMap[q.id] = studentSaved.code;
+          } else if (typeof studentSaved === 'string') {
+            initialMap[q.id] = studentSaved;
+          } else if (q.starter_code && q.starter_code.trim()) {
+            initialMap[q.id] = q.starter_code;
+          } else if ((q as any).initial_code && (q as any).initial_code.trim()) {
+            initialMap[q.id] = (q as any).initial_code;
+          } else {
+            initialMap[q.id] = '';
+          }
         });
         setStudentCodeMap(initialMap);
       } catch (err) {
