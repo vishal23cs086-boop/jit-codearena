@@ -3960,6 +3960,123 @@ export async function updatePdfImportQuestionInDb(
   return res.rows[0] ? (res.rows[0] as any) : null;
 }
 
+export async function deletePdfImportQuestionInDb(qId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const findRes = await client.execute({
+    sql: 'SELECT import_id FROM pdf_import_questions WHERE id = ? LIMIT 1',
+    args: [qId],
+  });
+
+  const importId = findRes.rows[0]?.import_id ? String(findRes.rows[0].import_id) : null;
+
+  await client.execute({
+    sql: 'DELETE FROM pdf_import_questions WHERE id = ?',
+    args: [qId],
+  });
+
+  if (importId) {
+    const countRes = await client.execute({
+      sql: `SELECT 
+              COUNT(*) as total,
+              SUM(CASE WHEN status = 'VALID' OR status = 'APPROVED' THEN 1 ELSE 0 END) as valids,
+              SUM(CASE WHEN status = 'NEEDS_REVIEW' OR status = 'DUPLICATE' THEN 1 ELSE 0 END) as invalids
+            FROM pdf_import_questions WHERE import_id = ?`,
+      args: [importId],
+    });
+    const row = countRes.rows[0];
+    if (row) {
+      await client.execute({
+        sql: 'UPDATE pdf_imports SET questions_extracted = ?, valid_questions = ?, invalid_questions = ? WHERE id = ?',
+        args: [Number(row.total || 0), Number(row.valids || 0), Number(row.invalids || 0), importId],
+      });
+    }
+  }
+
+  return { success: true };
+}
+
+export async function validatePdfImportInDb(importId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const questionsRes = await client.execute({
+    sql: 'SELECT * FROM pdf_import_questions WHERE import_id = ? ORDER BY question_number ASC',
+    args: [importId],
+  });
+
+  const rows = questionsRes.rows;
+  const issues: Array<{ question_number: number; error: string }> = [];
+  const seenNumbers = new Set<number>();
+  let validCount = 0;
+  let reviewCount = 0;
+  let totalMarks = 0;
+
+  for (const row of rows) {
+    const qNum = Number(row.question_number);
+    const qText = String(row.question_text || '').trim();
+    const optA = String(row.option_a || '').trim();
+    const optB = String(row.option_b || '').trim();
+    const optC = String(row.option_c || '').trim();
+    const optD = String(row.option_d || '').trim();
+    const key = row.correct_answer ? String(row.correct_answer).toUpperCase().trim() : '';
+    const marks = Number(row.marks || 2);
+    totalMarks += marks;
+
+    const rowIssues: string[] = [];
+
+    if (seenNumbers.has(qNum)) {
+      rowIssues.push(`Duplicate question number ${qNum}`);
+    }
+    seenNumbers.add(qNum);
+
+    if (qText.length < 5) rowIssues.push('Question text is missing or too short');
+    if (!optA) rowIssues.push('Option A is missing');
+    if (!optB) rowIssues.push('Option B is missing');
+    if (!optC) rowIssues.push('Option C is missing');
+    if (!optD) rowIssues.push('Option D is missing');
+    if (!key || !['A', 'B', 'C', 'D'].includes(key)) rowIssues.push('Valid correct answer (A, B, C, D) is required');
+    if (marks <= 0) rowIssues.push('Marks must be greater than 0');
+
+    // Duplicate options check
+    const opts = [optA, optB, optC, optD].filter(Boolean);
+    if (new Set(opts).size < opts.length) {
+      rowIssues.push('Duplicate option texts detected');
+    }
+
+    if (rowIssues.length > 0) {
+      reviewCount++;
+      issues.push({ question_number: qNum, error: rowIssues.join('; ') });
+      await client.execute({
+        sql: "UPDATE pdf_import_questions SET status = 'NEEDS_REVIEW', review_notes = ? WHERE id = ?",
+        args: [rowIssues.join('; '), String(row.id)],
+      });
+    } else {
+      validCount++;
+      await client.execute({
+        sql: "UPDATE pdf_import_questions SET status = 'VALID', review_notes = NULL WHERE id = ?",
+        args: [String(row.id)],
+      });
+    }
+  }
+
+  const isAllValid = reviewCount === 0 && rows.length > 0;
+  await client.execute({
+    sql: 'UPDATE pdf_imports SET questions_extracted = ?, valid_questions = ?, invalid_questions = ?, status = ? WHERE id = ?',
+    args: [rows.length, validCount, reviewCount, isAllValid ? 'READY' : 'REVIEW_REQUIRED', importId],
+  });
+
+  return {
+    valid: isAllValid,
+    totalQuestions: rows.length,
+    validCount,
+    reviewCount,
+    totalMarks,
+    issues,
+  };
+}
+
 export async function approvePdfImportQuestionsInDb(importId: string, questionIds?: string[]) {
   await initTursoDb();
   const client = getTursoClient();

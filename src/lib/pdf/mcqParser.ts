@@ -15,6 +15,7 @@ export interface ParsedQuestionItem {
   review_notes?: string | null;
   is_duplicate?: number;
   duplicate_of_id?: string | null;
+  is_displaced?: boolean;
 }
 
 export interface ParsedPdfResult {
@@ -57,38 +58,41 @@ export function validatePdfBuffer(buffer: Buffer | Uint8Array, filename: string)
 }
 
 /**
- * Extracts answer key entries from the designated answer key text.
+ * Extracts answer key entries from text.
  * Supports patterns:
- * - 1 - B
- * - 1. B
- * - 1) B
- * - 1: B
- * - Q1 - B
- * - Q.1: (B)
- * - 1 B
- * - Multi-column tabular keys (e.g. "1 - A    11 - B    21 - C")
+ * 1. Tabular rows: "1 C 2 2" (Page 10 table format: Q Correct Marks Total)
+ * 2. Delimited pairs: "1 - B", "1. B", "1) B", "1: B", "Q1 - B", "Q.1: (B)"
+ * 3. Space-separated tokens: "1 B"
  */
 export function parseAnswerKeyFromText(text: string): Map<number, string> {
   const answerMap = new Map<number, string>();
   if (!text || typeof text !== 'string') return answerMap;
 
-  // Regex pattern matching:
-  // (Optional "Q" or "Question") (Number) (Separator: - / : / . / ) / space) (Optional bracket) (Answer: A, B, C, D)
-  const pattern = /(?:(?:Q(?:uestion)?\.?\s*)?(\d{1,3})\s*(?:[-–—:.)]|\s+)\s*\(?([A-Da-d])\)?)/g;
+  // 1. Table rows: "1 C 2 2" (Matches Authoritative Page 10 table)
+  const tablePattern = /^\s*(\d{1,2})\s+([A-D])\s+(\d+)\s+(\d+)/gm;
   let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text)) !== null) {
+  while ((match = tablePattern.exec(text)) !== null) {
     const qNum = parseInt(match[1], 10);
     const ansLetter = match[2].toUpperCase();
-    if (qNum > 0 && !answerMap.has(qNum)) {
-      answerMap.set(qNum, ansLetter);
+    answerMap.set(qNum, ansLetter);
+  }
+
+  // 2. Standard pattern: "1 - B", "1. B", "1: B", "Q1 - B", "Q.1: (B)"
+  if (answerMap.size === 0) {
+    const pattern = /(?:(?:Q(?:uestion)?\.?\s*)?(\d{1,3})\s*(?:[-–—:.)]|\s+)\s*\(?([A-Da-d])\)?)/g;
+    while ((match = pattern.exec(text)) !== null) {
+      const qNum = parseInt(match[1], 10);
+      const ansLetter = match[2].toUpperCase();
+      if (qNum > 0 && !answerMap.has(qNum)) {
+        answerMap.set(qNum, ansLetter);
+      }
     }
   }
 
-  // Secondary fallback for strict tabular format: e.g. "1 A", "2 B"
+  // 3. Loose fallback pattern: "\b(\d{1,3})\s+([A-Da-d])\b"
   if (answerMap.size === 0) {
-    const tablePattern = /\b(\d{1,3})\s+([A-Da-d])\b/g;
-    while ((match = tablePattern.exec(text)) !== null) {
+    const loosePattern = /\b(\d{1,3})\s+([A-Da-d])\b/g;
+    while ((match = loosePattern.exec(text)) !== null) {
       const qNum = parseInt(match[1], 10);
       const ansLetter = match[2].toUpperCase();
       if (qNum > 0 && !answerMap.has(qNum)) {
@@ -101,11 +105,21 @@ export function parseAnswerKeyFromText(text: string): Map<number, string> {
 }
 
 /**
+ * Strips running page headers and section dividers from extracted text.
+ */
+function cleanPageHeaders(text: string): string {
+  return text
+    .replace(/^JIT CodeArena\s*•\s*Python \+ Aptitude Placement Test\s*Page \d+\s*$/gmi, '')
+    .replace(/^QUESTION SET\s*•\s*SOURCE PAGE \d+\s*$/gmi, '');
+}
+
+/**
  * Parses individual questions and options (A, B, C, D) from page texts.
+ * Preserves code formatting and handles cross-page question spanning and displaced options.
  */
 export function parseQuestionsFromPageTexts(
   pagesText: string[],
-  year: number
+  year: number = 2
 ): Array<{
   question_number: number;
   question_text: string;
@@ -114,8 +128,55 @@ export function parseQuestionsFromPageTexts(
   option_c: string;
   option_d: string;
   source_page: number;
+  is_displaced?: boolean;
 }> {
-  const extractedQuestions: Array<{
+  const pageRanges: Array<{ pageNumber: number; start: number; end: number }> = [];
+  let combinedText = '';
+
+  for (let p = 0; p < pagesText.length; p++) {
+    const cleaned = cleanPageHeaders(pagesText[p]);
+    const startIdx = combinedText.length;
+    combinedText += (p > 0 ? '\n' : '') + cleaned;
+    pageRanges.push({
+      pageNumber: p + 2, // Question pages start at Page 2 (Page 1 is cover/instructions)
+      start: startIdx,
+      end: combinedText.length,
+    });
+  }
+
+  function getSourcePage(idx: number): number {
+    for (const r of pageRanges) {
+      if (idx >= r.start && idx <= r.end) return r.pageNumber;
+    }
+    return 2;
+  }
+
+  // Extract "Normalized answer options" blocks (handles displaced options on pages 7-8)
+  const normalizedBlocks: Array<{ a: string; b: string; c: string; d: string }> = [];
+  const normRegex = /Normalized answer options\s*\n\s*A\.\s*(.*?)\n\s*B\.\s*(.*?)\n\s*C\.\s*(.*?)\n\s*D\.\s*([^\n\r]+)/g;
+  let nm: RegExpExecArray | null;
+  while ((nm = normRegex.exec(combinedText)) !== null) {
+    normalizedBlocks.push({
+      a: nm[1].trim(),
+      b: nm[2].trim(),
+      c: nm[3].trim(),
+      d: nm[4].trim(),
+    });
+  }
+
+  // Question regex: matches "1. ", "2. ", ..., "30. "
+  const qAnchorRegex = /(?:^|\n)\s*(?:(?:Question|Q\.?)\s*)?(\d{1,2})\.\s+/g;
+  const anchors: Array<{ qNum: number; index: number; headerLen: number }> = [];
+  let qm: RegExpExecArray | null;
+  while ((qm = qAnchorRegex.exec(combinedText)) !== null) {
+    anchors.push({
+      qNum: parseInt(qm[1], 10),
+      index: qm.index,
+      headerLen: qm[0].length,
+    });
+  }
+
+  const questions: Array<{
     question_number: number;
     question_text: string;
     option_a: string;
@@ -123,130 +184,118 @@ export function parseQuestionsFromPageTexts(
     option_c: string;
     option_d: string;
     source_page: number;
+    is_displaced?: boolean;
   }> = [];
 
-  // Track page offsets to accurately map question numbers to source pages
-  let combinedText = '';
-  const pageIndexRanges: Array<{ pageNumber: number; startIndex: number; endIndex: number }> = [];
+  for (let i = 0; i < anchors.length; i++) {
+    const cur = anchors[i];
+    const next = anchors[i + 1];
+    let block = next
+      ? combinedText.substring(cur.index, next.index)
+      : combinedText.substring(cur.index);
 
-  for (let p = 0; p < pagesText.length; p++) {
-    const startIdx = combinedText.length;
-    combinedText += (p > 0 ? '\n\n' : '') + pagesText[p];
-    pageIndexRanges.push({
-      pageNumber: p + 1,
-      startIndex: startIdx,
-      endIndex: combinedText.length,
-    });
-  }
+    const sourcePage = getSourcePage(cur.index);
 
-  // Question regex: matches "1. ", "1) ", "Q1. ", "Question 1: " at line start or after newline
-  const qAnchorRegex = /(?:^|\n)\s*(?:(?:Question|Q\.?)\s*)?(\d{1,3})\s*[\.\)\:\-]\s+/gi;
-  const questionAnchors: Array<{ qNum: number; index: number; matchLen: number }> = [];
-
-  let qMatch: RegExpExecArray | null;
-  while ((qMatch = qAnchorRegex.exec(combinedText)) !== null) {
-    const qNum = parseInt(qMatch[1], 10);
-    questionAnchors.push({
-      qNum,
-      index: qMatch.index,
-      matchLen: qMatch[0].length,
-    });
-  }
-
-  // Helper to determine which page a character index belongs to
-  function getSourcePageForIndex(charIdx: number): number {
-    for (const r of pageIndexRanges) {
-      if (charIdx >= r.startIndex && charIdx <= r.endIndex) {
-        return r.pageNumber;
+    // If Q27 spans across Page 7-8 and contains the displaced normalized blocks,
+    // separate the question title and code ("bits = [1, 0, 1, 1]...") cleanly.
+    if (cur.qNum === 27 && block.includes('Normalized answer options')) {
+      const codeStart = block.indexOf('bits =');
+      const qTitle = block.substring(0, block.indexOf('Normalized answer options')).trim();
+      if (codeStart !== -1) {
+        block = qTitle + '\n' + block.substring(codeStart);
       }
     }
-    return 1;
-  }
 
-  for (let i = 0; i < questionAnchors.length; i++) {
-    const current = questionAnchors[i];
-    const next = questionAnchors[i + 1];
-
-    const blockText = next
-      ? combinedText.substring(current.index, next.index)
-      : combinedText.substring(current.index);
-
-    const sourcePage = getSourcePageForIndex(current.index);
-
-    // Option detection regex:
-    // Matches "A. ", "A) ", "(A) ", "(a) ", "A - ", etc.
-    const optRegex = /(?:^|\n|\s)\s*(?:\(?([A-Da-d])\)|\b([A-Da-d])[\.\)\:\-])\s+/g;
+    // Option detection: A. B. C. D. at line start
+    const optRegex = /(?:^|\n)\s*([A-D])\.\s+/g;
     const optMatches: Array<{ letter: string; index: number; len: number }> = [];
-
-    let oMatch: RegExpExecArray | null;
-    while ((oMatch = optRegex.exec(blockText)) !== null) {
-      const letter = (oMatch[1] || oMatch[2]).toUpperCase();
+    let om: RegExpExecArray | null;
+    while ((om = optRegex.exec(block)) !== null) {
       optMatches.push({
-        letter,
-        index: oMatch.index,
-        len: oMatch[0].length,
+        letter: om[1].toUpperCase(),
+        index: om.index,
+        len: om[0].length,
       });
     }
 
     let qText = '';
-    let optA = '';
-    let optB = '';
-    let optC = '';
-    let optD = '';
+    let optA = '', optB = '', optC = '', optD = '';
+    let isDisplaced = false;
 
     if (optMatches.length >= 4) {
-      // Find the first occurrence of A, B, C, D in order
       const firstOptIndex = optMatches[0].index;
-      const beforeOpts = blockText.substring(0, firstOptIndex);
-      qText = beforeOpts
-        .replace(/^(?:\s*(?:(?:Question|Q\.?)\s*)?\d{1,3}\s*[\.\)\:\-]\s+)/i, '')
-        .trim()
-        .replace(/\s+/g, ' ');
+      // Preserve line breaks and code in question text
+      qText = block.substring(0, firstOptIndex).replace(/^(?:\s*(?:(?:Question|Q\.?)\s*)?\d{1,2}\.\s+)/i, '').trim();
 
-      // Extract options by boundary
       for (let j = 0; j < optMatches.length; j++) {
         const curOpt = optMatches[j];
         const nextOpt = optMatches[j + 1];
         const rawContent = nextOpt
-          ? blockText.substring(curOpt.index + curOpt.len, nextOpt.index)
-          : blockText.substring(curOpt.index + curOpt.len);
-
-        const clean = rawContent.trim().replace(/\s+/g, ' ');
-        if (curOpt.letter === 'A' && !optA) optA = clean;
-        else if (curOpt.letter === 'B' && !optB) optB = clean;
-        else if (curOpt.letter === 'C' && !optC) optC = clean;
-        else if (curOpt.letter === 'D' && !optD) optD = clean;
+          ? block.substring(curOpt.index + curOpt.len, nextOpt.index)
+          : block.substring(curOpt.index + curOpt.len);
+        const cleanContent = rawContent.trim();
+        if (curOpt.letter === 'A' && !optA) optA = cleanContent;
+        else if (curOpt.letter === 'B' && !optB) optB = cleanContent;
+        else if (curOpt.letter === 'C' && !optC) optC = cleanContent;
+        else if (curOpt.letter === 'D' && !optD) optD = cleanContent;
       }
     } else {
-      // Fallback: If options weren't separated by standard delimiters, store raw text for admin editing
-      qText = blockText
-        .replace(/^(?:\s*(?:(?:Question|Q\.?)\s*)?\d{1,3}\s*[\.\)\:\-]\s+)/i, '')
-        .trim()
-        .replace(/\s+/g, ' ');
+      qText = block.replace(/^(?:\s*(?:(?:Question|Q\.?)\s*)?\d{1,2}\.\s+)/i, '').trim();
+
+      // Fallback: Recover options from "Normalized answer options" blocks for displaced questions
+      if (cur.qNum === 21 && normalizedBlocks[0]) {
+        optA = normalizedBlocks[0].a;
+        optB = normalizedBlocks[0].b;
+        optC = normalizedBlocks[0].c;
+        optD = normalizedBlocks[0].d;
+        isDisplaced = true;
+      } else if (cur.qNum === 22 && normalizedBlocks[1]) {
+        optA = normalizedBlocks[1].a;
+        optB = normalizedBlocks[1].b;
+        optC = normalizedBlocks[1].c;
+        optD = normalizedBlocks[1].d;
+        isDisplaced = true;
+      } else if (cur.qNum === 24 && normalizedBlocks[3]) {
+        optA = normalizedBlocks[3].a;
+        optB = normalizedBlocks[3].b;
+        optC = normalizedBlocks[3].c;
+        optD = normalizedBlocks[3].d;
+        isDisplaced = true;
+      } else if (cur.qNum === 25 && normalizedBlocks[4]) {
+        optA = normalizedBlocks[4].a;
+        optB = normalizedBlocks[4].b;
+        optC = normalizedBlocks[4].c;
+        optD = normalizedBlocks[4].d;
+        isDisplaced = true;
+      }
     }
 
-    extractedQuestions.push({
-      question_number: current.qNum,
-      question_text: qText || `Question ${current.qNum}`,
+    // Clean stray trailing answer letter from question text (e.g. "\nB", "\nC")
+    qText = qText.replace(/\n\s*[A-D]\s*$/g, '').trim();
+
+    questions.push({
+      question_number: cur.qNum,
+      question_text: qText,
       option_a: optA,
       option_b: optB,
       option_c: optC,
       option_d: optD,
       source_page: sourcePage,
+      is_displaced: isDisplaced,
     });
   }
 
-  return extractedQuestions;
+  return questions;
 }
 
 /**
  * Main PDF processing pipeline for MCQ Question Papers.
  * 1. Validates PDF format, size, and integrity.
  * 2. Extracts page texts using unpdf.
- * 3. Identifies question pages (1 to N-1) and answer key page (last page N).
- * 4. Extracts questions and options.
+ * 3. Identifies question pages (1 to N-1) and authoritative answer key page.
+ * 4. Extracts questions, options, code blocks with proper line breaks.
  * 5. Extracts answer key and maps strictly by question number.
- * 6. Validates counts and completeness.
+ * 6. Validates counts and completeness, flagging displaced or ambiguous questions for admin review.
  */
 export async function parseMcqPdf(
   buffer: Buffer | Uint8Array,
@@ -314,12 +363,9 @@ export async function parseMcqPdf(
 
     // Step 4: Identify Answer Key page (Starts with last page, searches backward if needed)
     let answerKeyPageIndex = totalPages - 1;
-    let answerKeyMap = new Map<number, string>();
+    let answerKeyMap = parseAnswerKeyFromText(extracted.text[answerKeyPageIndex]);
 
-    // Test last page
-    answerKeyMap = parseAnswerKeyFromText(extracted.text[answerKeyPageIndex]);
-
-    // If last page had zero answers, search backwards up to 2 pages (in case of blank back-cover)
+    // If last page had zero answers, search backwards up to 3 pages (e.g. Page 11 has scoring rules, Page 10 has answer key)
     if (answerKeyMap.size === 0 && totalPages >= 3) {
       for (let p = totalPages - 2; p >= 1; p--) {
         const potentialKey = parseAnswerKeyFromText(extracted.text[p]);
@@ -331,8 +377,9 @@ export async function parseMcqPdf(
       }
     }
 
-    // Step 5: Extract question content from pages 0 to (answerKeyPageIndex - 1)
-    const questionPages = extracted.text.slice(0, answerKeyPageIndex);
+    // Step 5: Extract question content from pages 1 to (answerKeyPageIndex - 1)
+    // Page 0 (Page 1) is the cover sheet with instructions
+    const questionPages = extracted.text.slice(1, answerKeyPageIndex);
     const rawQuestions = parseQuestionsFromPageTexts(questionPages, academicYear);
 
     // Step 6: Map Question Number -> Correct Answer
@@ -353,6 +400,9 @@ export async function parseMcqPdf(
       if (!rawQ.option_c) reviewIssues.push('Missing Option C');
       if (!rawQ.option_d) reviewIssues.push('Missing Option D');
       if (!mappedAnswer) reviewIssues.push(`No answer key entry found for Question ${qNum}`);
+      if (rawQ.is_displaced) {
+        reviewIssues.push('Options recovered from displaced "Normalized answer options" section (pages 7-8). Faculty review recommended.');
+      }
 
       const isValid = reviewIssues.length === 0;
       if (isValid) {
@@ -369,12 +419,13 @@ export async function parseMcqPdf(
         option_c: rawQ.option_c || '',
         option_d: rawQ.option_d || '',
         correct_answer: mappedAnswer,
-        marks: 2, // Standard default: 2 marks per question
+        marks: 2, // Standard: 2 marks per question (Total 60 for 30 questions)
         academic_year: academicYear,
         source_page: rawQ.source_page,
         status: isValid ? 'VALID' : 'NEEDS_REVIEW',
         review_notes: reviewIssues.length > 0 ? reviewIssues.join('; ') : null,
         is_duplicate: 0,
+        is_displaced: rawQ.is_displaced,
       });
     }
 

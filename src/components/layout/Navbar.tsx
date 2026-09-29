@@ -75,6 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
     if (pathname.startsWith('/admin/monitor')) return { title: 'Live Examination Telemetry', category: 'Real-Time Invigilation' };
     if (pathname === '/admin/students') return { title: 'Candidate Directory', category: 'Student Records' };
     if (pathname === '/admin/tests') return { title: 'Assessments Management', category: 'Examination Scheduling' };
+    if (pathname.startsWith('/admin/mcq/import') || pathname.startsWith('/admin/assessments/import')) return { title: 'PDF Assessment Importer', category: 'Assessment Automation' };
     if (pathname === '/admin/questions') return { title: 'Question Bank', category: 'Problem Authoring' };
     if (pathname === '/admin/login-activity') return { title: 'Login & Session Audit Trail', category: 'Authentication Security' };
     if (pathname.startsWith('/admin/rankings')) return { title: 'First Completion Rankings', category: 'Leaderboard' };
@@ -106,6 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
     { label: 'Live Monitor', href: '/admin/monitor', icon: Activity, isLive: true },
     { label: 'Students', href: '/admin/students', icon: Users },
     { label: 'Assessments', href: '/admin/tests', icon: Layers },
+    { label: 'PDF Import', href: '/admin/mcq/import', icon: Sparkles },
     { label: 'Question Bank', href: '/admin/questions', icon: BookOpen },
     { label: 'Login Activity', href: '/admin/login-activity', icon: ShieldCheck },
     { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
