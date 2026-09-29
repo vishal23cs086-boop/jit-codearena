@@ -671,50 +671,92 @@ export async function upsertStudentInDb(student: {
   return true;
 }
 
-export async function getStudentsWithDetails() {
+export async function getStudentsWithDetails(filters?: {
+  year?: number;
+  department?: string;
+  status?: string;
+  search?: string;
+}) {
   await initTursoDb();
   const client = getTursoClient();
-  const res = await client.execute(`
-    SELECT * FROM students 
-    WHERE (account_deleted = 0 OR account_deleted IS NULL)
-      AND (is_archived = 0 OR is_archived IS NULL)
-      AND (status != 'archived' OR status IS NULL)
-    ORDER BY register_number ASC
-  `);
-  const students = [];
 
-  for (const row of res.rows) {
-    const studentId = String(row.id);
-    const regNo = String(row.register_number);
+  let sql = `
+    SELECT 
+      s.*,
+      COALESCE(att.cnt, 0) as attempts_count,
+      att.avg_score,
+      att.max_score,
+      log.last_login
+    FROM students s
+    LEFT JOIN (
+      SELECT student_id, COUNT(*) as cnt, AVG(score) as avg_score, MAX(score) as max_score
+      FROM test_attempts
+      GROUP BY student_id
+    ) att ON att.student_id = s.id
+    LEFT JOIN (
+      SELECT 
+        COALESCE(user_id, register_number) as uid, 
+        MAX(login_time) as last_login
+      FROM login_activity
+      GROUP BY COALESCE(user_id, register_number)
+    ) log ON (log.uid = s.id OR UPPER(TRIM(log.uid)) = UPPER(TRIM(s.register_number)))
+    WHERE (s.account_deleted = 0 OR s.account_deleted IS NULL)
+      AND (s.is_archived = 0 OR s.is_archived IS NULL)
+      AND (s.status != 'archived' OR s.status IS NULL)
+  `;
+  const args: any[] = [];
 
-    // Test attempts count and scores
-    const attRes = await client.execute({
-      sql: 'SELECT COUNT(*) as count, AVG(score) as avg_score, MAX(score) as max_score FROM test_attempts WHERE student_id = ?',
-      args: [studentId],
-    });
-    const attemptsCount = Number(attRes.rows[0]?.count || 0);
-    const rawAvg = attRes.rows[0]?.avg_score;
-    const rawMax = attRes.rows[0]?.max_score;
+  if (filters?.year) {
+    sql += ` AND s.year = ?`;
+    args.push(filters.year);
+  }
+
+  if (filters?.department && filters.department !== 'all') {
+    if (filters.department === 'AI&DS' || filters.department === 'AIDS') {
+      sql += ` AND (UPPER(TRIM(s.department)) = 'AI&DS' OR UPPER(TRIM(s.department)) = 'AIDS')`;
+    } else {
+      sql += ` AND UPPER(TRIM(s.department)) = UPPER(?)`;
+      args.push(filters.department.trim());
+    }
+  }
+
+  if (filters?.status && filters.status !== 'all') {
+    if (filters.status === 'active') {
+      sql += ` AND (s.status = 'active' OR s.status IS NULL)`;
+    } else if (filters.status === 'disabled') {
+      sql += ` AND s.status = 'disabled'`;
+    } else if (filters.status === 'archived') {
+      sql += ` AND (s.status = 'archived' OR s.is_archived = 1)`;
+    }
+  }
+
+  if (filters?.search && filters.search.trim()) {
+    const term = `%${filters.search.trim()}%`;
+    sql += ` AND (s.register_number LIKE ? OR s.full_name LIKE ?)`;
+    args.push(term, term);
+  }
+
+  sql += ` ORDER BY s.register_number ASC`;
+
+  const res = await client.execute({ sql, args });
+
+  return res.rows.map((row: any) => {
+    const rawAvg = row.avg_score;
+    const rawMax = row.max_score;
     const avgScore = rawAvg !== null && rawAvg !== undefined ? Math.round(Number(rawAvg)) : null;
     const maxScore = rawMax !== null && rawMax !== undefined ? Math.round(Number(rawMax)) : null;
 
-    // Last login from login_activity
-    const logRes = await client.execute({
-      sql: 'SELECT login_time FROM login_activity WHERE user_id = ? OR UPPER(TRIM(register_number)) = UPPER(?) ORDER BY login_time DESC LIMIT 1',
-      args: [studentId, regNo],
-    });
-    const lastLogin = logRes.rows[0]?.login_time ? String(logRes.rows[0]?.login_time) : null;
-
-    students.push({
-      id: studentId,
-      email: String(row.email),
+    return {
+      id: String(row.id),
+      email: String(row.email || `${String(row.register_number).toLowerCase()}@student.jit.edu`),
       full_name: String(row.full_name),
       role: 'student' as const,
-      register_number: regNo,
+      register_number: String(row.register_number).trim().toUpperCase(),
       department: String(row.department),
       year: Number(row.year),
       section: String(row.section || 'A'),
       phone: row.phone ? String(row.phone) : undefined,
+      academic_year: row.academic_year ? String(row.academic_year) : (Number(row.year) === 2 ? '2024-2028' : '2023-2027'),
       status: (row.status as 'active' | 'disabled' | 'archived') || 'active',
       is_active: Number(row.is_active ?? 1) === 1,
       is_archived: Number(row.is_archived || 0) === 1,
@@ -722,13 +764,12 @@ export async function getStudentsWithDetails() {
       session_version: Number(row.session_version || 1),
       created_at: String(row.created_at),
       updated_at: row.updated_at ? String(row.updated_at) : undefined,
-      attempts_count: attemptsCount,
+      attempts_count: Number(row.attempts_count || 0),
       average_score: avgScore,
       max_score: maxScore,
-      last_login: lastLogin,
-    });
-  }
-  return students;
+      last_login: row.last_login ? String(row.last_login) : null,
+    };
+  });
 }
 
 export async function getStudentProfileDetails(studentId: string) {

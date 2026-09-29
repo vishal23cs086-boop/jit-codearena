@@ -24,6 +24,7 @@ import {
   ArrowUpDown,
   UserCheck,
   UserX,
+  RotateCcw,
   FileSpreadsheet,
   Upload,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ interface StudentItem {
   year: number;
   section: string;
   phone?: string;
+  academic_year?: string;
   status: 'active' | 'disabled' | 'archived';
   is_archived: boolean;
   created_at: string;
@@ -66,6 +68,23 @@ export default function StudentManagementPage() {
     aids: number;
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [validation, setValidation] = useState<{
+    isValid: boolean;
+    mismatchDetected: boolean;
+    mismatchDetails: { total: number; year2: number; year3: number; difference: number } | null;
+  } | null>(null);
+  const [dataIntegrity, setDataIntegrity] = useState<{
+    totalRecords: number;
+    uniqueRollNumbers: number;
+    duplicateRecordsCount: number;
+    invalidRecordsCount: number;
+    extraRecordsCount: number;
+    duplicates: Array<{ rollNumber: string; count: number }>;
+    invalidRecords: Array<any>;
+    extraRecords: Array<any>;
+  } | null>(null);
+
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -187,15 +206,42 @@ export default function StudentManagementPage() {
   const fetchStudentStats = async () => {
     try {
       setLoadingStats(true);
+      setStatsError(null);
       const res = await fetch(`/api/admin/student-stats?_t=${Date.now()}`);
       const json = await res.json();
       if (json.success && json.counts) {
         setStats(json.counts);
+        setValidation(json.validation || null);
+        setDataIntegrity(json.dataIntegrity || null);
+      } else {
+        setStatsError(json.error || 'Unable to load live student statistics.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to load student stats:', err);
+      setStatsError('Unable to load live student statistics.');
     } finally {
       setLoadingStats(false);
+    }
+  };
+
+  const updateUrlParams = (yearVal: string, deptVal: string) => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (yearVal === 'all') p.delete('year'); else p.set('year', yearVal);
+      if (deptVal === 'all') p.delete('department'); else p.set('department', deptVal);
+      const qs = p.toString();
+      window.history.replaceState(null, '', qs ? `/admin/students?${qs}` : '/admin/students');
+    }
+  };
+
+  const handleResetFilters = () => {
+    setDeptFilter('all');
+    setYearFilter('all');
+    setSectionFilter('all');
+    setStatusFilter('all');
+    setSearchTerm('');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '/admin/students');
     }
   };
 
@@ -580,13 +626,9 @@ export default function StudentManagementPage() {
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-3.5">
         <button
           type="button"
-          onClick={() => {
-            setYearFilter('all');
-            setDeptFilter('all');
-            if (typeof window !== 'undefined') window.history.replaceState(null, '', '/admin/students');
-          }}
+          onClick={handleResetFilters}
           className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-slate-300 hover:shadow-sm ${
-            yearFilter === 'all' && deptFilter === 'all' ? 'ring-2 ring-indigo-500 border-indigo-300' : 'border-slate-200'
+            yearFilter === 'all' && deptFilter === 'all' ? 'ring-2 ring-indigo-500 border-indigo-300 bg-indigo-50/20' : 'border-slate-200'
           }`}
           title="Reset to all enrolled students"
         >
@@ -606,11 +648,7 @@ export default function StudentManagementPage() {
           onClick={() => {
             const next = yearFilter === '2' ? 'all' : '2';
             setYearFilter(next);
-            if (typeof window !== 'undefined') {
-              const p = new URLSearchParams(window.location.search);
-              if (next === 'all') p.delete('year'); else p.set('year', '2');
-              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
-            }
+            updateUrlParams(next, deptFilter);
           }}
           className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-indigo-300 hover:shadow-sm ${
             yearFilter === '2' ? 'ring-2 ring-indigo-500 border-indigo-300 bg-indigo-50/20' : 'border-slate-200'
@@ -633,11 +671,7 @@ export default function StudentManagementPage() {
           onClick={() => {
             const next = yearFilter === '3' ? 'all' : '3';
             setYearFilter(next);
-            if (typeof window !== 'undefined') {
-              const p = new URLSearchParams(window.location.search);
-              if (next === 'all') p.delete('year'); else p.set('year', '3');
-              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
-            }
+            updateUrlParams(next, deptFilter);
           }}
           className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-purple-300 hover:shadow-sm ${
             yearFilter === '3' ? 'ring-2 ring-purple-500 border-purple-300 bg-purple-50/20' : 'border-slate-200'
@@ -660,11 +694,7 @@ export default function StudentManagementPage() {
           onClick={() => {
             const next = deptFilter === 'CSE' ? 'all' : 'CSE';
             setDeptFilter(next);
-            if (typeof window !== 'undefined') {
-              const p = new URLSearchParams(window.location.search);
-              if (next === 'all') p.delete('department'); else p.set('department', 'CSE');
-              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
-            }
+            updateUrlParams(yearFilter, next);
           }}
           className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-emerald-300 hover:shadow-sm ${
             deptFilter === 'CSE' ? 'ring-2 ring-emerald-500 border-emerald-300 bg-emerald-50/20' : 'border-slate-200'
@@ -687,11 +717,7 @@ export default function StudentManagementPage() {
           onClick={() => {
             const next = deptFilter === 'CSBS' ? 'all' : 'CSBS';
             setDeptFilter(next);
-            if (typeof window !== 'undefined') {
-              const p = new URLSearchParams(window.location.search);
-              if (next === 'all') p.delete('department'); else p.set('department', 'CSBS');
-              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
-            }
+            updateUrlParams(yearFilter, next);
           }}
           className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-blue-300 hover:shadow-sm ${
             deptFilter === 'CSBS' ? 'ring-2 ring-blue-500 border-blue-300 bg-blue-50/20' : 'border-slate-200'
@@ -714,11 +740,7 @@ export default function StudentManagementPage() {
           onClick={() => {
             const next = deptFilter === 'AI&DS' ? 'all' : 'AI&DS';
             setDeptFilter(next);
-            if (typeof window !== 'undefined') {
-              const p = new URLSearchParams(window.location.search);
-              if (next === 'all') p.delete('department'); else p.set('department', 'AI&DS');
-              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
-            }
+            updateUrlParams(yearFilter, next);
           }}
           className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-amber-300 hover:shadow-sm ${
             deptFilter === 'AI&DS' ? 'ring-2 ring-amber-500 border-amber-300 bg-amber-50/20' : 'border-slate-200'
@@ -736,6 +758,138 @@ export default function StudentManagementPage() {
           <span className="text-[10px] text-amber-500 font-medium">AI & Data Science</span>
         </button>
       </div>
+
+      {/* ERROR STATE WITH RETRY (Requirement 16) */}
+      {statsError && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-rose-800 text-xs font-semibold">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{statsError}</span>
+          </div>
+          <button
+            onClick={() => {
+              fetchStudentsList();
+              fetchStudentStats();
+            }}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* DATA VALIDATION WARNING (Requirement 6) */}
+      {validation?.mismatchDetected && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-semibold space-y-1.5">
+          <div className="flex items-center gap-2 text-sm font-bold text-amber-800">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Roster data mismatch detected</span>
+          </div>
+          <p className="text-xs text-amber-700 font-normal">
+            The sum of Year 2 and Year 3 candidates does not equal the total student count in Turso.
+          </p>
+          <div className="font-mono text-xs flex flex-wrap gap-4 pt-1">
+            <span>Database Total: <strong className="text-slate-900">{validation.mismatchDetails?.total}</strong></span>
+            <span>Year 2: <strong className="text-slate-900">{validation.mismatchDetails?.year2}</strong></span>
+            <span>Year 3: <strong className="text-slate-900">{validation.mismatchDetails?.year3}</strong></span>
+            <span>Difference: <strong className="text-rose-600">{validation.mismatchDetails?.difference}</strong></span>
+          </div>
+        </div>
+      )}
+
+      {/* DATA INTEGRITY & AUDIT SECTION (Requirement 7 & 8) */}
+      {dataIntegrity && (
+        <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-indigo-600" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Data Integrity & Roster Audit
+              </h3>
+            </div>
+            <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Live Database Verified</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 font-mono text-center">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] text-slate-400 font-sans block mb-1">Total Records</span>
+              <span className="text-lg font-black text-slate-900">{dataIntegrity.totalRecords}</span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] text-slate-400 font-sans block mb-1">Unique Roll Numbers</span>
+              <span className="text-lg font-black text-indigo-600">{dataIntegrity.uniqueRollNumbers}</span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] text-slate-400 font-sans block mb-1">Duplicate Records</span>
+              <span className={`text-lg font-black ${dataIntegrity.duplicateRecordsCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {dataIntegrity.duplicateRecordsCount}
+              </span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] text-slate-400 font-sans block mb-1">Invalid Records</span>
+              <span className={`text-lg font-black ${dataIntegrity.invalidRecordsCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {dataIntegrity.invalidRecordsCount}
+              </span>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] text-slate-400 font-sans block mb-1">Extra Records</span>
+              <span className="text-lg font-black text-amber-600">{dataIntegrity.extraRecordsCount}</span>
+            </div>
+          </div>
+
+          {/* Review Section for Extra Records (Requirement 8 - DO NOT AUTO-DELETE) */}
+          {dataIntegrity.extraRecords && dataIntegrity.extraRecords.length > 0 && (
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800">
+                  Possible Duplicate / Extra Records ({dataIntegrity.extraRecords.length} Identified for Review)
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Preserved in database • Administrator Review
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="bg-amber-50/60 text-amber-900 border-b border-amber-200 text-[10px] uppercase font-sans">
+                      <th className="py-2 px-3">Roll Number</th>
+                      <th className="py-2 px-3">Name</th>
+                      <th className="py-2 px-2">Dept</th>
+                      <th className="py-2 px-2 text-center">Year</th>
+                      <th className="py-2 px-3">Reason</th>
+                      <th className="py-2 px-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {dataIntegrity.extraRecords.map((r: any) => (
+                      <tr key={r.id} className="hover:bg-slate-50 transition">
+                        <td className="py-2.5 px-3 font-bold text-indigo-600">{r.register_number}</td>
+                        <td className="py-2.5 px-3 font-sans font-semibold text-slate-900">{r.full_name}</td>
+                        <td className="py-2.5 px-2 text-slate-600">{r.department}</td>
+                        <td className="py-2.5 px-2 text-center text-slate-500">{r.year}</td>
+                        <td className="py-2.5 px-3 text-slate-500 font-sans text-[11px]">{r.reason}</td>
+                        <td className="py-2.5 px-3 text-right font-sans">
+                          <button
+                            onClick={() => setProfileDrawerId(r.id)}
+                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                          >
+                            Review Profile
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-3">
@@ -803,8 +957,12 @@ export default function StudentManagementPage() {
           {/* Department Filter */}
           <select
             value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700"
+            onChange={(e) => {
+              const val = e.target.value;
+              setDeptFilter(val);
+              updateUrlParams(yearFilter, val);
+            }}
+            className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-medium"
           >
             <option value="all">All Departments</option>
             {DEPARTMENTS.map((d) => (
@@ -817,8 +975,12 @@ export default function StudentManagementPage() {
           {/* Year Filter */}
           <select
             value={yearFilter}
-            onChange={(e) => setYearFilter(e.target.value)}
-            className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700"
+            onChange={(e) => {
+              const val = e.target.value;
+              setYearFilter(val);
+              updateUrlParams(val, deptFilter);
+            }}
+            className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-medium"
           >
             <option value="all">All Years</option>
             {YEARS.map((y) => (
@@ -832,7 +994,7 @@ export default function StudentManagementPage() {
           <select
             value={sectionFilter}
             onChange={(e) => setSectionFilter(e.target.value)}
-            className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700"
+            className="glass-input rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-medium"
           >
             <option value="all">All Sections</option>
             {SECTIONS.map((sec) => (
@@ -844,16 +1006,11 @@ export default function StudentManagementPage() {
 
           {(deptFilter !== 'all' || yearFilter !== 'all' || sectionFilter !== 'all' || statusFilter !== 'all' || searchTerm) && (
             <button
-              onClick={() => {
-                setDeptFilter('all');
-                setYearFilter('all');
-                setSectionFilter('all');
-                setStatusFilter('all');
-                setSearchTerm('');
-              }}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold ml-auto"
+              onClick={handleResetFilters}
+              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold ml-auto flex items-center gap-1 cursor-pointer"
             >
-              Reset Filters
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Filters</span>
             </button>
           )}
         </div>
@@ -927,11 +1084,29 @@ export default function StudentManagementPage() {
         </div>
       ) : (
         <div className="glass-card rounded-3xl border border-slate-200 overflow-visible shadow-xs">
+          {/* Table Header Count Bar (Requirement 7) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-3.5 bg-slate-50/90 border-b border-slate-200">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Showing {filteredStudents.length} of {stats?.totalStudents ?? students.length} Enrolled Candidates
+              </span>
+              {(yearFilter !== 'all' || deptFilter !== 'all' || sectionFilter !== 'all' || statusFilter !== 'all' || searchTerm) && (
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold uppercase tracking-wider">
+                  Filtered ({filteredStudents.length})
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>Turso Database Authority • Single Source of Truth</span>
+            </div>
+          </div>
+
           <div className="overflow-x-auto overflow-y-visible">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
-                  <th className="py-3.5 px-4 w-10 text-center">
+                  <th className="py-3.5 px-3 w-10 text-center">
                     <input
                       type="checkbox"
                       checked={selectedIds.length === filteredStudents.length && filteredStudents.length > 0}
@@ -939,12 +1114,14 @@ export default function StudentManagementPage() {
                       className="rounded text-indigo-600 focus:ring-0 cursor-pointer"
                     />
                   </th>
-                  <th className="py-3.5 px-3">Student</th>
-                  <th className="py-3.5 px-3 font-mono">Roll No</th>
-                  <th className="py-3.5 px-3">Department & Year</th>
-                  <th className="py-3.5 px-3 text-center">Attempts & Score</th>
-                  <th className="py-3.5 px-3">Last Active</th>
-                  <th className="py-3.5 px-3 text-center">Status</th>
+                  <th className="py-3.5 px-3">Student Name</th>
+                  <th className="py-3.5 px-3 font-mono">Roll Number</th>
+                  <th className="py-3.5 px-3">Department</th>
+                  <th className="py-3.5 px-3">Year</th>
+                  <th className="py-3.5 px-3">Academic Year</th>
+                  <th className="py-3.5 px-3">Email</th>
+                  <th className="py-3.5 px-3">Phone</th>
+                  <th className="py-3.5 px-3 text-center">Assessment Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -961,7 +1138,7 @@ export default function StudentManagementPage() {
                       }`}
                     >
                       {/* Select Checkbox */}
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-3 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -979,12 +1156,12 @@ export default function StudentManagementPage() {
                           <div>
                             <span
                               onClick={() => setProfileDrawerId(s.id)}
-                              className="font-bold text-slate-900 block hover:text-indigo-600 cursor-pointer"
+                              className="font-bold text-slate-900 block hover:text-indigo-600 cursor-pointer text-xs"
                             >
                               {s.full_name}
                             </span>
-                            <span className="text-[11px] text-slate-400 block truncate max-w-[180px]">
-                              {s.email}
+                            <span className="text-[10px] text-slate-400 block font-mono">
+                              Sec {s.section || 'A'}{s.attempts_count > 0 ? ` • ${s.attempts_count} attempt${s.attempts_count > 1 ? 's' : ''}` : ''}
                             </span>
                           </div>
                         </div>
@@ -995,34 +1172,47 @@ export default function StudentManagementPage() {
                         {s.register_number}
                       </td>
 
-                      {/* Department & Year */}
-                      <td className="py-3 px-3 text-slate-600">
-                        <span className="font-semibold text-slate-800">{s.department}</span>
-                        <span className="text-slate-400"> • Year {s.year} (Sec {s.section || 'A'})</span>
+                      {/* Department */}
+                      <td className="py-3 px-3">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-lg text-[11px] font-bold ${
+                          s.department === 'CSE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          s.department === 'CSBS' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                          s.department === 'AI&DS' || s.department === 'AIDS' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                          'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
+                          {s.department}
+                        </span>
                       </td>
 
-                      {/* Attempts & Score */}
-                      <td className="py-3 px-3 text-center">
-                        {s.attempts_count > 0 ? (
-                          <div className="space-y-0.5">
-                            <span className="font-mono font-bold text-slate-900 text-xs">
-                              {s.average_score !== null ? `${s.average_score}% Avg` : '—'}
-                            </span>
-                            <span className="text-[10px] text-slate-400 block font-mono">
-                              {s.attempts_count} attempt{s.attempts_count > 1 ? 's' : ''}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">0 Attempts</span>
-                        )}
+                      {/* Year */}
+                      <td className="py-3 px-3">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-lg text-[11px] font-bold ${
+                          s.year === 2 ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                          s.year === 3 ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                          'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
+                          Year {s.year}
+                        </span>
                       </td>
 
-                      {/* Last Active */}
-                      <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
-                        {s.last_login ? new Date(s.last_login).toLocaleDateString() : 'Never'}
+                      {/* Academic Year */}
+                      <td className="py-3 px-3 font-mono text-slate-600 text-xs">
+                        {s.academic_year || (s.year === 2 ? '2024-2028' : '2023-2027')}
                       </td>
 
-                      {/* Status Badge */}
+                      {/* Email */}
+                      <td className="py-3 px-3 font-mono text-slate-600 text-xs">
+                        <span className="truncate max-w-[170px] block" title={s.email}>
+                          {s.email}
+                        </span>
+                      </td>
+
+                      {/* Phone */}
+                      <td className="py-3 px-3 font-mono text-slate-600 text-xs">
+                        {s.phone || '—'}
+                      </td>
+
+                      {/* Assessment Status */}
                       <td className="py-3 px-3 text-center">
                         {s.status === 'active' && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[10px] uppercase">
