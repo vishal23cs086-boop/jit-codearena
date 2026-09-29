@@ -303,7 +303,8 @@ export async function saveTest(test: Test): Promise<boolean> {
 export async function fetchAttempts(): Promise<TestAttempt[]> {
   try {
     if (typeof window !== 'undefined') {
-      const res = await fetch('/api/admin/reports');
+      // /api/admin/reports serves the Reports page's own format; this returns plain attempts
+      const res = await fetch('/api/admin/attempts');
       const data = await res.json();
       if (data.success && Array.isArray(data.attempts)) {
         return data.attempts;

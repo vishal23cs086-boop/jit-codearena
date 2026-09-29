@@ -13,6 +13,7 @@ import { ConsolePanel } from '@/components/exam/ConsolePanel';
 import { TimerBadge } from '@/components/exam/TimerBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { preloadBrowserPython, runInBrowser } from '@/lib/browserPython';
+import { McqAssessmentView } from '@/components/exam/McqAssessmentView';
 import {
   Code2,
   ChevronLeft,
@@ -40,6 +41,8 @@ export default function CodingTestPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
   const [attemptId, setAttemptId] = useState<string>('');
+  const [endsAt, setEndsAt] = useState<string>('');
+  const [initialAnswers, setInitialAnswers] = useState<any>({});
   const [isExistingAttempt, setIsExistingAttempt] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<{ status: number; text: string } | null>(null);
 
@@ -116,6 +119,8 @@ export default function CodingTestPage() {
         }
 
         setAttemptId(data.attempt.id);
+        setEndsAt(data.attempt.ends_at || '');
+        setInitialAnswers(data.attempt?.answers || {});
         setIsExistingAttempt(Boolean(data.isExisting));
         setTest(data.test);
         setQuestions(data.questions || []);
@@ -392,7 +397,7 @@ export default function CodingTestPage() {
     const realAttemptId = attemptId || `att-${testId}-${user?.register_number || 'candidate'}`;
 
     try {
-      await fetch('/api/exam/submit-test', {
+      const res = await fetch('/api/exam/submit-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -402,6 +407,15 @@ export default function CodingTestPage() {
           isAutoSubmit,
         }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.terminated) {
+          router.replace(`/student/test/${testId}/result`);
+          return;
+        }
+        alert(data.error || 'Failed to submit test. All questions must be answered before submitting.');
+        return;
+      }
     } catch (err) {
       console.warn('Finalize test warning:', err);
     }
@@ -475,6 +489,19 @@ export default function CodingTestPage() {
     );
   }
 
+  // If this is an MCQ assessment, render dedicated high-performance MCQ assessment view
+  if (test?.test_type === 'mcq') {
+    return (
+      <McqAssessmentView
+        test={test}
+        attemptId={attemptId}
+        endsAt={endsAt}
+        questions={questions as any}
+        initialAnswers={initialAnswers}
+      />
+    );
+  }
+
   if (questions.length === 0 || !currentQuestion) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16">
@@ -490,6 +517,10 @@ export default function CodingTestPage() {
   }
 
   const solvedCount = Object.values(solvedQuestions).filter(Boolean).length;
+  const answeredCount = questions.filter(
+    (q) => (studentCodeMap[q.id] || '').trim().length > 0 || solvedQuestions[q.id] || questionScores[q.id] !== undefined
+  ).length;
+  const isAllAnswered = answeredCount === questions.length && questions.length > 0;
   const progressPercent = Math.round((solvedCount / questions.length) * 100);
 
   return (
@@ -504,6 +535,9 @@ export default function CodingTestPage() {
         copyPasteCount={examGuard.copyPasteCount}
         onRequestFullscreen={examGuard.requestFullscreen}
         onDismissWarning={examGuard.dismissWarning}
+        isTerminated={examGuard.isTerminated || initialAnswers?.status === 'terminated'}
+        terminationReason={examGuard.terminationReason}
+        onViewScorecard={() => router.replace(`/student/test/${testId}/result`)}
       />
 
       {/* TOP NAVIGATION BAR */}
@@ -574,10 +608,20 @@ export default function CodingTestPage() {
 
           <button
             onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition shadow-xs"
+            disabled={!isAllAnswered}
+            title={
+              !isAllAnswered
+                ? `Complete all questions to submit (${answeredCount}/${questions.length} answered)`
+                : 'Ready to submit assessment'
+            }
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition shadow-xs ${
+              isAllAnswered
+                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+            }`}
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Finish Test</span>
+            <span>{isAllAnswered ? 'Finish Test' : `Answered: ${answeredCount} / ${questions.length}`}</span>
           </button>
         </div>
       </header>
@@ -656,9 +700,14 @@ export default function CodingTestPage() {
           <div className="glass-card rounded-3xl max-w-md w-full p-7 space-y-4 shadow-2xl border border-slate-200/90 bg-white">
             <h3 className="text-lg font-bold text-slate-900">Finalize & Submit Assessment?</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Are you sure you want to submit? You have answered <strong>{solvedCount} of {questions.length}</strong> questions.
+              You have answered <strong>{answeredCount} of {questions.length}</strong> questions.
               Once submitted, your answers will be locked, your server completion timestamp will be recorded, and you cannot re-attempt.
             </p>
+            {!isAllAnswered && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold">
+                Submission Blocked: All {questions.length} questions must have code written before you can submit the assessment.
+              </div>
+            )}
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <button
                 onClick={() => setShowExitConfirm(false)}
@@ -668,9 +717,14 @@ export default function CodingTestPage() {
               </button>
               <button
                 onClick={() => handleFinalizeTest(false)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-indigo-600/20"
+                disabled={!isAllAnswered}
+                className={`px-5 py-2 text-white rounded-xl text-xs font-semibold transition shadow-md ${
+                  isAllAnswered
+                    ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                }`}
               >
-                Yes, Submit Assessment
+                {isAllAnswered ? 'Yes, Submit Assessment' : `Answer All (${answeredCount}/${questions.length})`}
               </button>
             </div>
           </div>

@@ -30,6 +30,7 @@ interface StudentProfileData {
     year: number;
     section: string;
     phone?: string;
+    academic_year?: string;
     status: 'active' | 'disabled' | 'archived';
     is_archived: boolean;
     created_at: string;
@@ -98,32 +99,92 @@ export function StudentProfileDrawer({ studentId, onClose }: Props) {
   const [data, setData] = useState<StudentProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const loadProfile = async () => {
+    if (!studentId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch(`/api/admin/students/${studentId}`);
+      const json = await res.json();
+      if (json.success && json.profile) {
+        setData(json.profile);
+      } else {
+        setError(json.error || 'Failed to load profile');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error fetching student profile');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!studentId) {
       setData(null);
       return;
     }
-
-    async function loadProfile() {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetch(`/api/admin/students/${studentId}`);
-        const json = await res.json();
-        if (json.success && json.profile) {
-          setData(json.profile);
-        } else {
-          setError(json.error || 'Failed to load profile');
-        }
-      } catch (err: any) {
-        setError(err?.message || 'Error fetching student profile');
-      } finally {
-        setLoading(false);
-      }
-    }
     loadProfile();
   }, [studentId]);
+
+  const handleRestoreTermination = async (testId?: string) => {
+    if (!studentId) return;
+    const reason = prompt('Reason for removing proctoring termination:', 'Administrative review and clearance');
+    if (reason === null) return;
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/admin/students/${studentId}/restore-termination`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testId, reason }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setActionMessage('✓ Student termination removed. Attempt restored to in_progress.');
+        await loadProfile();
+      } else {
+        alert(json.error || 'Failed to remove termination');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error removing termination');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResetAttempt = async (testId: string, testTitle: string) => {
+    if (!studentId) return;
+    const confirmed = confirm(
+      `Are you sure you want to reset the assessment "${testTitle}" for ${data?.student.full_name}? This will clear their current attempt and allow a fresh start.`
+    );
+    if (!confirmed) return;
+
+    const reason = prompt('Reason for resetting assessment attempt:', 'Administrative re-attempt grant');
+    if (reason === null) return;
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/admin/students/${studentId}/reset-attempt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testId, reason }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setActionMessage('✓ Assessment attempt successfully reset. Student may start a fresh attempt.');
+        await loadProfile();
+      } else {
+        alert(json.error || 'Failed to reset assessment attempt');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error resetting assessment attempt');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   if (!studentId) return null;
 
@@ -243,8 +304,16 @@ export function StudentProfileDrawer({ studentId, onClose }: Props) {
                   <span className="font-mono text-slate-800">{data.student.email}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-400">Contact Phone:</span>
+                  <span className="font-mono text-slate-800">{data.student.phone || 'Not Provided'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
                   <span className="text-slate-400">Department:</span>
                   <span className="font-semibold text-slate-800">{data.student.department}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-400">Academic Year:</span>
+                  <span className="font-mono font-semibold text-indigo-700">{data.student.academic_year || '2026-2027'}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
                   <span className="text-slate-400">Enrolled Year:</span>
@@ -281,22 +350,52 @@ export function StudentProfileDrawer({ studentId, onClose }: Props) {
               ) : (
                 <div className="space-y-2">
                   {data.recent_assessments.map((att) => (
-                    <div key={att.id} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-900 block">{att.test_title}</span>
-                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 font-mono">
-                          <span>{new Date(att.created_at).toLocaleDateString()}</span>
-                          <span>•</span>
-                          <span>{att.violation_count > 0 ? `${att.violation_count} Flags` : '0 Flags'}</span>
+                    <div key={att.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-slate-900 block">{att.test_title}</span>
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 font-mono">
+                            <span>{new Date(att.created_at).toLocaleDateString()}</span>
+                            <span>•</span>
+                            <span className={att.violation_count > 0 ? 'text-rose-600 font-bold' : ''}>
+                              {att.violation_count > 0 ? `${att.violation_count} Flags` : '0 Flags'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-black text-sm text-indigo-700">
+                            {att.score}/{att.max_score}
+                          </span>
+                          <span className={`block text-[10px] uppercase font-bold ${
+                            att.status === 'terminated' ? 'text-rose-600 font-black' : 'text-slate-400'
+                          }`}>
+                            {att.status}
+                          </span>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="font-mono font-black text-sm text-indigo-700">
-                          {att.score}/{att.max_score}
-                        </span>
-                        <span className="block text-[10px] uppercase font-bold text-slate-400">
-                          {att.status}
-                        </span>
+
+                      {/* Administrative Action Controls */}
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        {att.status === 'terminated' && (
+                          <button
+                            onClick={() => handleRestoreTermination(att.test_id)}
+                            disabled={actionLoading}
+                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-xs cursor-pointer"
+                            title="Restore attempt to in_progress and preserve violation logs"
+                          >
+                            <Shield className="w-3 h-3" />
+                            <span>Remove Termination</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleResetAttempt(att.test_id, att.test_title)}
+                          disabled={actionLoading}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-800 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-slate-200 cursor-pointer"
+                          title="Clear current attempt and allow fresh re-attempt"
+                        >
+                          <RefreshCw className="w-3 h-3 text-amber-600" />
+                          <span>Reset Assessment</span>
+                        </button>
                       </div>
                     </div>
                   ))}

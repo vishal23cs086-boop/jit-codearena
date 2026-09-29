@@ -51,39 +51,131 @@ export async function POST(req: NextRequest) {
       metadata: { ...details, ipAddress, userAgent, attemptId },
     });
 
-    // 2. Update student_presence and test_attempts
+    // 2. Update student_presence and test_attempts with proctoring violation enforcement
+    const VIOLATION_EVENTS = new Set([
+      'TAB_SWITCH',
+      'FULLSCREEN_EXIT',
+      'WARNING_TRIGGERED',
+      'UNAUTHORIZED_KEY',
+      'SECURITY_VIOLATION',
+      'DEVTOOLS_OPEN',
+      'COPY_PASTE_ATTEMPT',
+    ]);
+
+    let isTerminated = false;
+    let currentViolationCount = 0;
+    const terminationReason = 'Excessive proctoring violations recorded (violation_count > 3)';
+
     try {
       const client = getTursoClient();
 
-      if (eventType === 'WARNING_TRIGGERED') {
-        // Enforce warning state capped at 3
-        await client.execute({
-          sql: 'UPDATE student_presence SET violation_count = MIN(3, violation_count + 1) WHERE student_id = ?',
+      // Resolve attempt ID if not passed directly
+      let targetAttemptId = attemptId;
+      if (!targetAttemptId && studentId) {
+        const activeAttRes = await client.execute({
+          sql: "SELECT id, violation_count, status FROM test_attempts WHERE student_id = ? AND (status = 'in_progress' OR status = 'not_started') ORDER BY created_at DESC LIMIT 1",
           args: [studentId],
         });
-      } else if (eventType === 'TAB_SWITCH') {
-        if (attemptId) {
-          await client.execute({
-            sql: 'UPDATE test_attempts SET tab_switches = tab_switches + 1 WHERE id = ? AND student_id = ?',
-            args: [attemptId, studentId],
-          });
+        if (activeAttRes.rows.length > 0) {
+          targetAttemptId = String(activeAttRes.rows[0].id);
         }
-      } else if (eventType === 'FULLSCREEN_EXIT') {
-        if (attemptId) {
-          await client.execute({
-            sql: 'UPDATE test_attempts SET fullscreen_exits = fullscreen_exits + 1 WHERE id = ? AND student_id = ?',
-            args: [attemptId, studentId],
+      } else if (targetAttemptId) {
+        // An attempt ID from the request must belong to this student; otherwise a
+        // student could add violations to (and terminate) someone else's exam
+        const ownRes = await client.execute({
+          sql: 'SELECT 1 FROM test_attempts WHERE id = ? AND student_id = ? LIMIT 1',
+          args: [targetAttemptId, studentId],
+        });
+        if (ownRes.rows.length === 0) targetAttemptId = undefined;
+      }
+
+      if (VIOLATION_EVENTS.has(eventType)) {
+        if (targetAttemptId) {
+          if (eventType === 'TAB_SWITCH') {
+            await client.execute({
+              sql: 'UPDATE test_attempts SET tab_switches = tab_switches + 1, violation_count = violation_count + 1 WHERE id = ?',
+              args: [targetAttemptId],
+            });
+          } else if (eventType === 'FULLSCREEN_EXIT') {
+            await client.execute({
+              sql: 'UPDATE test_attempts SET fullscreen_exits = fullscreen_exits + 1, violation_count = violation_count + 1 WHERE id = ?',
+              args: [targetAttemptId],
+            });
+          } else {
+            await client.execute({
+              sql: 'UPDATE test_attempts SET violation_count = violation_count + 1 WHERE id = ?',
+              args: [targetAttemptId],
+            });
+          }
+
+          const attCheckRes = await client.execute({
+            sql: 'SELECT violation_count, status FROM test_attempts WHERE id = ?',
+            args: [targetAttemptId],
           });
+
+          if (attCheckRes.rows.length > 0) {
+            currentViolationCount = Number(attCheckRes.rows[0].violation_count || 0);
+            const currentStatus = String(attCheckRes.rows[0].status);
+
+            await client.execute({
+              sql: 'UPDATE student_presence SET violation_count = ? WHERE student_id = ?',
+              args: [currentViolationCount, studentId],
+            });
+
+            // Requirement 12: VIOLATION TERMINATION — 4TH VIOLATION (violation_count > 3)
+            if (currentViolationCount > 3 && currentStatus !== 'terminated') {
+              await client.execute({
+                sql: `UPDATE test_attempts 
+                      SET status = 'terminated', 
+                          termination_reason = ?, 
+                          terminated_at = ?, 
+                          end_time = ? 
+                      WHERE id = ?`,
+                args: [terminationReason, timestamp, timestamp, targetAttemptId],
+              });
+
+              await client.execute({
+                sql: "UPDATE student_presence SET session_status = 'TERMINATED' WHERE student_id = ?",
+                args: [studentId],
+              });
+
+              await recordActivityLogInDb({
+                test_id: testId || null,
+                student_id: studentId,
+                student_name: studentName,
+                register_number: registerNumber,
+                event_type: 'ATTEMPT_TERMINATED',
+                description: `Attempt terminated by server: ${terminationReason}. Total violations: ${currentViolationCount}.`,
+                metadata: { attempt_id: targetAttemptId, violation_count: currentViolationCount, reason: terminationReason },
+              });
+
+              isTerminated = true;
+            } else if (currentStatus === 'terminated') {
+              isTerminated = true;
+            }
+          }
+        }
+      } else if (targetAttemptId) {
+        const attStatusRes = await client.execute({
+          sql: 'SELECT status, violation_count FROM test_attempts WHERE id = ?',
+          args: [targetAttemptId],
+        });
+        if (attStatusRes.rows.length > 0) {
+          if (attStatusRes.rows[0].status === 'terminated') isTerminated = true;
+          currentViolationCount = Number(attStatusRes.rows[0].violation_count || 0);
         }
       }
-    } catch {
-      // safe non-blocking
+    } catch (err) {
+      console.warn('Notice tracking proctoring violation in Turso:', err);
     }
 
     return NextResponse.json({
       success: true,
       loggedAt: timestamp,
       eventType,
+      terminated: isTerminated,
+      violationCount: currentViolationCount,
+      reason: isTerminated ? terminationReason : undefined,
     });
   } catch (error) {
     console.error('Log activity error:', error);

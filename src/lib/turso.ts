@@ -1,15 +1,39 @@
 import { createClient, type Client } from '@libsql/client';
 import crypto from 'crypto';
 import { isAcademicYear, ordinalYear } from '@/lib/utils';
+import fs from 'fs';
+import path from 'path';
+import studentsMasterData from '@/data/students-master.json';
+import testsMasterData from '@/data/tests-master.json';
+import questionsMasterData from '@/data/questions-master.json';
 
 let tursoClientInstance: Client | null = null;
 let isInitialized = false;
 
 export function getTursoClient(): Client {
   if (!tursoClientInstance) {
-    const url = process.env.TURSO_DATABASE_URL && process.env.TURSO_DATABASE_URL.trim() !== ''
+    let url = process.env.TURSO_DATABASE_URL && process.env.TURSO_DATABASE_URL.trim() !== ''
       ? process.env.TURSO_DATABASE_URL
-      : 'file:jit_codearena_local.db';
+      : '';
+
+    if (!url) {
+      if (process.env.VERCEL) {
+        // On Vercel serverless execution, the root working directory is read-only.
+        // /tmp is the only writable scratch filesystem.
+        const tmpDbPath = path.join('/tmp', 'jit_codearena_local.db');
+        const seedDbPath = path.join(process.cwd(), 'jit_codearena_local.db');
+        if (!fs.existsSync(tmpDbPath) && fs.existsSync(seedDbPath)) {
+          try {
+            fs.copyFileSync(seedDbPath, tmpDbPath);
+          } catch (e) {
+            console.warn('Could not copy seed database to /tmp:', e);
+          }
+        }
+        url = `file:${tmpDbPath}`;
+      } else {
+        url = 'file:jit_codearena_local.db';
+      }
+    }
 
     const authToken = process.env.TURSO_AUTH_TOKEN && process.env.TURSO_AUTH_TOKEN.trim() !== ''
       ? process.env.TURSO_AUTH_TOKEN
@@ -203,6 +227,65 @@ export async function initTursoDb(): Promise<void> {
       stderr TEXT,
       compile_output TEXT,
       created_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS pdf_imports (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      uploaded_by TEXT NOT NULL DEFAULT 'admin',
+      academic_year INTEGER NOT NULL DEFAULT 2,
+      total_pages INTEGER DEFAULT 0,
+      questions_extracted INTEGER DEFAULT 0,
+      answers_extracted INTEGER DEFAULT 0,
+      valid_questions INTEGER DEFAULT 0,
+      invalid_questions INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PROCESSING',
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS pdf_import_questions (
+      id TEXT PRIMARY KEY,
+      import_id TEXT NOT NULL,
+      question_number INTEGER NOT NULL,
+      question_text TEXT NOT NULL,
+      option_a TEXT NOT NULL,
+      option_b TEXT NOT NULL,
+      option_c TEXT NOT NULL,
+      option_d TEXT NOT NULL,
+      correct_answer TEXT,
+      marks REAL DEFAULT 2,
+      academic_year INTEGER NOT NULL DEFAULT 2,
+      source_page INTEGER DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'VALID',
+      review_notes TEXT,
+      is_duplicate INTEGER DEFAULT 0,
+      duplicate_of_id TEXT,
+      created_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS mcq_submissions (
+      id TEXT PRIMARY KEY,
+      attempt_id TEXT NOT NULL,
+      test_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      selected_option TEXT,
+      correct_answer TEXT NOT NULL,
+      is_correct INTEGER NOT NULL DEFAULT 0,
+      marks_awarded REAL NOT NULL DEFAULT 0,
+      answered_at TEXT,
+      created_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS assessment_dashboard_state (
+      id TEXT PRIMARY KEY,
+      assessment_id TEXT DEFAULT 'global',
+      completed_count_reset_at TEXT NOT NULL,
+      reset_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );`
   ];
 
@@ -219,6 +302,7 @@ export async function initTursoDb(): Promise<void> {
     'ALTER TABLE students ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE students ADD COLUMN account_deleted INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE students ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1;',
+    "ALTER TABLE students ADD COLUMN academic_year TEXT DEFAULT '2026-2027';",
     'ALTER TABLE questions ADD COLUMN year INTEGER NOT NULL DEFAULT 2;',
     "ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT 'Algorithms';",
     "ALTER TABLE questions ADD COLUMN input_format TEXT DEFAULT '';",
@@ -262,6 +346,33 @@ export async function initTursoDb(): Promise<void> {
     'ALTER TABLE questions ADD COLUMN starter_code TEXT;',
     'CREATE INDEX IF NOT EXISTS idx_questions_is_archived ON questions(is_archived);',
     'ALTER TABLE code_executions ADD COLUMN execution_number INTEGER DEFAULT 1;',
+    "ALTER TABLE questions ADD COLUMN question_type TEXT DEFAULT 'coding';",
+    'ALTER TABLE questions ADD COLUMN option_a TEXT;',
+    'ALTER TABLE questions ADD COLUMN option_b TEXT;',
+    'ALTER TABLE questions ADD COLUMN option_c TEXT;',
+    'ALTER TABLE questions ADD COLUMN option_d TEXT;',
+    'ALTER TABLE questions ADD COLUMN correct_answer TEXT;',
+    'ALTER TABLE questions ADD COLUMN source_pdf TEXT;',
+    'ALTER TABLE questions ADD COLUMN source_page INTEGER;',
+    'ALTER TABLE questions ADD COLUMN source_question_number INTEGER;',
+    "ALTER TABLE tests ADD COLUMN test_type TEXT DEFAULT 'coding';",
+    'ALTER TABLE tests ADD COLUMN negative_marking REAL DEFAULT 0;',
+    'ALTER TABLE tests ADD COLUMN show_results_immediately INTEGER DEFAULT 1;',
+    'CREATE INDEX IF NOT EXISTS idx_questions_type ON questions(question_type);',
+    'CREATE INDEX IF NOT EXISTS idx_tests_type ON tests(test_type);',
+    'CREATE INDEX IF NOT EXISTS idx_pdf_import_questions_import ON pdf_import_questions(import_id);',
+    'CREATE INDEX IF NOT EXISTS idx_mcq_subs_attempt ON mcq_submissions(attempt_id);',
+    'CREATE INDEX IF NOT EXISTS idx_mcq_subs_test ON mcq_submissions(test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_mcq_subs_student ON mcq_submissions(student_id);',
+    'CREATE INDEX IF NOT EXISTS idx_dash_state_assess ON assessment_dashboard_state(assessment_id);',
+    'CREATE INDEX IF NOT EXISTS idx_dash_state_reset_at ON assessment_dashboard_state(completed_count_reset_at);',
+    'ALTER TABLE test_attempts ADD COLUMN termination_reason TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN terminated_at TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN reset_by TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN reset_at TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN reset_reason TEXT;',
+    'ALTER TABLE questions ADD COLUMN code_block TEXT;',
+    'CREATE INDEX IF NOT EXISTS idx_test_attempts_status ON test_attempts(status);',
   ];
 
   for (const alt of alters) {
@@ -279,6 +390,106 @@ export async function initTursoDb(): Promise<void> {
     await client.execute('UPDATE students SET session_version = 1 WHERE session_version IS NULL');
   } catch {
     // safe non-blocking
+  }
+
+  // --- AUTOMATIC INSTITUTIONAL SEEDING (ENSURES STUDENTS ARE PRESENT ON VERCEL & ANY ENVIRONMENT) ---
+  try {
+    const studentCountRes = await client.execute(
+      "SELECT COUNT(*) as c FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"
+    );
+    const existingCount = Number(studentCountRes.rows[0]?.c || 0);
+
+    if (existingCount === 0 && Array.isArray(studentsMasterData) && studentsMasterData.length > 0) {
+      const now = new Date().toISOString();
+      for (const s of studentsMasterData) {
+        await client.execute({
+          sql: `INSERT INTO students (
+                  id, register_number, full_name, email, department, year, section, phone,
+                  password_hash, status, is_active, is_archived, account_deleted, session_version,
+                  academic_year, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(register_number) DO UPDATE SET
+                  full_name = excluded.full_name,
+                  department = excluded.department,
+                  year = excluded.year,
+                  section = excluded.section,
+                  academic_year = excluded.academic_year,
+                  status = 'active',
+                  is_active = 1,
+                  is_archived = 0,
+                  account_deleted = 0,
+                  password_hash = COALESCE(excluded.password_hash, students.password_hash),
+                  updated_at = excluded.updated_at`,
+          args: [
+            s.id,
+            s.register_number.trim().toUpperCase(),
+            s.full_name.trim(),
+            s.email,
+            s.department.trim(),
+            Number(s.year),
+            s.section || 'A',
+            s.phone || null,
+            s.password_hash,
+            s.status || 'active',
+            s.is_active ?? 1,
+            s.is_archived ?? 0,
+            s.account_deleted ?? 0,
+            s.session_version ?? 1,
+            s.academic_year || '2026-2027',
+            s.created_at || now,
+            now,
+          ],
+        });
+      }
+    }
+  } catch (seedErr) {
+    console.warn('[Turso] Auto-seed students error:', seedErr);
+  }
+
+  try {
+    const testCountRes = await client.execute("SELECT COUNT(*) as c FROM tests WHERE is_archived = 0");
+    const testCount = Number(testCountRes.rows[0]?.c || 0);
+    if (testCount === 0 && Array.isArray(testsMasterData) && testsMasterData.length > 0) {
+      for (const t of testsMasterData) {
+        await client.execute({
+          sql: `INSERT OR IGNORE INTO tests (
+            id, title, description, code, instructions, duration, total_marks, passing_marks,
+            start_time, end_time, status, is_archived, year, question_count, test_type,
+            negative_marking, show_results_immediately, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            t.id, t.title, t.description, t.code, t.instructions, t.duration, t.total_marks,
+            t.passing_marks, t.start_time, t.end_time, t.status, t.is_archived, t.year,
+            t.question_count, t.test_type || 'coding', t.negative_marking || 0,
+            t.show_results_immediately ?? 1, t.created_at, t.updated_at,
+          ],
+        });
+      }
+    }
+
+    const questionCountRes = await client.execute("SELECT COUNT(*) as c FROM questions WHERE is_archived = 0");
+    const qCount = Number(questionCountRes.rows[0]?.c || 0);
+    if (qCount === 0 && Array.isArray(questionsMasterData) && questionsMasterData.length > 0) {
+      for (const q of questionsMasterData) {
+        await client.execute({
+          sql: `INSERT OR IGNORE INTO questions (
+            id, test_id, title, description, difficulty, marks, initial_code, solution_code,
+            test_cases, time_limit, memory_limit, order_index, year, topic, input_format,
+            output_format, constraints, is_archived, is_active, starter_code, question_type,
+            option_a, option_b, option_c, option_d, correct_answer, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            q.id, q.test_id, q.title, q.description, q.difficulty, q.marks, q.initial_code,
+            q.solution_code, q.test_cases, q.time_limit, q.memory_limit, q.order_index,
+            q.year, q.topic, q.input_format, q.output_format, q.constraints, q.is_archived,
+            q.is_active, q.starter_code, q.question_type || 'coding', q.option_a, q.option_b,
+            q.option_c, q.option_d, q.correct_answer, q.created_at,
+          ],
+        });
+      }
+    }
+  } catch (seedErr) {
+    console.warn('[Turso] Auto-seed tests/questions error:', seedErr);
   }
 
   isInitialized = true;
@@ -671,6 +882,7 @@ export async function getStudentProfileDetails(studentId: string) {
       year: Number(s.year),
       section: String(s.section || 'A'),
       phone: s.phone ? String(s.phone) : undefined,
+      academic_year: s.academic_year ? String(s.academic_year) : '2026-2027',
       status: (s.status as 'active' | 'disabled' | 'archived') || 'active',
       is_archived: Number(s.is_archived || 0) === 1,
       created_at: String(s.created_at),
@@ -1602,6 +1814,7 @@ export async function updateAssessmentInDb(
     end_time?: string;
     end_at?: string;
     status?: string;
+    is_archived?: boolean | number;
     year?: number;
     question_count?: number;
     questions?: Array<{
@@ -1775,6 +1988,13 @@ export async function updateAssessmentInDb(
   if (data.status !== undefined) {
     updates.push('status = ?');
     args.push(data.status);
+    if (data.status !== 'archived' && data.is_archived === undefined && existing.is_archived) {
+      updates.push('is_archived = 0');
+    }
+  }
+  if (data.is_archived !== undefined) {
+    updates.push('is_archived = ?');
+    args.push(data.is_archived ? 1 : 0);
   }
 
   // 7. Question pool validation
@@ -1901,6 +2121,69 @@ export async function deleteOrArchiveAssessmentInDb(id: string) {
       message: 'Assessment and all associated questions deleted successfully.',
     };
   }
+}
+
+export async function unarchiveAssessmentInDb(
+  id: string,
+  targetStatus: string = 'draft',
+  unarchivedBy: string = 'admin'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ?',
+    args: [id],
+  });
+
+  if (testRes.rows.length === 0) {
+    const err: any = new Error('Assessment not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const testRow: any = testRes.rows[0];
+  const now = new Date().toISOString();
+
+  // Validate targetStatus
+  const allowed = ['draft', 'scheduled', 'live', 'closed'];
+  const newStatus = allowed.includes(targetStatus.toLowerCase()) ? targetStatus.toLowerCase() : 'draft';
+
+  // Unarchive: set is_archived = 0, status = newStatus, updated_at = now
+  await client.execute({
+    sql: 'UPDATE tests SET is_archived = 0, status = ?, updated_at = ? WHERE id = ?',
+    args: [newStatus, now, id],
+  });
+
+  // Record audit trail in activity_logs
+  try {
+    await client.execute({
+      sql: `INSERT INTO activity_logs (
+        id, test_id, student_id, student_name, register_number, event_type, description, metadata, timestamp
+      ) VALUES (?, ?, 'ADMIN', ?, 'ADMIN', 'ASSESSMENT_UNARCHIVED', ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id,
+        unarchivedBy,
+        `Admin ${unarchivedBy} unarchived assessment "${testRow.title}" (${testRow.code || id}). Restored to ${newStatus.toUpperCase()} status.`,
+        JSON.stringify({ unarchived_by: unarchivedBy, unarchived_at: now, assessment_id: id, status: newStatus }),
+        now,
+      ],
+    });
+  } catch (err) {
+    console.warn('Could not write unarchive audit log:', err);
+  }
+
+  const restored = await getAssessmentWithQuestions(id);
+
+  return {
+    success: true,
+    message: `Assessment "${testRow.title}" unarchived successfully and restored to ${newStatus.toUpperCase()}.`,
+    id,
+    status: newStatus,
+    is_archived: false,
+    assessment: restored,
+  };
 }
 
 // -------------------------------------------------------------
@@ -2263,6 +2546,11 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
   const test: any = tRes.rows[0];
   const testYear = Number(test.year || 2);
 
+  // If this assessment is an MCQ assessment, delegate directly to MCQ engine
+  if (test.test_type === 'mcq') {
+    return await startOrGetMcqAssessmentAttempt(testId, studentId);
+  }
+
   // 3. Status Guard: Must be live/active/published
   const testStatus = String(test.status || 'draft').toLowerCase();
   if (testStatus !== 'live' && testStatus !== 'active' && testStatus !== 'published') {
@@ -2291,15 +2579,31 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     throw err;
   }
 
-  // 6. Check for active attempt in progress
+  // 6. Check for active or previous attempt (excluding reset attempts)
   const attRes = await client.execute({
-    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND (status = 'in_progress' OR status = 'not_started') ORDER BY start_time DESC LIMIT 1",
+    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND status != 'reset' ORDER BY start_time DESC LIMIT 1",
     args: [studentId, testId],
   });
 
   if (attRes.rows.length > 0) {
     const existingAttempt: any = attRes.rows[0];
     const attemptId = String(existingAttempt.id);
+
+    if (existingAttempt.status === 'terminated') {
+      const err: any = new Error(existingAttempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+      err.status = 403;
+      err.terminated = true;
+      err.attempt = existingAttempt;
+      throw err;
+    }
+
+    if (existingAttempt.status === 'completed' || existingAttempt.status === 'submitted' || existingAttempt.status === 'auto_submitted') {
+      const err: any = new Error('You have already completed and submitted this assessment.');
+      err.status = 400;
+      err.alreadyCompleted = true;
+      err.attemptId = attemptId;
+      throw err;
+    }
 
     // Retrieve already frozen assigned questions from attempt_questions
     const aqRes = await client.execute({
@@ -2381,10 +2685,13 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     }
   }
 
-  // 7. Query eligible question pool strictly for student's year
+  // 7. Query eligible question pool strictly for student's year. Coding tests
+  // only draw coding questions: PDF-imported MCQs share the 'bank' pool and
+  // can't be answered in the code editor (MCQ tests have their own start flow).
   const poolRes = await client.execute({
     sql: `SELECT * FROM questions
           WHERE year = ? AND (test_id = ? OR test_id = 'bank' OR test_id = '' OR test_id IS NULL)
+            AND (question_type = 'coding' OR question_type IS NULL OR question_type = '')
           ORDER BY created_at DESC`,
     args: [studentYear, testId],
   });
@@ -2557,7 +2864,7 @@ export async function verifyQuestionForStudentAttempt(
   questionId: string,
   attemptId?: string,
   sessionVersion?: number
-): Promise<{ valid: boolean; error?: string; code?: number }> {
+): Promise<{ valid: boolean; error?: string; code?: number; terminated?: boolean }> {
   await initTursoDb();
   const client = getTursoClient();
 
@@ -2613,11 +2920,18 @@ export async function verifyQuestionForStudentAttempt(
 
       // Status guard: only active attempts can run code or save code
       const currentStatus = String(att.status || '').toLowerCase();
+      if (currentStatus === 'terminated') {
+        return {
+          valid: false,
+          error: att.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.',
+          code: 403,
+          terminated: true,
+        };
+      }
       if (
         currentStatus === 'completed' ||
         currentStatus === 'submitted' ||
-        currentStatus === 'auto_submitted' ||
-        currentStatus === 'terminated'
+        currentStatus === 'auto_submitted'
       ) {
         return {
           valid: false,
@@ -2725,24 +3039,58 @@ export async function getActivityLogsFromDb(limit = 50, testId?: string) {
 }
 
 // -------------------------------------------------------------
-// DASHBOARD STATS
+// DASHBOARD STATS & COUNTER MANAGEMENT
 // -------------------------------------------------------------
-export async function getDashboardStatsFromDb() {
+export async function getDashboardStatsFromDb(assessmentId: string = 'global') {
   await initTursoDb();
   const client = getTursoClient();
 
-  const [studentsRes, presenceRes, attemptsRes, violationsRes] = await Promise.all([
+  // 1. Fetch active reset timestamp for dashboard completion counter
+  let resetRecord: any = null;
+  try {
+    const resetRes = await client.execute({
+      sql: `SELECT completed_count_reset_at, reset_by, assessment_id 
+            FROM assessment_dashboard_state 
+            WHERE assessment_id = ? OR assessment_id = 'global' 
+            ORDER BY completed_count_reset_at DESC LIMIT 1`,
+      args: [assessmentId],
+    });
+    if (resetRes.rows.length > 0) {
+      resetRecord = resetRes.rows[0];
+    }
+  } catch (err) {
+    // Graceful fallback if table is initializing
+  }
+
+  const resetTimestamp = resetRecord?.completed_count_reset_at ? String(resetRecord.completed_count_reset_at) : null;
+  const resetBy = resetRecord?.reset_by ? String(resetRecord.reset_by) : null;
+
+  // 2. Build completion counter query:
+  // If resetTimestamp exists: count ONLY completed attempts completed strictly AFTER the reset timestamp
+  let completedCountSql = "SELECT COUNT(*) as count FROM test_attempts WHERE (status = 'completed' OR status = 'submitted' OR status = 'auto_submitted')";
+  const completedCountArgs: any[] = [];
+
+  if (resetTimestamp) {
+    completedCountSql += " AND ((end_time IS NOT NULL AND end_time > ?) OR (end_time IS NULL AND created_at > ?))";
+    completedCountArgs.push(resetTimestamp, resetTimestamp);
+  }
+
+  const [studentsRes, presenceRes, attemptsRes, allAttemptsRes, violationsRes, terminatedRes] = await Promise.all([
     client.execute("SELECT COUNT(*) as count FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"),
     getPresenceListFromDb(),
-    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE status = 'completed' OR status = 'submitted'"),
+    client.execute({ sql: completedCountSql, args: completedCountArgs }),
+    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE (status = 'completed' OR status = 'submitted' OR status = 'auto_submitted')"),
     client.execute('SELECT SUM(violation_count) as total_violations FROM student_presence'),
+    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE status = 'terminated'"),
   ]);
 
   const totalStudents = Number(studentsRes.rows[0]?.count || 0);
   const onlineCount = presenceRes.filter((p) => p.session_status === 'ONLINE' || p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING').length;
   const inAssessmentCount = presenceRes.filter((p) => p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING').length;
   const completedAttempts = Number(attemptsRes.rows[0]?.count || 0);
+  const allTimeCompletedAttempts = Number(allAttemptsRes.rows[0]?.count || 0);
   const totalViolations = Number(violationsRes.rows[0]?.total_violations || 0);
+  const terminatedCount = Number(terminatedRes.rows[0]?.count || 0);
 
   const recentLogs = await getActivityLogsFromDb(20);
 
@@ -2751,9 +3099,93 @@ export async function getDashboardStatsFromDb() {
     onlineCount,
     inAssessmentCount,
     completedAttempts,
+    allTimeCompletedAttempts,
+    completedCountResetAt: resetTimestamp,
+    completedCountResetBy: resetBy,
     totalViolations,
+    terminatedCount,
     recentLogs,
   };
+}
+
+export async function resetCompletedCountInDb(
+  resetBy: string,
+  assessmentId: string = 'global'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const now = new Date().toISOString();
+  const id = `state-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // Store new reset state (non-destructive, preserves all actual student attempt rows)
+  await client.execute({
+    sql: `INSERT INTO assessment_dashboard_state (
+      id, assessment_id, completed_count_reset_at, reset_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [id, assessmentId, now, resetBy, now, now],
+  });
+
+  // Record audit trail in activity_logs
+  try {
+    await client.execute({
+      sql: `INSERT INTO activity_logs (
+        id, test_id, student_id, student_name, register_number, event_type, description, metadata, timestamp
+      ) VALUES (?, ?, 'ADMIN', ?, 'ADMIN', 'DASHBOARD_COMPLETED_RESET', ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        assessmentId === 'global' ? null : assessmentId,
+        resetBy,
+        `Admin ${resetBy} reset the dashboard completed count for ${assessmentId === 'global' ? 'all assessments' : `assessment ${assessmentId}`}. Historical student attempts were preserved.`,
+        JSON.stringify({ reset_by: resetBy, reset_at: now, assessment_id: assessmentId }),
+        now,
+      ],
+    });
+  } catch (err) {
+    console.warn('Could not write reset audit log:', err);
+  }
+
+  return {
+    success: true,
+    reset_at: now,
+    reset_by: resetBy,
+    assessment_id: assessmentId,
+  };
+}
+
+export async function restoreCompletedCountInDb(
+  assessmentId: string = 'global',
+  restoredBy: string = 'admin'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `DELETE FROM assessment_dashboard_state WHERE assessment_id = ?`,
+    args: [assessmentId],
+  });
+
+  try {
+    await client.execute({
+      sql: `INSERT INTO activity_logs (
+        id, test_id, student_id, student_name, register_number, event_type, description, metadata, timestamp
+      ) VALUES (?, ?, 'ADMIN', ?, 'ADMIN', 'DASHBOARD_COMPLETED_RESTORED', ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        assessmentId === 'global' ? null : assessmentId,
+        restoredBy,
+        `Admin ${restoredBy} restored the full historical completed count for ${assessmentId === 'global' ? 'all assessments' : `assessment ${assessmentId}`}.`,
+        JSON.stringify({ restored_by: restoredBy, restored_at: now, assessment_id: assessmentId }),
+        now,
+      ],
+    });
+  } catch (err) {
+    console.warn('Could not write restore audit log:', err);
+  }
+
+  return { success: true };
 }
 
 // -------------------------------------------------------------
@@ -2967,6 +3399,40 @@ export async function getDashboardDrilldownFromDb(category: string) {
       });
     }
 
+    case 'terminated': {
+      // TERMINATED: Show students with terminated attempts
+      const res = await client.execute(`
+        SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.end_time,
+               ta.score, ta.max_score, ta.status, ta.tab_switches, ta.fullscreen_exits,
+               ta.violation_count, ta.termination_reason, ta.terminated_at,
+               s.full_name as student_name, s.register_number, s.department, s.year,
+               t.title as test_title
+        FROM test_attempts ta
+        INNER JOIN students s ON ta.student_id = s.id
+        LEFT JOIN tests t ON ta.test_id = t.id
+        WHERE ta.status = 'terminated'
+        ORDER BY ta.terminated_at DESC, ta.start_time DESC
+      `);
+      return res.rows.map((r: any) => ({
+        id: String(r.student_id),
+        attempt_id: String(r.attempt_id),
+        test_id: String(r.test_id),
+        student_id: String(r.student_id),
+        name: String(r.student_name || 'Candidate'),
+        student_name: String(r.student_name || 'Candidate'),
+        register_number: String(r.register_number),
+        department: String(r.department || 'CSE'),
+        year: Number(r.year || 2),
+        assessment_title: String(r.test_title || 'Examination'),
+        status: 'terminated',
+        terminated_at: String(r.terminated_at || r.end_time || ''),
+        termination_reason: String(r.termination_reason || 'Excessive proctoring violations recorded (violation_count > 3)'),
+        tab_switches: Number(r.tab_switches || 0),
+        fullscreen_exits: Number(r.fullscreen_exits || 0),
+        violation_count: Number(r.violation_count || 0),
+      }));
+    }
+
     default:
       return [];
   }
@@ -3067,6 +3533,13 @@ export async function finalizeAssessmentAttemptInDb(params: {
   }
   const targetTestId = attempt.test_id || params.testId;
 
+  if (attempt.status === 'terminated') {
+    const err: any = new Error(attempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+    err.status = 403;
+    err.terminated = true;
+    throw err;
+  }
+
   // 2. Fetch test
   const tRes = await client.execute({
     sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
@@ -3087,6 +3560,36 @@ export async function finalizeAssessmentAttemptInDb(params: {
   });
 
   const assignedQuestions = aqRes.rows;
+
+  // Enforce all questions answered before manual submission (Requirement 1)
+  if (!isAutoSubmit && assignedQuestions.length > 0) {
+    let answeredCount = 0;
+    for (const row of assignedQuestions) {
+      const qId = String(row.question_id);
+      const subRes = await client.execute({
+        sql: `SELECT id FROM submissions WHERE (attempt_id = ? OR student_id = ?) AND question_id = ? LIMIT 1`,
+        args: [attemptId, studentId, qId],
+      });
+      let hasAns = subRes.rows.length > 0;
+      if (!hasAns && attempt.answers) {
+        try {
+          const ans = JSON.parse(String(attempt.answers));
+          if (ans[qId] && (typeof ans[qId] === 'string' ? ans[qId].trim() : ans[qId].code?.trim())) {
+            hasAns = true;
+          }
+        } catch {}
+      }
+      if (hasAns) answeredCount++;
+    }
+
+    if (answeredCount < assignedQuestions.length) {
+      const err: any = new Error(`All questions must be answered before submitting (${answeredCount}/${assignedQuestions.length} answered).`);
+      err.status = 400;
+      err.answeredCount = answeredCount;
+      err.totalQuestions = assignedQuestions.length;
+      throw err;
+    }
+  }
 
   // 4. Calculate score per assigned question from Turso submissions table (server-authoritative)
   let computedTotalScore = 0;
@@ -3256,6 +3759,7 @@ export async function getStudentAssessmentResultFromDb(testId: string, studentId
   const attRes = await client.execute({
     sql: `SELECT ta.*, t.title as test_title, t.description as test_description, t.duration as test_duration,
                  t.total_marks as test_total_marks, t.passing_marks as test_passing_marks, t.year as test_year,
+                 t.test_type,
                  s.register_number, s.full_name, s.department, s.year as student_year
           FROM test_attempts ta
           JOIN tests t ON ta.test_id = t.id
@@ -3317,6 +3821,7 @@ export async function getStudentAssessmentResultFromDb(testId: string, studentId
     attempt_id: String(att.id),
     test_id: String(att.test_id),
     test_title: String(att.test_title),
+    test_type: String(att.test_type || (att.max_score === 60 ? 'mcq' : 'coding')),
     student_id: String(att.student_id),
     register_number: String(att.register_number),
     full_name: String(att.full_name),
@@ -3738,3 +4243,1584 @@ export async function fetchAttemptReportsFromDb(studentId?: string) {
 
   return attempts;
 }
+
+// -------------------------------------------------------------
+// ADVANCED MCQ & PDF IMPORT DATABASE FUNCTIONS
+// -------------------------------------------------------------
+
+export async function findDuplicateQuestionsInDb(questionText: string, year: number) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const cleanText = questionText.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleanText.length < 10) return { isDuplicate: false };
+
+  const res = await client.execute({
+    sql: 'SELECT id, title, description FROM questions WHERE year = ? AND (is_archived = 0 OR is_archived IS NULL)',
+    args: [year],
+  });
+
+  const words = cleanText.split(' ').filter((w) => w.length > 2);
+  if (words.length === 0) return { isDuplicate: false };
+
+  for (const row of res.rows) {
+    const existingClean = `${row.title} ${row.description || ''}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (existingClean === cleanText) {
+      return { isDuplicate: true, duplicateId: String(row.id), title: String(row.title) };
+    }
+
+    const existingWords = new Set(existingClean.split(' ').filter((w) => w.length > 2));
+    let matchCount = 0;
+    for (const w of words) {
+      if (existingWords.has(w)) matchCount++;
+    }
+    const similarity = matchCount / Math.max(words.length, existingWords.size);
+    if (similarity >= 0.85) {
+      return { isDuplicate: true, duplicateId: String(row.id), title: String(row.title) };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
+export async function createPdfImportInDb(data: {
+  filename: string;
+  uploaded_by?: string;
+  academic_year: number;
+  total_pages: number;
+  questions_extracted: number;
+  answers_extracted: number;
+  valid_questions: number;
+  invalid_questions: number;
+  status: string;
+  error_message?: string | null;
+  questions: Array<{
+    question_number: number;
+    question_text: string;
+    option_a: string;
+    option_b: string;
+    option_c: string;
+    option_d: string;
+    correct_answer?: string | null;
+    marks?: number;
+    academic_year: number;
+    source_page: number;
+    status: string;
+    review_notes?: string | null;
+    is_duplicate?: number;
+    duplicate_of_id?: string | null;
+  }>;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const importId = `imp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `INSERT INTO pdf_imports (
+      id, filename, uploaded_by, academic_year, total_pages,
+      questions_extracted, answers_extracted, valid_questions, invalid_questions,
+      status, error_message, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      importId,
+      data.filename,
+      data.uploaded_by || 'admin',
+      data.academic_year,
+      data.total_pages,
+      data.questions_extracted,
+      data.answers_extracted,
+      data.valid_questions,
+      data.invalid_questions,
+      data.status,
+      data.error_message || null,
+      now,
+      now,
+    ],
+  });
+
+  for (const q of data.questions) {
+    const qId = `impq-${Date.now()}-${q.question_number}-${Math.random().toString(36).substring(2, 6)}`;
+    await client.execute({
+      sql: `INSERT INTO pdf_import_questions (
+        id, import_id, question_number, question_text, option_a, option_b, option_c, option_d,
+        correct_answer, marks, academic_year, source_page, status, review_notes,
+        is_duplicate, duplicate_of_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        qId,
+        importId,
+        q.question_number,
+        q.question_text,
+        q.option_a,
+        q.option_b,
+        q.option_c,
+        q.option_d,
+        q.correct_answer || null,
+        q.marks || 2,
+        q.academic_year,
+        q.source_page,
+        q.status,
+        q.review_notes || null,
+        q.is_duplicate || 0,
+        q.duplicate_of_id || null,
+        now,
+      ],
+    });
+  }
+
+  return { importId, status: data.status };
+}
+
+export async function getPdfImportFromDb(importId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const res = await client.execute({
+    sql: 'SELECT * FROM pdf_imports WHERE id = ? LIMIT 1',
+    args: [importId],
+  });
+
+  if (res.rows.length === 0) return null;
+  const row: any = res.rows[0];
+
+  return {
+    id: String(row.id),
+    filename: String(row.filename),
+    uploaded_by: String(row.uploaded_by),
+    academic_year: Number(row.academic_year),
+    total_pages: Number(row.total_pages || 0),
+    questions_extracted: Number(row.questions_extracted || 0),
+    answers_extracted: Number(row.answers_extracted || 0),
+    valid_questions: Number(row.valid_questions || 0),
+    invalid_questions: Number(row.invalid_questions || 0),
+    status: String(row.status),
+    error_message: row.error_message ? String(row.error_message) : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export async function getPdfImportQuestionsFromDb(importId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const res = await client.execute({
+    sql: 'SELECT * FROM pdf_import_questions WHERE import_id = ? ORDER BY question_number ASC',
+    args: [importId],
+  });
+
+  return res.rows.map((row: any) => ({
+    id: String(row.id),
+    import_id: String(row.import_id),
+    question_number: Number(row.question_number),
+    question_text: String(row.question_text),
+    option_a: String(row.option_a || ''),
+    option_b: String(row.option_b || ''),
+    option_c: String(row.option_c || ''),
+    option_d: String(row.option_d || ''),
+    correct_answer: row.correct_answer ? String(row.correct_answer) : null,
+    marks: Number(row.marks || 2),
+    academic_year: Number(row.academic_year || 2),
+    source_page: Number(row.source_page || 1),
+    status: String(row.status),
+    review_notes: row.review_notes ? String(row.review_notes) : null,
+    is_duplicate: Number(row.is_duplicate || 0),
+    duplicate_of_id: row.duplicate_of_id ? String(row.duplicate_of_id) : null,
+    created_at: String(row.created_at),
+  }));
+}
+
+export async function updatePdfImportQuestionInDb(
+  qId: string,
+  data: {
+    question_text?: string;
+    option_a?: string;
+    option_b?: string;
+    option_c?: string;
+    option_d?: string;
+    correct_answer?: string | null;
+    marks?: number;
+    status?: string;
+    review_notes?: string | null;
+  }
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const updates: string[] = [];
+  const args: any[] = [];
+
+  if (data.question_text !== undefined) {
+    updates.push('question_text = ?');
+    args.push(data.question_text.trim());
+  }
+  if (data.option_a !== undefined) {
+    updates.push('option_a = ?');
+    args.push(data.option_a.trim());
+  }
+  if (data.option_b !== undefined) {
+    updates.push('option_b = ?');
+    args.push(data.option_b.trim());
+  }
+  if (data.option_c !== undefined) {
+    updates.push('option_c = ?');
+    args.push(data.option_c.trim());
+  }
+  if (data.option_d !== undefined) {
+    updates.push('option_d = ?');
+    args.push(data.option_d.trim());
+  }
+  if (data.correct_answer !== undefined) {
+    updates.push('correct_answer = ?');
+    args.push(data.correct_answer ? data.correct_answer.toUpperCase().trim() : null);
+  }
+  if (data.marks !== undefined) {
+    updates.push('marks = ?');
+    args.push(Number(data.marks));
+  }
+  if (data.status !== undefined) {
+    updates.push('status = ?');
+    args.push(data.status);
+  }
+  if (data.review_notes !== undefined) {
+    updates.push('review_notes = ?');
+    args.push(data.review_notes);
+  }
+
+  if (updates.length > 0) {
+    args.push(qId);
+    await client.execute({
+      sql: `UPDATE pdf_import_questions SET ${updates.join(', ')} WHERE id = ?`,
+      args,
+    });
+  }
+
+  const res = await client.execute({
+    sql: 'SELECT * FROM pdf_import_questions WHERE id = ? LIMIT 1',
+    args: [qId],
+  });
+
+  return res.rows[0] ? (res.rows[0] as any) : null;
+}
+
+export async function deletePdfImportQuestionInDb(qId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const findRes = await client.execute({
+    sql: 'SELECT import_id FROM pdf_import_questions WHERE id = ? LIMIT 1',
+    args: [qId],
+  });
+
+  const importId = findRes.rows[0]?.import_id ? String(findRes.rows[0].import_id) : null;
+
+  await client.execute({
+    sql: 'DELETE FROM pdf_import_questions WHERE id = ?',
+    args: [qId],
+  });
+
+  if (importId) {
+    const countRes = await client.execute({
+      sql: `SELECT 
+              COUNT(*) as total,
+              SUM(CASE WHEN status = 'VALID' OR status = 'APPROVED' THEN 1 ELSE 0 END) as valids,
+              SUM(CASE WHEN status = 'NEEDS_REVIEW' OR status = 'DUPLICATE' THEN 1 ELSE 0 END) as invalids
+            FROM pdf_import_questions WHERE import_id = ?`,
+      args: [importId],
+    });
+    const row = countRes.rows[0];
+    if (row) {
+      await client.execute({
+        sql: 'UPDATE pdf_imports SET questions_extracted = ?, valid_questions = ?, invalid_questions = ? WHERE id = ?',
+        args: [Number(row.total || 0), Number(row.valids || 0), Number(row.invalids || 0), importId],
+      });
+    }
+  }
+
+  return { success: true };
+}
+
+export async function validatePdfImportInDb(importId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const questionsRes = await client.execute({
+    sql: 'SELECT * FROM pdf_import_questions WHERE import_id = ? ORDER BY question_number ASC',
+    args: [importId],
+  });
+
+  const rows = questionsRes.rows;
+  const issues: Array<{ question_number: number; error: string }> = [];
+  const seenNumbers = new Set<number>();
+  let validCount = 0;
+  let reviewCount = 0;
+  let totalMarks = 0;
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const qNum = Number(row.question_number);
+    const qText = String(row.question_text || '').trim();
+    const optA = String(row.option_a || '').trim();
+    const optB = String(row.option_b || '').trim();
+    const optC = String(row.option_c || '').trim();
+    const optD = String(row.option_d || '').trim();
+    const key = row.correct_answer ? String(row.correct_answer).toUpperCase().trim() : '';
+    const marks = Number(row.marks || 2);
+    totalMarks += marks;
+
+    const rowIssues: string[] = [];
+
+    if (seenNumbers.has(qNum)) {
+      rowIssues.push(`Duplicate question number ${qNum}`);
+    }
+    seenNumbers.add(qNum);
+
+    if (qText.length < 5) rowIssues.push('Question text is missing or too short');
+    if (!optA) rowIssues.push('Option A is missing');
+    if (!optB) rowIssues.push('Option B is missing');
+    if (!optC) rowIssues.push('Option C is missing');
+    if (!optD) rowIssues.push('Option D is missing');
+    if (!key || !['A', 'B', 'C', 'D'].includes(key)) rowIssues.push('Valid correct answer (A, B, C, D) is required');
+    if (marks <= 0) rowIssues.push('Marks must be greater than 0');
+
+    // Duplicate options check
+    const opts = [optA, optB, optC, optD].filter(Boolean);
+    if (new Set(opts).size < opts.length) {
+      rowIssues.push('Duplicate option texts detected');
+    }
+
+    // Intra-paper duplicate question text check (Exact match or > 85% token overlap)
+    let isDuplicateQuestion = false;
+    let duplicateOfQNum: number | null = null;
+    const normCurrent = qText.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const wordsCurrent = new Set(normCurrent.split(' ').filter((w) => w.length > 2));
+
+    for (let prevIdx = 0; prevIdx < idx; prevIdx++) {
+      const prevRow = rows[prevIdx];
+      const prevText = String(prevRow.question_text || '').trim();
+      const normPrev = prevText.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+      if (normCurrent && normPrev) {
+        if (normCurrent === normPrev) {
+          isDuplicateQuestion = true;
+          duplicateOfQNum = Number(prevRow.question_number);
+          rowIssues.push(`Exact duplicate of Question ${duplicateOfQNum}`);
+          break;
+        }
+
+        const wordsPrev = new Set(normPrev.split(' ').filter((w) => w.length > 2));
+        if (wordsCurrent.size > 0 && wordsPrev.size > 0) {
+          let common = 0;
+          for (const w of wordsCurrent) {
+            if (wordsPrev.has(w)) common++;
+          }
+          const union = new Set([...wordsCurrent, ...wordsPrev]).size;
+          const similarity = union > 0 ? common / union : 0;
+          if (similarity >= 0.85) {
+            isDuplicateQuestion = true;
+            duplicateOfQNum = Number(prevRow.question_number);
+            rowIssues.push(`Similar question (${Math.round(similarity * 100)}% match) of Question ${duplicateOfQNum}`);
+            break;
+          }
+        }
+      }
+    }
+
+    if (isDuplicateQuestion) {
+      reviewCount++;
+      issues.push({ question_number: qNum, error: rowIssues.join('; ') });
+      await client.execute({
+        sql: "UPDATE pdf_import_questions SET status = 'DUPLICATE', is_duplicate = 1, duplicate_of_id = ?, review_notes = ? WHERE id = ?",
+        args: [String(duplicateOfQNum), rowIssues.join('; '), String(row.id)],
+      });
+    } else if (rowIssues.length > 0) {
+      reviewCount++;
+      issues.push({ question_number: qNum, error: rowIssues.join('; ') });
+      await client.execute({
+        sql: "UPDATE pdf_import_questions SET status = 'NEEDS_REVIEW', is_duplicate = 0, duplicate_of_id = NULL, review_notes = ? WHERE id = ?",
+        args: [rowIssues.join('; '), String(row.id)],
+      });
+    } else {
+      validCount++;
+      await client.execute({
+        sql: "UPDATE pdf_import_questions SET status = 'VALID', is_duplicate = 0, duplicate_of_id = NULL, review_notes = NULL WHERE id = ?",
+        args: [String(row.id)],
+      });
+    }
+  }
+
+  const isAllValid = reviewCount === 0 && rows.length > 0;
+  await client.execute({
+    sql: 'UPDATE pdf_imports SET questions_extracted = ?, valid_questions = ?, invalid_questions = ?, status = ? WHERE id = ?',
+    args: [rows.length, validCount, reviewCount, isAllValid ? 'READY' : 'REVIEW_REQUIRED', importId],
+  });
+
+  return {
+    valid: isAllValid,
+    totalQuestions: rows.length,
+    validCount,
+    reviewCount,
+    totalMarks,
+    issues,
+  };
+}
+
+export async function approvePdfImportQuestionsInDb(importId: string, questionIds?: string[]) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const imp = await getPdfImportFromDb(importId);
+  if (!imp) throw new Error('PDF Import record not found.');
+
+  let sql = 'SELECT * FROM pdf_import_questions WHERE import_id = ?';
+  const args: any[] = [importId];
+
+  if (Array.isArray(questionIds) && questionIds.length > 0) {
+    sql += ` AND id IN (${questionIds.map(() => '?').join(',')})`;
+    args.push(...questionIds);
+  } else {
+    // Approve all valid or approved questions
+    sql += " AND status != 'REJECTED'";
+  }
+
+  const res = await client.execute({ sql, args });
+  // Exclude duplicate questions from being approved
+  const questionsToApprove = res.rows.filter((q: any) => !q.is_duplicate && q.status !== 'DUPLICATE' && q.status !== 'REJECTED');
+
+  if (questionsToApprove.length === 0) {
+    throw new Error('No eligible questions found to approve (unresolved duplicates or invalid questions detected).');
+  }
+
+  const now = new Date().toISOString();
+  let approvedCount = 0;
+  const createdQuestionIds: string[] = [];
+
+  for (const q of questionsToApprove) {
+    const qRow: any = q;
+    const finalQId = `q-mcq-${Date.now()}-${qRow.question_number}-${Math.random().toString(36).substring(2, 6)}`;
+
+    await client.execute({
+      sql: `INSERT INTO questions (
+        id, test_id, title, description, question_type, option_a, option_b, option_c, option_d,
+        correct_answer, marks, year, topic, difficulty, source_pdf, source_page,
+        source_question_number, is_active, is_archived, created_at
+      ) VALUES (?, 'bank', ?, ?, 'mcq', ?, ?, ?, ?, ?, ?, ?, 'General MCQ', 'Medium', ?, ?, ?, 1, 0, ?)`,
+      args: [
+        finalQId,
+        qRow.question_text.slice(0, 100).trim(),
+        qRow.question_text.trim(),
+        qRow.option_a,
+        qRow.option_b,
+        qRow.option_c,
+        qRow.option_d,
+        (qRow.correct_answer || 'A').toUpperCase().trim(),
+        Number(qRow.marks || 2),
+        Number(qRow.academic_year || imp.academic_year || 2),
+        imp.filename,
+        Number(qRow.source_page || 1),
+        Number(qRow.question_number),
+        now,
+      ],
+    });
+
+    await client.execute({
+      sql: "UPDATE pdf_import_questions SET status = 'APPROVED' WHERE id = ?",
+      args: [qRow.id],
+    });
+
+    createdQuestionIds.push(finalQId);
+    approvedCount++;
+  }
+
+  await client.execute({
+    sql: "UPDATE pdf_imports SET status = 'IMPORTED', updated_at = ? WHERE id = ?",
+    args: [now, importId],
+  });
+
+  return {
+    success: true,
+    importId,
+    approvedCount,
+    createdQuestionIds,
+  };
+}
+
+export async function createMcqAssessmentInDb(data: {
+  title: string;
+  code?: string;
+  description?: string;
+  instructions?: string;
+  year: number;
+  duration_minutes?: number;
+  question_count?: number;
+  marks_per_question?: number;
+  passing_marks?: number;
+  start_time?: string;
+  end_time?: string;
+  status?: string;
+  import_id?: string;
+  question_ids?: string[];
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const title = (data.title || '').trim();
+  if (!title) throw new Error('Assessment title is required.');
+
+  const testYear = Number(data.year);
+  if (!isAcademicYear(testYear)) {
+    throw new Error('Academic year must be 1, 2, 3 or 4 (1st to 4th Year).');
+  }
+
+  const duration = Number(data.duration_minutes || 60);
+  const qCount = Number(data.question_count || 30);
+  const marksPerQ = Number(data.marks_per_question || 2);
+  const totalMarks = qCount * marksPerQ;
+  const passingMarks = Number(data.passing_marks !== undefined ? data.passing_marks : Math.round(totalMarks * 0.4));
+
+  const testId = `test-mcq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  let code = (data.code || '').trim().toUpperCase();
+  if (!code) {
+    code = `JIT-Y${testYear}-MCQ-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  await client.execute({
+    sql: `INSERT INTO tests (
+      id, title, description, code, instructions, duration, total_marks,
+      passing_marks, start_time, end_time, status, year, question_count,
+      test_type, is_archived, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'mcq', 0, ?, ?)`,
+    args: [
+      testId,
+      title,
+      data.description ? data.description.trim() : `MCQ Assessment for Year ${testYear} students.`,
+      code,
+      data.instructions || 'Select the correct option for each question. Answers are saved automatically.',
+      duration,
+      totalMarks,
+      passingMarks,
+      data.start_time || null,
+      data.end_time || null,
+      data.status || 'published',
+      testYear,
+      qCount,
+      now,
+      now,
+    ],
+  });
+
+  // Attach questions to this test if provided
+  if (Array.isArray(data.question_ids) && data.question_ids.length > 0) {
+    for (let i = 0; i < data.question_ids.length; i++) {
+      const qId = data.question_ids[i];
+      await client.execute({
+        sql: 'UPDATE questions SET test_id = ? WHERE id = ?',
+        args: [testId, qId],
+      });
+    }
+  }
+
+  return {
+    id: testId,
+    title,
+    code,
+    year: testYear,
+    duration,
+    question_count: qCount,
+    total_marks: totalMarks,
+    passing_marks: passingMarks,
+    test_type: 'mcq',
+    status: data.status || 'published',
+  };
+}
+
+export async function startOrGetMcqAssessmentAttempt(testId: string, studentId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // 1. Fetch test
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [testId],
+  });
+  if (testRes.rows.length === 0) {
+    const err: any = new Error('Assessment not found.');
+    err.status = 404;
+    throw err;
+  }
+  const test: any = testRes.rows[0];
+
+  // 2. Fetch student
+  const studentRes = await client.execute({
+    sql: 'SELECT * FROM students WHERE id = ? LIMIT 1',
+    args: [studentId],
+  });
+  if (studentRes.rows.length === 0) {
+    const err: any = new Error('Student not found.');
+    err.status = 404;
+    throw err;
+  }
+  const student: any = studentRes.rows[0];
+
+  // 3. Strict Academic Year Isolation Guard
+  if (Number(student.year) !== Number(test.year)) {
+    const err: any = new Error(
+      `Access Denied: This assessment is restricted to Year ${test.year} students. Your registered profile is Year ${student.year}.`
+    );
+    err.status = 403;
+    throw err;
+  }
+
+  // 4. Check for existing attempt (excluding reset attempts)
+  const existingAttemptRes = await client.execute({
+    sql: `SELECT * FROM test_attempts 
+          WHERE test_id = ? AND student_id = ? AND status != 'reset'
+          ORDER BY created_at DESC LIMIT 1`,
+    args: [testId, studentId],
+  });
+
+  const now = new Date().toISOString();
+  const durationMin = Number(test.duration || 60);
+
+  if (existingAttemptRes.rows.length > 0) {
+    const existingAttempt: any = existingAttemptRes.rows[0];
+    const attemptId = String(existingAttempt.id);
+
+    // Fetch frozen assigned questions in order
+    const assignedQRes = await client.execute({
+      sql: `SELECT q.id, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d,
+                   q.marks, q.year, aq.question_order
+            FROM attempt_questions aq
+            JOIN questions q ON aq.question_id = q.id
+            WHERE aq.attempt_id = ?
+            ORDER BY aq.question_order ASC`,
+      args: [attemptId],
+    });
+
+    let answers: Record<string, any> = {};
+    if (existingAttempt.answers) {
+      try {
+        answers = JSON.parse(String(existingAttempt.answers));
+      } catch {}
+    }
+
+    // Sanitize questions: NEVER leak correct_answer to client!
+    const sanitizedQuestions = assignedQRes.rows.map((row: any) => ({
+      id: String(row.id),
+      question_number: Number(row.question_order),
+      question_text: String(row.description || row.title),
+      option_a: String(row.option_a || ''),
+      option_b: String(row.option_b || ''),
+      option_c: String(row.option_c || ''),
+      option_d: String(row.option_d || ''),
+      marks: Number(row.marks || 2),
+      year: Number(row.year),
+    }));
+
+    return {
+      isExisting: true,
+      attempt: {
+        id: attemptId,
+        test_id: testId,
+        student_id: studentId,
+        start_time: String(existingAttempt.start_time),
+        ends_at: String(existingAttempt.ends_at || ''),
+        status: String(existingAttempt.status),
+        score: Number(existingAttempt.score || 0),
+        max_score: Number(existingAttempt.max_score || test.total_marks || 60),
+        answers,
+      },
+      test: {
+        id: String(test.id),
+        title: String(test.title),
+        description: String(test.description || ''),
+        duration: durationMin,
+        duration_minutes: durationMin,
+        total_marks: Number(test.total_marks || 60),
+        passing_marks: Number(test.passing_marks || 24),
+        year: Number(test.year),
+        test_type: 'mcq',
+      },
+      questions: sanitizedQuestions,
+    };
+  }
+
+  // 5. New Attempt: Randomize and assign frozen question set
+  const poolRes = await client.execute({
+    sql: `SELECT id FROM questions 
+          WHERE (year = ? OR test_id = ?) 
+            AND question_type = 'mcq'
+            AND (is_archived = 0 OR is_archived IS NULL)
+            AND (is_active = 1 OR is_active IS NULL)`,
+    args: [Number(test.year), testId],
+  });
+
+  let poolIds = Array.from(new Set(poolRes.rows.map((r: any) => String(r.id))));
+  if (poolIds.length === 0) {
+    // If no questions marked specifically as 'mcq', check all questions attached to test
+    const testSpecificRes = await client.execute({
+      sql: 'SELECT id FROM questions WHERE test_id = ? AND (is_archived = 0 OR is_archived IS NULL)',
+      args: [testId],
+    });
+    poolIds = Array.from(new Set(testSpecificRes.rows.map((r: any) => String(r.id))));
+  }
+
+  if (poolIds.length === 0) {
+    const err: any = new Error(`No MCQ questions are currently available for Year ${test.year}.`);
+    err.status = 400;
+    throw err;
+  }
+
+  // Shuffle question pool (Fisher-Yates)
+  for (let i = poolIds.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [poolIds[i], poolIds[j]] = [poolIds[j], poolIds[i]];
+  }
+
+  const targetCount = Math.min(poolIds.length, Number(test.question_count || 30));
+  const selectedQuestionIds = poolIds.slice(0, targetCount);
+
+  const attemptId = `att-mcq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const endsAt = new Date(Date.now() + durationMin * 60 * 1000).toISOString();
+
+  // Create attempt in test_attempts
+  await client.execute({
+    sql: `INSERT INTO test_attempts (
+      id, test_id, student_id, start_time, ends_at, status, score,
+      max_score, answers, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'in_progress', 0, ?, '{}', ?)`,
+    args: [
+      attemptId,
+      testId,
+      studentId,
+      now,
+      endsAt,
+      Number(test.total_marks || targetCount * 2),
+      now,
+    ],
+  });
+
+  // Freeze assigned questions in attempt_questions table
+  for (let i = 0; i < selectedQuestionIds.length; i++) {
+    const qId = selectedQuestionIds[i];
+    const aqId = `aq-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+    await client.execute({
+      sql: `INSERT INTO attempt_questions (id, attempt_id, question_id, question_order, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [aqId, attemptId, qId, i + 1, now],
+    });
+  }
+
+  // Retrieve assigned questions
+  const qDetailsRes = await client.execute({
+    sql: `SELECT q.id, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d,
+                 q.marks, q.year, aq.question_order
+          FROM attempt_questions aq
+          JOIN questions q ON aq.question_id = q.id
+          WHERE aq.attempt_id = ?
+          ORDER BY aq.question_order ASC`,
+    args: [attemptId],
+  });
+
+  const sanitizedQuestions = qDetailsRes.rows.map((row: any) => ({
+    id: String(row.id),
+    question_number: Number(row.question_order),
+    question_text: String(row.description || row.title),
+    option_a: String(row.option_a || ''),
+    option_b: String(row.option_b || ''),
+    option_c: String(row.option_c || ''),
+    option_d: String(row.option_d || ''),
+    marks: Number(row.marks || 2),
+    year: Number(row.year),
+  }));
+
+  return {
+    isExisting: false,
+    attempt: {
+      id: attemptId,
+      test_id: testId,
+      student_id: studentId,
+      start_time: now,
+      ends_at: endsAt,
+      status: 'in_progress',
+      score: 0,
+      max_score: Number(test.total_marks || targetCount * 2),
+      answers: {},
+    },
+    test: {
+      id: String(test.id),
+      title: String(test.title),
+      description: String(test.description || ''),
+      duration: durationMin,
+      duration_minutes: durationMin,
+      total_marks: Number(test.total_marks || targetCount * 2),
+      passing_marks: Number(test.passing_marks || Math.round(targetCount * 2 * 0.4)),
+      year: Number(test.year),
+      test_type: 'mcq',
+    },
+    questions: sanitizedQuestions,
+  };
+}
+
+export async function saveStudentMcqAnswerInDb(
+  attemptId: string,
+  questionId: string,
+  studentId: string,
+  selectedOption: string | null
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const attRes = await client.execute({
+    sql: 'SELECT * FROM test_attempts WHERE id = ? LIMIT 1',
+    args: [attemptId],
+  });
+  if (attRes.rows.length === 0) throw new Error('Assessment attempt not found.');
+  const attempt: any = attRes.rows[0];
+
+  if (String(attempt.student_id) !== studentId) {
+    throw new Error('Unauthorized: Student ID does not match assessment attempt owner.');
+  }
+
+  const currentStatus = String(attempt.status || '').toLowerCase();
+  if (currentStatus === 'terminated') {
+    const err: any = new Error(attempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+    err.status = 403;
+    err.terminated = true;
+    throw err;
+  }
+  if (currentStatus === 'completed' || currentStatus === 'submitted' || currentStatus === 'auto_submitted') {
+    throw new Error('Assessment attempt has already concluded. No further answer submissions permitted.');
+  }
+
+  // Timer check
+  if (attempt.ends_at) {
+    const endsAtMs = new Date(attempt.ends_at).getTime();
+    if (Date.now() > endsAtMs + 5000) {
+      throw new Error('Assessment deadline has expired.');
+    }
+  }
+
+  let answers: Record<string, any> = {};
+  if (attempt.answers) {
+    try {
+      answers = JSON.parse(String(attempt.answers));
+    } catch {}
+  }
+
+  const now = new Date().toISOString();
+  if (selectedOption) {
+    answers[questionId] = {
+      selected_option: selectedOption.toUpperCase().trim(),
+      updated_at: now,
+    };
+  } else {
+    delete answers[questionId];
+  }
+
+  await client.execute({
+    sql: 'UPDATE test_attempts SET answers = ? WHERE id = ?',
+    args: [JSON.stringify(answers), attemptId],
+  });
+
+  return { success: true, saved_at: now };
+}
+
+export async function submitStudentMcqAssessmentInDb(
+  testId: string,
+  studentId: string,
+  attemptId: string,
+  options?: { isAutoSubmit?: boolean }
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const attRes = await client.execute({
+    sql: 'SELECT * FROM test_attempts WHERE id = ? AND student_id = ? LIMIT 1',
+    args: [attemptId, studentId],
+  });
+  if (attRes.rows.length === 0) throw new Error('Attempt not found for student.');
+  const attempt: any = attRes.rows[0];
+
+  if (attempt.status === 'terminated') {
+    const err: any = new Error(attempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+    err.status = 403;
+    err.terminated = true;
+    throw err;
+  }
+
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [testId],
+  });
+  if (testRes.rows.length === 0) throw new Error('Test not found.');
+  const test: any = testRes.rows[0];
+
+  // Fetch assigned questions with authoritative correct_answer from database
+  const qRes = await client.execute({
+    sql: `SELECT q.id, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d,
+                 q.correct_answer, q.marks, aq.question_order
+          FROM attempt_questions aq
+          JOIN questions q ON aq.question_id = q.id
+          WHERE aq.attempt_id = ?
+          ORDER BY aq.question_order ASC`,
+    args: [attemptId],
+  });
+
+  let studentAnswers: Record<string, any> = {};
+  if (attempt.answers) {
+    try {
+      studentAnswers = JSON.parse(String(attempt.answers));
+    } catch {}
+  }
+
+  // Pre-calculate answered count & validate completion
+  let answeredCount = 0;
+  for (const row of qRes.rows) {
+    const qId = String(row.id);
+    const studentAnsObj = studentAnswers[qId];
+    const studentChoice = typeof studentAnsObj === 'object' && studentAnsObj?.selected_option
+      ? studentAnsObj.selected_option
+      : (typeof studentAnsObj === 'string' ? studentAnsObj : null);
+    if (studentChoice && String(studentChoice).trim()) {
+      answeredCount++;
+    }
+  }
+
+  const isAutoSubmit = Boolean(options?.isAutoSubmit);
+  if (!isAutoSubmit && qRes.rows.length > 0 && answeredCount < qRes.rows.length) {
+    const err: any = new Error(`All questions must be answered before submitting (${answeredCount}/${qRes.rows.length} answered).`);
+    err.status = 400;
+    err.answeredCount = answeredCount;
+    err.totalQuestions = qRes.rows.length;
+    throw err;
+  }
+
+  const now = new Date().toISOString();
+  let totalQuestions = qRes.rows.length;
+  answeredCount = 0;
+  let correctCount = 0;
+  let incorrectCount = 0;
+  let marksObtained = 0;
+  let maxMarks = 0;
+
+  const detailedResults: any[] = [];
+
+  for (const row of qRes.rows) {
+    const q: any = row;
+    const qId = String(q.id);
+    const qMarks = Number(q.marks || 2);
+    maxMarks += qMarks;
+
+    const correctAns = (q.correct_answer || '').toUpperCase().trim();
+    const studentAnsObj = studentAnswers[qId];
+    const studentChoice = typeof studentAnsObj === 'object' && studentAnsObj?.selected_option
+      ? studentAnsObj.selected_option
+      : (typeof studentAnsObj === 'string' ? studentAnsObj : null);
+
+    const isAnswered = Boolean(studentChoice);
+    const isCorrect = isAnswered && studentChoice.toUpperCase().trim() === correctAns;
+
+    let marksAwarded = 0;
+    if (isAnswered) {
+      answeredCount++;
+      if (isCorrect) {
+        correctCount++;
+        marksAwarded = qMarks;
+        marksObtained += qMarks;
+      } else {
+        incorrectCount++;
+      }
+    }
+
+    const subId = `mcqsub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    await client.execute({
+      sql: `INSERT INTO mcq_submissions (
+        id, attempt_id, test_id, student_id, question_id, selected_option,
+        correct_answer, is_correct, marks_awarded, answered_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        subId,
+        attemptId,
+        testId,
+        studentId,
+        qId,
+        studentChoice || null,
+        correctAns,
+        isCorrect ? 1 : 0,
+        marksAwarded,
+        studentAnsObj?.updated_at || now,
+        now,
+      ],
+    });
+
+    detailedResults.push({
+      question_id: qId,
+      question_order: Number(q.question_order),
+      question_text: String(q.description || q.title),
+      selected_option: studentChoice || null,
+      correct_answer: correctAns,
+      is_correct: isCorrect,
+      marks_awarded: marksAwarded,
+      max_marks: qMarks,
+    });
+  }
+
+  const unansweredCount = totalQuestions - answeredCount;
+  const percentage = maxMarks > 0 ? Math.round((marksObtained / maxMarks) * 10000) / 100 : 0;
+
+  const startTimeMs = new Date(attempt.start_time).getTime();
+  const endTimeMs = new Date(now).getTime();
+  const timeTakenSeconds = Math.max(0, Math.round((endTimeMs - startTimeMs) / 1000));
+
+  // Update test_attempts in Turso
+  await client.execute({
+    sql: `UPDATE test_attempts 
+          SET status = 'completed', end_time = ?, score = ?, max_score = ?,
+              percentage = ?, time_taken_seconds = ?, question_results = ?
+          WHERE id = ?`,
+    args: [
+      now,
+      marksObtained,
+      maxMarks,
+      percentage,
+      timeTakenSeconds,
+      JSON.stringify(detailedResults),
+      attemptId,
+    ],
+  });
+
+  // Re-rank all completed attempts for this test: Score DESC, time_taken_seconds ASC
+  const allCompletedRes = await client.execute({
+    sql: `SELECT id FROM test_attempts 
+          WHERE test_id = ? AND status IN ('completed', 'submitted', 'auto_submitted')
+          ORDER BY score DESC, time_taken_seconds ASC, end_time ASC`,
+    args: [testId],
+  });
+
+  for (let r = 0; r < allCompletedRes.rows.length; r++) {
+    const rankId = String(allCompletedRes.rows[r].id);
+    await client.execute({
+      sql: 'UPDATE test_attempts SET completion_rank = ? WHERE id = ?',
+      args: [r + 1, rankId],
+    });
+  }
+
+  return {
+    success: true,
+    attempt_id: attemptId,
+    test_id: testId,
+    student_id: studentId,
+    total_questions: totalQuestions,
+    answered: answeredCount,
+    answered_count: answeredCount,
+    correct: correctCount,
+    correct_count: correctCount,
+    incorrect: incorrectCount,
+    incorrect_count: incorrectCount,
+    unanswered: unansweredCount,
+    unanswered_count: unansweredCount,
+    marks_obtained: marksObtained,
+    score: marksObtained,
+    maximum_marks: maxMarks,
+    max_score: maxMarks,
+    percentage,
+    time_taken_seconds: timeTakenSeconds,
+    status: 'completed',
+    results: detailedResults,
+  };
+}
+
+export async function getMcqAssessmentAnalyticsFromDb(testId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [testId],
+  });
+  if (testRes.rows.length === 0) throw new Error('Test not found.');
+  const test: any = testRes.rows[0];
+
+  // Attempts summary
+  const attRes = await client.execute({
+    sql: `SELECT ta.*, s.register_number, s.full_name, s.department, s.year as student_year
+          FROM test_attempts ta
+          JOIN students s ON ta.student_id = s.id
+          WHERE ta.test_id = ?
+          ORDER BY ta.score DESC, ta.time_taken_seconds ASC`,
+    args: [testId],
+  });
+
+  const totalStarted = attRes.rows.length;
+  const completedAttempts = attRes.rows.filter((a: any) =>
+    ['completed', 'submitted', 'auto_submitted'].includes(String(a.status).toLowerCase())
+  );
+  const inProgressCount = totalStarted - completedAttempts.length;
+
+  let totalScore = 0;
+  let highestScore = 0;
+  let lowestScore = completedAttempts.length > 0 ? 999999 : 0;
+  let totalTime = 0;
+
+  for (const c of completedAttempts) {
+    const sc = Number(c.score || 0);
+    totalScore += sc;
+    if (sc > highestScore) highestScore = sc;
+    if (sc < lowestScore) lowestScore = sc;
+    totalTime += Number(c.time_taken_seconds || 0);
+  }
+
+  const averageScore = completedAttempts.length > 0 ? Math.round((totalScore / completedAttempts.length) * 10) / 10 : 0;
+  const averageTimeSeconds = completedAttempts.length > 0 ? Math.round(totalTime / completedAttempts.length) : 0;
+
+  // Question-wise accuracy stats
+  const qAccuracyRes = await client.execute({
+    sql: `SELECT q.id as question_id, q.title, q.description,
+                 COUNT(ms.id) as total_attempts,
+                 SUM(CASE WHEN ms.is_correct = 1 THEN 1 ELSE 0 END) as correct_count,
+                 SUM(CASE WHEN ms.is_correct = 0 AND ms.selected_option IS NOT NULL THEN 1 ELSE 0 END) as incorrect_count
+          FROM questions q
+          LEFT JOIN mcq_submissions ms ON q.id = ms.question_id AND ms.test_id = ?
+          WHERE (q.test_id = ? OR q.id IN (SELECT question_id FROM attempt_questions WHERE attempt_id IN (SELECT id FROM test_attempts WHERE test_id = ?)))
+          GROUP BY q.id
+          ORDER BY q.created_at ASC`,
+    args: [testId, testId, testId],
+  });
+
+  const questionStats = qAccuracyRes.rows.map((row: any, idx: number) => {
+    const totalAtt = Number(row.total_attempts || 0);
+    const cor = Number(row.correct_count || 0);
+    const incor = Number(row.incorrect_count || 0);
+    const unans = totalAtt - cor - incor;
+    const accuracy = totalAtt > 0 ? Math.round((cor / totalAtt) * 10000) / 100 : 0;
+
+    return {
+      question_number: idx + 1,
+      question_id: String(row.question_id),
+      question_text: String(row.description || row.title),
+      total_attempts: totalAtt,
+      correct: cor,
+      incorrect: incor,
+      unanswered: Math.max(0, unans),
+      accuracy_percentage: accuracy,
+    };
+  });
+
+  // Leaderboard
+  const leaderboard = completedAttempts.map((row: any, index: number) => ({
+    rank: Number(row.completion_rank || index + 1),
+    student_id: String(row.student_id),
+    register_number: String(row.register_number),
+    full_name: String(row.full_name),
+    department: String(row.department || 'CSE'),
+    score: Number(row.score || 0),
+    max_score: Number(row.max_score || test.total_marks || 60),
+    percentage: Number(row.percentage || 0),
+    time_taken_seconds: Number(row.time_taken_seconds || 0),
+    status: String(row.status),
+    completed_at: row.end_time ? String(row.end_time) : null,
+  }));
+
+  return {
+    test: {
+      id: String(test.id),
+      title: String(test.title),
+      code: String(test.code || ''),
+      year: Number(test.year),
+      total_marks: Number(test.total_marks),
+      duration: Number(test.duration),
+    },
+    summary: {
+      total_students_started: totalStarted,
+      completed_count: completedAttempts.length,
+      in_progress_count: inProgressCount,
+      average_score: averageScore,
+      highest_score: highestScore,
+      lowest_score: lowestScore === 999999 ? 0 : lowestScore,
+      average_time_seconds: averageTimeSeconds,
+    },
+    leaderboard,
+    question_stats: questionStats,
+  };
+}
+
+export async function getMcqStudentResultDrilldownFromDb(testId: string, studentId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const attRes = await client.execute({
+    sql: `SELECT ta.*, s.register_number, s.full_name, s.department, s.year as student_year,
+                 t.title as test_title, t.total_marks as test_total_marks, t.passing_marks as test_passing_marks
+          FROM test_attempts ta
+          JOIN students s ON ta.student_id = s.id
+          JOIN tests t ON ta.test_id = t.id
+          WHERE ta.test_id = ? AND ta.student_id = ?
+          ORDER BY ta.created_at DESC LIMIT 1`,
+    args: [testId, studentId],
+  });
+
+  if (attRes.rows.length === 0) return null;
+  const att: any = attRes.rows[0];
+
+  const subRes = await client.execute({
+    sql: `SELECT ms.*, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d, q.marks
+          FROM mcq_submissions ms
+          JOIN questions q ON ms.question_id = q.id
+          WHERE ms.attempt_id = ?
+          ORDER BY ms.created_at ASC`,
+    args: [att.id],
+  });
+
+  return {
+    student: {
+      id: String(att.student_id),
+      register_number: String(att.register_number),
+      full_name: String(att.full_name),
+      department: String(att.department),
+      year: Number(att.student_year),
+    },
+    assessment: {
+      id: String(att.test_id),
+      title: String(att.test_title),
+      total_marks: Number(att.test_total_marks),
+      passing_marks: Number(att.test_passing_marks),
+    },
+    attempt: {
+      id: String(att.id),
+      start_time: String(att.start_time),
+      end_time: att.end_time ? String(att.end_time) : null,
+      score: Number(att.score || 0),
+      percentage: Number(att.percentage || 0),
+      time_taken_seconds: Number(att.time_taken_seconds || 0),
+      completion_rank: Number(att.completion_rank || 1),
+      status: String(att.status),
+    },
+    questions: subRes.rows.map((row: any, idx: number) => ({
+      question_number: idx + 1,
+      question_id: String(row.question_id),
+      question_text: String(row.description || row.title),
+      option_a: String(row.option_a || ''),
+      option_b: String(row.option_b || ''),
+      option_c: String(row.option_c || ''),
+      option_d: String(row.option_d || ''),
+      selected_option: row.selected_option ? String(row.selected_option) : null,
+      correct_answer: String(row.correct_answer),
+      is_correct: Number(row.is_correct) === 1,
+      marks_awarded: Number(row.marks_awarded || 0),
+      max_marks: Number(row.marks || 2),
+    })),
+  };
+}
+
+// -------------------------------------------------------------
+// SERVER-SIDE ASSESSMENT RANKINGS ENGINE (DETERMINISTIC)
+// -------------------------------------------------------------
+export async function getAssessmentRankingsFromDb(params: {
+  testId?: string;
+  year?: number;
+  search?: string;
+  status?: string;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const conditions: string[] = [];
+  const args: any[] = [];
+
+  if (params.testId && params.testId !== 'all') {
+    conditions.push('ta.test_id = ?');
+    args.push(params.testId);
+  }
+  if (params.year && params.year > 0) {
+    conditions.push('s.year = ?');
+    args.push(Number(params.year));
+  }
+  if (params.status && params.status !== 'all') {
+    conditions.push('ta.status = ?');
+    args.push(params.status);
+  } else {
+    // By default, exclude reset attempts from ranking display unless explicitly requested
+    conditions.push("ta.status != 'reset'");
+  }
+  if (params.search && params.search.trim()) {
+    const s = `%${params.search.trim()}%`;
+    conditions.push('(s.full_name LIKE ? OR s.register_number LIKE ?)');
+    args.push(s, s);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Deterministic order:
+  // 1. score DESC (highest score first)
+  // 2. time_taken_seconds ASC (fastest completion breaks ties)
+  // 3. end_time ASC (earlier submission breaks further ties)
+  // 4. ta.id ASC (tie-breaker is non-random)
+  const query = `
+    SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.end_time,
+           ta.score, ta.max_score, ta.percentage, ta.time_taken_seconds, ta.status,
+           ta.tab_switches, ta.fullscreen_exits, ta.violation_count, ta.termination_reason, ta.terminated_at,
+           s.full_name as student_name, s.register_number, s.department, s.year as student_year,
+           t.title as test_title, t.total_marks as test_total_marks, t.test_type,
+           (SELECT COUNT(*) FROM attempt_questions aq WHERE aq.attempt_id = ta.id) as total_questions,
+           (
+             CASE 
+               WHEN t.test_type = 'mcq' THEN (SELECT COUNT(*) FROM mcq_submissions ms WHERE ms.attempt_id = ta.id AND ms.selected_option IS NOT NULL AND ms.selected_option != '')
+               ELSE (SELECT COUNT(DISTINCT sub.question_id) FROM submissions sub WHERE (sub.attempt_id = ta.id OR sub.student_id = ta.student_id))
+             END
+           ) as attempted_questions
+    FROM test_attempts ta
+    INNER JOIN students s ON ta.student_id = s.id
+    LEFT JOIN tests t ON ta.test_id = t.id
+    ${whereClause}
+    ORDER BY 
+      CASE WHEN ta.status IN ('completed', 'submitted', 'auto_submitted') THEN 1 ELSE 2 END ASC,
+      ta.score DESC,
+      CASE WHEN ta.time_taken_seconds > 0 THEN ta.time_taken_seconds ELSE 999999 END ASC,
+      CASE WHEN ta.end_time IS NOT NULL THEN ta.end_time ELSE '9999-12-31' END ASC,
+      ta.id ASC
+  `;
+
+  const res = await client.execute({ sql: query, args });
+
+  return res.rows.map((r: any, idx: number) => {
+    const timeTaken = Number(r.time_taken_seconds || 0);
+    const mins = Math.floor(timeTaken / 60);
+    const secs = timeTaken % 60;
+    const timeTakenDisplay = timeTaken > 0 ? `${mins}m ${secs.toString().padStart(2, '0')}s` : '-';
+
+    const totalQ = Number(r.total_questions || 30);
+    const attemptedQ = Number(r.attempted_questions || (r.status === 'completed' ? totalQ : 0));
+
+    return {
+      rank: idx + 1,
+      attempt_id: String(r.attempt_id),
+      student_id: String(r.student_id),
+      student_name: String(r.student_name || 'Candidate'),
+      register_number: String(r.register_number),
+      department: String(r.department || 'CSE'),
+      year: Number(r.student_year || 2),
+      test_id: String(r.test_id),
+      test_title: String(r.test_title || 'Assessment'),
+      test_type: String(r.test_type || 'coding'),
+      score: Number(r.score || 0),
+      max_score: Number(r.max_score || r.test_total_marks || 60),
+      percentage: Number(r.percentage || (r.max_score ? Math.round((Number(r.score || 0) / Number(r.max_score)) * 100) : 0)),
+      time_taken_seconds: timeTaken,
+      time_taken_display: timeTakenDisplay,
+      questions_attempted: `${attemptedQ} / ${totalQ}`,
+      attempted_count: attemptedQ,
+      total_questions: totalQ,
+      status: String(r.status),
+      end_time: r.end_time ? String(r.end_time) : null,
+      completed_at_display: r.end_time ? new Date(r.end_time).toLocaleString() : '-',
+      termination_reason: r.termination_reason ? String(r.termination_reason) : null,
+      terminated_at: r.terminated_at ? String(r.terminated_at) : null,
+      violation_count: Number(r.violation_count || 0),
+    };
+  });
+}
+
+// -------------------------------------------------------------
+// ADMIN ACTION: RESTORE TERMINATED STUDENT
+// -------------------------------------------------------------
+export async function restoreTerminatedStudentInDb(
+  studentId: string,
+  testId?: string,
+  restoredBy: string = 'admin',
+  reason: string = 'Administrative review and clearance'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const query = testId
+    ? "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND status = 'terminated' ORDER BY created_at DESC LIMIT 1"
+    : "SELECT * FROM test_attempts WHERE student_id = ? AND status = 'terminated' ORDER BY created_at DESC LIMIT 1";
+  const args = testId ? [studentId, testId] : [studentId];
+
+  const attRes = await client.execute({ sql: query, args });
+  if (attRes.rows.length === 0) {
+    throw new Error('No terminated assessment attempt found for this student.');
+  }
+
+  const attempt: any = attRes.rows[0];
+  const targetAttemptId = String(attempt.id);
+  const targetTestId = String(attempt.test_id);
+  const now = new Date().toISOString();
+
+  // Restore attempt status to 'in_progress', preserve violation logs and violation count
+  await client.execute({
+    sql: `UPDATE test_attempts 
+          SET status = 'in_progress', 
+              termination_reason = NULL, 
+              terminated_at = NULL 
+          WHERE id = ?`,
+    args: [targetAttemptId],
+  });
+
+  // Restore student presence
+  await client.execute({
+    sql: `UPDATE student_presence 
+          SET session_status = 'IN_ASSESSMENT', 
+              active_assessment_id = ? 
+          WHERE student_id = ?`,
+    args: [targetTestId, studentId],
+  });
+
+  // Record audited admin action in activity_logs
+  await recordActivityLogInDb({
+    test_id: targetTestId,
+    student_id: studentId,
+    event_type: 'ADMIN_RESTORE_TERMINATION',
+    description: `Termination removed by ${restoredBy}. Reason: ${reason}. Attempt restored to in_progress.`,
+    metadata: {
+      attempt_id: targetAttemptId,
+      restored_by: restoredBy,
+      reason,
+      restored_at: now,
+      previous_violations: attempt.violation_count || 0,
+    },
+  });
+
+  return {
+    success: true,
+    attempt_id: targetAttemptId,
+    test_id: targetTestId,
+    restored_at: now,
+  };
+}
+
+// -------------------------------------------------------------
+// ADMIN ACTION: RESET ASSESSMENT ATTEMPT FOR INDIVIDUAL STUDENT
+// -------------------------------------------------------------
+export async function resetStudentAssessmentAttemptInDb(
+  studentId: string,
+  testId: string,
+  resetBy: string = 'admin',
+  reason: string = 'Administrative re-attempt grant'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // Fetch the current/latest attempt (regardless of status, but not already reset)
+  const attRes = await client.execute({
+    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND status != 'reset' ORDER BY created_at DESC LIMIT 1",
+    args: [studentId, testId],
+  });
+
+  const now = new Date().toISOString();
+
+  if (attRes.rows.length > 0) {
+    const attempt: any = attRes.rows[0];
+    const attemptId = String(attempt.id);
+
+    // Mark attempt as 'reset' (NEVER delete!)
+    await client.execute({
+      sql: `UPDATE test_attempts 
+            SET status = 'reset', 
+                reset_by = ?, 
+                reset_at = ?, 
+                reset_reason = ? 
+            WHERE id = ?`,
+      args: [resetBy, now, reason, attemptId],
+    });
+  }
+
+  // Clear student presence active assessment
+  await client.execute({
+    sql: `UPDATE student_presence 
+          SET session_status = 'ONLINE', 
+              active_assessment_id = NULL, 
+              violation_count = 0, 
+              current_question_index = 0 
+          WHERE student_id = ?`,
+    args: [studentId],
+  });
+
+  // Record audited admin action in activity_logs
+  await recordActivityLogInDb({
+    test_id: testId,
+    student_id: studentId,
+    event_type: 'ADMIN_RESET_ASSESSMENT',
+    description: `Assessment reset by ${resetBy}. Reason: ${reason}. Old attempt archived as reset, student can start fresh.`,
+    metadata: {
+      test_id: testId,
+      reset_by: resetBy,
+      reason,
+      reset_at: now,
+    },
+  });
+
+  return {
+    success: true,
+    student_id: studentId,
+    test_id: testId,
+    reset_at: now,
+  };
+}
+
+// -------------------------------------------------------------
+// ADMIN ACTION: SAFE CLEANUP / ARCHIVE FOR TESTS & UNUSED QUESTIONS
+// -------------------------------------------------------------
+export async function cleanupAssessmentsAndQuestionsInDb(params: {
+  target: 'draft_tests' | 'unused_questions';
+  adminName: string;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const now = new Date().toISOString();
+  let affectedCount = 0;
+
+  if (params.target === 'draft_tests') {
+    // Only archive tests in 'draft' status that have NO student attempts
+    const testsRes = await client.execute(`
+      SELECT t.id, t.title FROM tests t
+      WHERE t.status = 'draft' AND t.is_archived = 0
+        AND NOT EXISTS (SELECT 1 FROM test_attempts ta WHERE ta.test_id = t.id)
+    `);
+    for (const row of testsRes.rows) {
+      await client.execute({
+        sql: 'UPDATE tests SET is_archived = 1, status = "archived", updated_at = ? WHERE id = ?',
+        args: [now, String(row.id)],
+      });
+      affectedCount++;
+    }
+  } else if (params.target === 'unused_questions') {
+    // Only archive questions that have NEVER been used in attempts or submissions
+    const qRes = await client.execute(`
+      SELECT q.id FROM questions q
+      WHERE (q.is_archived = 0 OR q.is_archived IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM attempt_questions aq WHERE aq.question_id = q.id)
+        AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.question_id = q.id)
+        AND NOT EXISTS (SELECT 1 FROM mcq_submissions ms WHERE ms.question_id = q.id)
+    `);
+    for (const row of qRes.rows) {
+      await client.execute({
+        sql: 'UPDATE questions SET is_archived = 1, is_active = 0 WHERE id = ?',
+        args: [String(row.id)],
+      });
+      affectedCount++;
+    }
+  }
+
+  await recordActivityLogInDb({
+    student_id: 'admin',
+    student_name: params.adminName || 'Admin',
+    event_type: 'ADMIN_DATA_CLEANUP',
+    description: `Safe cleanup executed for ${params.target}. Affected ${affectedCount} records without deleting student data or submissions.`,
+    metadata: { target: params.target, affected_count: affectedCount, executed_by: params.adminName, timestamp: now },
+  });
+
+  return { success: true, affectedCount, target: params.target, executedAt: now };
+}
+
+

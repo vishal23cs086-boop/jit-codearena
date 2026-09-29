@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStudentsWithDetails, upsertStudentInDb, recordActivityLogInDb, findStudentByRegNo } from '@/lib/turso';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const students = await getStudentsWithDetails();

@@ -84,3 +84,36 @@ export function exportToCsv(filename: string, rows: Record<string, unknown>[]) {
   link.click();
   document.body.removeChild(link);
 }
+
+export function exportToExcel(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows || !rows.length) return;
+  const keys = Object.keys(rows[0]);
+  let tableHtml = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+  tableHtml += '<head><meta charset="utf-8"/><style>th { background-color: #059669; color: white; font-weight: bold; } td, th { border: 1px solid #CBD5E1; padding: 6px 10px; font-family: sans-serif; font-size: 12px; } .text { mso-number-format:"\\@"; }</style></head><body>';
+  tableHtml += '<table><thead><tr>';
+  keys.forEach((k) => {
+    tableHtml += `<th>${k}</th>`;
+  });
+  tableHtml += '</tr></thead><tbody>';
+  rows.forEach((row) => {
+    tableHtml += '<tr>';
+    keys.forEach((k) => {
+      const val = row[k] === null || row[k] === undefined ? '' : String(row[k]);
+      const isText = k.toLowerCase().includes('roll') || k.toLowerCase().includes('number') || k.toLowerCase().includes('time') || k.toLowerCase().includes('status');
+      tableHtml += `<td class="${isText ? 'text' : ''}">${val.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`;
+    });
+    tableHtml += '</tr>';
+  });
+  tableHtml += '</tbody></table></body></html>';
+
+  const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}.xls`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+

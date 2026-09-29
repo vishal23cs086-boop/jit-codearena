@@ -19,6 +19,7 @@ import {
   Edit,
   Trash2,
   Archive,
+  ArchiveRestore,
   AlertTriangle,
   Search,
   Filter,
@@ -57,6 +58,7 @@ interface AssessmentItem {
   start_time: string;
   end_time: string;
   status: 'draft' | 'scheduled' | 'live' | 'completed' | 'closed' | 'archived';
+  test_type?: 'coding' | 'mcq' | string;
   year: number; // 2 or 3
   question_count: number;
   is_archived: boolean;
@@ -90,6 +92,7 @@ export default function AssessmentManagementPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAssessment, setEditingAssessment] = useState<AssessmentItem | null>(null);
   const [deletingAssessment, setDeletingAssessment] = useState<AssessmentItem | null>(null);
+  const [unarchivingAssessment, setUnarchivingAssessment] = useState<AssessmentItem | null>(null);
   const [viewingAssessment, setViewingAssessment] = useState<AssessmentItem | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -384,15 +387,44 @@ export default function AssessmentManagementPage() {
     }
   };
 
+  const handleConfirmUnarchive = async (testToUnarchive?: AssessmentItem) => {
+    const target = testToUnarchive || unarchivingAssessment;
+    if (!target) return;
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/admin/assessments/${target.id}/unarchive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'draft' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage({
+          type: 'success',
+          text: `✓ Assessment "${target.title}" unarchived successfully! Restored to Drafts.`,
+        });
+        setUnarchivingAssessment(null);
+        fetchAssessments();
+      } else {
+        alert(data.error || 'Failed to unarchive assessment');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Unarchive request failed');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const filteredAssessments = useMemo(() => {
     return assessments.filter((t) => {
       const matchesSearch =
         t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (t.code && t.code.toLowerCase().includes(searchQuery.toLowerCase()));
 
+      const isArchived = Boolean(t.is_archived || t.status === 'archived');
       if (statusFilter === 'all') return matchesSearch;
-      if (statusFilter === 'archived') return matchesSearch && t.is_archived;
-      if (t.is_archived && statusFilter !== 'archived') return false;
+      if (statusFilter === 'archived') return matchesSearch && isArchived;
+      if (isArchived && statusFilter !== 'archived') return false;
       return matchesSearch && t.status.toLowerCase() === statusFilter.toLowerCase();
     });
   }, [assessments, searchQuery, statusFilter]);
@@ -440,6 +472,13 @@ export default function AssessmentManagementPage() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+          <Link
+            href="/admin/mcq/import"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm shadow-emerald-600/20 flex items-center gap-2 transition"
+          >
+            <FileCode className="w-4 h-4" />
+            <span>Import MCQ PDF</span>
+          </Link>
           <button
             onClick={openCreateModal}
             className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm shadow-indigo-600/20 flex items-center gap-2 transition"
@@ -486,6 +525,21 @@ export default function AssessmentManagementPage() {
           ))}
         </div>
       </div>
+
+      {/* ARCHIVED FILTER NOTICE BANNER */}
+      {statusFilter === 'archived' && (
+        <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-amber-900">
+            <ArchiveRestore className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-bold block">Archived Assessments Archive</span>
+              <span className="text-[11px] text-amber-800">
+                These assessments are safely archived to protect candidate examination records. Click <strong>Unarchive</strong> on any assessment to restore it back to Draft status.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ASSESSMENTS TABLE */}
       {loading ? (
@@ -549,6 +603,11 @@ export default function AssessmentManagementPage() {
                             >
                               {ordinalYear(test.year)} Year Assessment
                             </span>
+                            {test.test_type === 'mcq' && (
+                              <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200">
+                                MCQ
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 font-mono text-[10px] rounded border border-slate-200">
@@ -635,8 +694,28 @@ export default function AssessmentManagementPage() {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Live Toggle */}
-                          {isLive ? (
+                          {/* MCQ Analytics (if MCQ test) */}
+                          {test.test_type === 'mcq' && (
+                            <Link
+                              href={`/admin/mcq/analytics/${test.id}`}
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
+                              title="View MCQ Performance & Leaderboard"
+                            >
+                              <Award className="w-3.5 h-3.5 text-indigo-600" />
+                            </Link>
+                          )}
+
+                          {/* Status Action / Unarchive */}
+                          {isArchived ? (
+                            <button
+                              onClick={() => setUnarchivingAssessment(test)}
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-xs hover:scale-105 active:scale-95"
+                              title="Unarchive assessment and restore to Drafts"
+                            >
+                              <ArchiveRestore className="w-3.5 h-3.5" />
+                              <span>Unarchive</span>
+                            </button>
+                          ) : isLive ? (
                             <button
                               onClick={() => handleStatusToggle(test, 'closed')}
                               className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-semibold transition"
@@ -651,6 +730,17 @@ export default function AssessmentManagementPage() {
                               title="Publish Live"
                             >
                               Publish
+                            </button>
+                          )}
+
+                          {/* Unarchive Icon Button */}
+                          {isArchived && (
+                            <button
+                              onClick={() => setUnarchivingAssessment(test)}
+                              className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition"
+                              title="Unarchive Assessment"
+                            >
+                              <ArchiveRestore className="w-3.5 h-3.5" />
                             </button>
                           )}
 
@@ -709,6 +799,28 @@ export default function AssessmentManagementPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Archived Alert Banner */}
+            {(viewingAssessment.is_archived || viewingAssessment.status === 'archived') && (
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-amber-900">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>This assessment is currently <strong>archived</strong> and hidden from active views.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = viewingAssessment;
+                    setViewingAssessment(null);
+                    setUnarchivingAssessment(target);
+                  }}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-xs"
+                >
+                  <ArchiveRestore className="w-3.5 h-3.5" />
+                  <span>Unarchive Assessment</span>
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
@@ -772,6 +884,20 @@ export default function AssessmentManagementPage() {
               >
                 Close
               </button>
+              {(viewingAssessment.is_archived || viewingAssessment.status === 'archived') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = viewingAssessment;
+                    setViewingAssessment(null);
+                    setUnarchivingAssessment(target);
+                  }}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <ArchiveRestore className="w-3.5 h-3.5" />
+                  <span>Unarchive</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -1198,6 +1324,68 @@ export default function AssessmentManagementPage() {
                   : deletingAssessment.participant_count > 0
                   ? 'Safely Archive'
                   : 'Permanently Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNARCHIVE CONFIRMATION MODAL */}
+      {unarchivingAssessment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center">
+                  <ArchiveRestore className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Unarchive Assessment</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">Restore to active repository</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setUnarchivingAssessment(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                Are you sure you want to unarchive this assessment?
+              </p>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <div className="font-bold text-slate-900 text-xs">{unarchivingAssessment.title}</div>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                  <span>Code: {unarchivingAssessment.code || unarchivingAssessment.id.slice(0, 8)}</span>
+                  <span>•</span>
+                  <span>Year {unarchivingAssessment.year}</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                This will restore the assessment to <strong>Draft</strong> status. It will reappear in standard assessment lists and become available to edit, reschedule, or publish.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setUnarchivingAssessment(null)}
+                disabled={actionLoading}
+                className="px-4 py-2 text-xs text-slate-600 hover:text-slate-800 rounded-xl font-medium transition hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmUnarchive()}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+              >
+                <ArchiveRestore className={`w-3.5 h-3.5 ${actionLoading ? 'animate-spin' : ''}`} />
+                <span>{actionLoading ? 'Unarchiving...' : 'Unarchive Assessment'}</span>
               </button>
             </div>
           </div>

@@ -72,8 +72,14 @@ export async function POST(req: NextRequest) {
     // Password verification: always required; accounts without a stored password cannot log in
     {
       const { verifyPassword, hashPassword, getTursoClient } = await import('@/lib/turso');
-      const isMatch = Boolean(student.password_hash) && verifyPassword(password, student.password_hash);
-      if (!isMatch || !student.password_hash) {
+      const storedHash = student.password_hash;
+      // Roll-number passwords are accepted in any letter case (e.g. 25cs001 for 25CS001)
+      const candidates =
+        password.toUpperCase() === String(student.register_number).toUpperCase()
+          ? [password, password.toUpperCase(), password.toLowerCase()]
+          : [password];
+      const matchedPassword = storedHash ? candidates.find((p) => verifyPassword(p, storedHash)) : undefined;
+      if (!storedHash || matchedPassword === undefined) {
         return NextResponse.json(
           {
             success: false,
@@ -85,10 +91,10 @@ export async function POST(req: NextRequest) {
       }
 
       // If legacy plaintext password, automatically upgrade to salted PBKDF2 hash
-      if (!student.password_hash.startsWith('pbkdf2:')) {
+      if (!storedHash.startsWith('pbkdf2:')) {
         try {
           const client = getTursoClient();
-          const upgradedHash = hashPassword(password);
+          const upgradedHash = hashPassword(matchedPassword);
           await client.execute({
             sql: 'UPDATE students SET password_hash = ? WHERE id = ?',
             args: [upgradedHash, student.id],

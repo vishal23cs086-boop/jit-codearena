@@ -96,6 +96,15 @@ export interface Question {
   slug: string;
   description: string;
   year: number; // 2 or 3 (Academic year pool)
+  question_type?: 'coding' | 'mcq';
+  option_a?: string;
+  option_b?: string;
+  option_c?: string;
+  option_d?: string;
+  correct_answer?: string;
+  source_pdf?: string;
+  source_page?: number;
+  source_question_number?: number;
   input_format: string;
   output_format: string;
   constraints: string;
@@ -144,11 +153,14 @@ export interface Test {
   code?: string;
   assessment_code?: string;
   year?: number; // 2 or 3 (Academic Year restriction)
+  test_type?: 'coding' | 'mcq';
   question_count?: number; // Configured number of questions to assign from pool
   duration_minutes: number;
   duration_seconds?: number;
   total_marks: number;
   passing_marks?: number;
+  negative_marking?: number;
+  show_results_immediately?: boolean;
   eligible_years: number[];
   eligible_departments: string[];
   start_time: string;
@@ -158,6 +170,56 @@ export interface Test {
   scoring_config?: ScoringConfig;
   questions?: TestQuestion[];
   created_at?: string;
+}
+
+export interface PdfImportRecord {
+  id: string;
+  filename: string;
+  uploaded_by: string;
+  academic_year: number;
+  total_pages: number;
+  questions_extracted: number;
+  answers_extracted: number;
+  valid_questions: number;
+  invalid_questions: number;
+  status: 'PROCESSING' | 'REVIEW_REQUIRED' | 'READY' | 'IMPORTED' | 'FAILED';
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PdfImportQuestion {
+  id: string;
+  import_id: string;
+  question_number: number;
+  question_text: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_answer?: string | null;
+  marks: number;
+  academic_year: number;
+  source_page: number;
+  status: 'VALID' | 'NEEDS_REVIEW' | 'DUPLICATE' | 'APPROVED' | 'REJECTED';
+  review_notes?: string | null;
+  is_duplicate: number;
+  duplicate_of_id?: string | null;
+  created_at: string;
+}
+
+export interface McqSubmission {
+  id: string;
+  attempt_id: string;
+  test_id: string;
+  student_id: string;
+  question_id: string;
+  selected_option: string | null;
+  correct_answer: string;
+  is_correct: boolean;
+  marks_awarded: number;
+  answered_at: string | null;
+  created_at: string;
 }
 
 export interface TestAttempt {

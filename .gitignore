@@ -43,4 +43,5 @@ next-env.d.ts
 .vercel
 .env*
 *.db
+!jit_codearena_local.db
 scratch/ 
