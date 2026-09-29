@@ -57,6 +57,15 @@ interface StudentItem {
 export default function StudentManagementPage() {
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<{
+    totalStudents: number;
+    year2: number;
+    year3: number;
+    cse: number;
+    csbs: number;
+    aids: number;
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -175,9 +184,33 @@ export default function StudentManagementPage() {
     }
   };
 
+  const fetchStudentStats = async () => {
+    try {
+      setLoadingStats(true);
+      const res = await fetch(`/api/admin/student-stats?_t=${Date.now()}`);
+      const json = await res.json();
+      if (json.success && json.counts) {
+        setStats(json.counts);
+      }
+    } catch (err) {
+      console.warn('Failed to load student stats:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const yr = sp.get('year');
+      const dept = sp.get('department');
+      if (yr && ['1', '2', '3', '4'].includes(yr)) setYearFilter(yr);
+      if (dept && DEPARTMENTS.includes(dept.toUpperCase())) setDeptFilter(dept.toUpperCase());
+    }
     fetchStudentsList();
+    fetchStudentStats();
   }, []);
+
 
   // Close open dropdown menu on click outside
   useEffect(() => {
@@ -516,7 +549,10 @@ export default function StudentManagementPage() {
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={fetchStudentsList}
+            onClick={() => {
+              fetchStudentsList();
+              fetchStudentStats();
+            }}
             className="glass-button p-2.5 rounded-xl text-slate-600 hover:text-indigo-600 transition"
             title="Refresh student records"
           >
@@ -542,36 +578,163 @@ export default function StudentManagementPage() {
 
       {/* Institutional KPI Statistics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-3.5">
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+        <button
+          type="button"
+          onClick={() => {
+            setYearFilter('all');
+            setDeptFilter('all');
+            if (typeof window !== 'undefined') window.history.replaceState(null, '', '/admin/students');
+          }}
+          className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-slate-300 hover:shadow-sm ${
+            yearFilter === 'all' && deptFilter === 'all' ? 'ring-2 ring-indigo-500 border-indigo-300' : 'border-slate-200'
+          }`}
+          title="Reset to all enrolled students"
+        >
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Total Students</span>
-          <div className="text-2xl font-black text-slate-900">{students.filter((s) => s.status === 'active').length}</div>
-          <span className="text-[10px] text-slate-400">Official Roster</span>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Year 2</span>
-          <div className="text-2xl font-black text-indigo-600">{students.filter((s) => s.year === 2 && s.status === 'active').length}</div>
-          <span className="text-[10px] text-indigo-400">Sophomore</span>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Year 3</span>
-          <div className="text-2xl font-black text-purple-600">{students.filter((s) => s.year === 3 && s.status === 'active').length}</div>
-          <span className="text-[10px] text-purple-400">Junior</span>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">CSE</span>
-          <div className="text-2xl font-black text-emerald-600">{students.filter((s) => s.department === 'CSE' && s.status === 'active').length}</div>
-          <span className="text-[10px] text-emerald-500">Computer Science</span>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">CSBS</span>
-          <div className="text-2xl font-black text-blue-600">{students.filter((s) => s.department === 'CSBS' && s.status === 'active').length}</div>
-          <span className="text-[10px] text-blue-500">Business Systems</span>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">AI&DS</span>
-          <div className="text-2xl font-black text-amber-600">{students.filter((s) => s.department === 'AI&DS' && s.status === 'active').length}</div>
-          <span className="text-[10px] text-amber-500">AI & Data Science</span>
-        </div>
+          <div className="text-2xl font-black text-slate-900">
+            {loadingStats && !stats ? (
+              <span className="inline-block w-12 h-7 bg-slate-100 animate-pulse rounded" />
+            ) : (
+              stats?.totalStudents ?? students.filter((s) => s.status === 'active').length
+            )}
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium">Official Roster</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = yearFilter === '2' ? 'all' : '2';
+            setYearFilter(next);
+            if (typeof window !== 'undefined') {
+              const p = new URLSearchParams(window.location.search);
+              if (next === 'all') p.delete('year'); else p.set('year', '2');
+              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
+            }
+          }}
+          className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-indigo-300 hover:shadow-sm ${
+            yearFilter === '2' ? 'ring-2 ring-indigo-500 border-indigo-300 bg-indigo-50/20' : 'border-slate-200'
+          }`}
+          title="Filter Year 2 Sophomores"
+        >
+          <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 block mb-1">Year 2</span>
+          <div className="text-2xl font-black text-indigo-600">
+            {loadingStats && !stats ? (
+              <span className="inline-block w-12 h-7 bg-indigo-50 animate-pulse rounded" />
+            ) : (
+              stats?.year2 ?? students.filter((s) => s.year === 2 && s.status === 'active').length
+            )}
+          </div>
+          <span className="text-[10px] text-indigo-400 font-medium">Sophomore</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = yearFilter === '3' ? 'all' : '3';
+            setYearFilter(next);
+            if (typeof window !== 'undefined') {
+              const p = new URLSearchParams(window.location.search);
+              if (next === 'all') p.delete('year'); else p.set('year', '3');
+              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
+            }
+          }}
+          className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-purple-300 hover:shadow-sm ${
+            yearFilter === '3' ? 'ring-2 ring-purple-500 border-purple-300 bg-purple-50/20' : 'border-slate-200'
+          }`}
+          title="Filter Year 3 Juniors"
+        >
+          <span className="text-[11px] font-bold uppercase tracking-wider text-purple-500 block mb-1">Year 3</span>
+          <div className="text-2xl font-black text-purple-600">
+            {loadingStats && !stats ? (
+              <span className="inline-block w-12 h-7 bg-purple-50 animate-pulse rounded" />
+            ) : (
+              stats?.year3 ?? students.filter((s) => s.year === 3 && s.status === 'active').length
+            )}
+          </div>
+          <span className="text-[10px] text-purple-400 font-medium">Junior</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = deptFilter === 'CSE' ? 'all' : 'CSE';
+            setDeptFilter(next);
+            if (typeof window !== 'undefined') {
+              const p = new URLSearchParams(window.location.search);
+              if (next === 'all') p.delete('department'); else p.set('department', 'CSE');
+              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
+            }
+          }}
+          className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-emerald-300 hover:shadow-sm ${
+            deptFilter === 'CSE' ? 'ring-2 ring-emerald-500 border-emerald-300 bg-emerald-50/20' : 'border-slate-200'
+          }`}
+          title="Filter CSE Department Students"
+        >
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 block mb-1">CSE</span>
+          <div className="text-2xl font-black text-emerald-600">
+            {loadingStats && !stats ? (
+              <span className="inline-block w-12 h-7 bg-emerald-50 animate-pulse rounded" />
+            ) : (
+              stats?.cse ?? students.filter((s) => s.department === 'CSE' && s.status === 'active').length
+            )}
+          </div>
+          <span className="text-[10px] text-emerald-500 font-medium">Computer Science</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = deptFilter === 'CSBS' ? 'all' : 'CSBS';
+            setDeptFilter(next);
+            if (typeof window !== 'undefined') {
+              const p = new URLSearchParams(window.location.search);
+              if (next === 'all') p.delete('department'); else p.set('department', 'CSBS');
+              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
+            }
+          }}
+          className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-blue-300 hover:shadow-sm ${
+            deptFilter === 'CSBS' ? 'ring-2 ring-blue-500 border-blue-300 bg-blue-50/20' : 'border-slate-200'
+          }`}
+          title="Filter CSBS Department Students"
+        >
+          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 block mb-1">CSBS</span>
+          <div className="text-2xl font-black text-blue-600">
+            {loadingStats && !stats ? (
+              <span className="inline-block w-12 h-7 bg-blue-50 animate-pulse rounded" />
+            ) : (
+              stats?.csbs ?? students.filter((s) => s.department === 'CSBS' && s.status === 'active').length
+            )}
+          </div>
+          <span className="text-[10px] text-blue-500 font-medium">Business Systems</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = deptFilter === 'AI&DS' ? 'all' : 'AI&DS';
+            setDeptFilter(next);
+            if (typeof window !== 'undefined') {
+              const p = new URLSearchParams(window.location.search);
+              if (next === 'all') p.delete('department'); else p.set('department', 'AI&DS');
+              window.history.replaceState(null, '', p.toString() ? `/admin/students?${p.toString()}` : '/admin/students');
+            }
+          }}
+          className={`bg-white rounded-2xl p-4 border text-left transition-all cursor-pointer shadow-xs hover:border-amber-300 hover:shadow-sm ${
+            deptFilter === 'AI&DS' ? 'ring-2 ring-amber-500 border-amber-300 bg-amber-50/20' : 'border-slate-200'
+          }`}
+          title="Filter AI&DS Department Students"
+        >
+          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600 block mb-1">AI&DS</span>
+          <div className="text-2xl font-black text-amber-600">
+            {loadingStats && !stats ? (
+              <span className="inline-block w-12 h-7 bg-amber-50 animate-pulse rounded" />
+            ) : (
+              stats?.aids ?? students.filter((s) => s.department === 'AI&DS' && s.status === 'active').length
+            )}
+          </div>
+          <span className="text-[10px] text-amber-500 font-medium">AI & Data Science</span>
+        </button>
       </div>
 
       {/* Filter and Search Bar */}
