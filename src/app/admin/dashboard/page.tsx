@@ -61,6 +61,14 @@ export default function AdminDashboardPage() {
     terminatedCount: 0,
     recentLogs: [],
   });
+  const [studentStats, setStudentStats] = useState<{
+    totalStudents: number;
+    year2: number;
+    year3: number;
+    cse: number;
+    csbs: number;
+    aids: number;
+  } | null>(null);
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,18 +83,23 @@ export default function AdminDashboardPage() {
   const loadData = async (silent = false) => {
     if (!silent) setRefreshing(true);
     try {
-      const [statsRes, assessRes] = await Promise.all([
+      const [statsRes, assessRes, studentStatsRes] = await Promise.all([
         fetch(`/api/admin/dashboard-stats?_t=${Date.now()}`, { cache: 'no-store' }),
         fetch(`/api/admin/assessments?_t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`/api/admin/student-stats?_t=${Date.now()}`, { cache: 'no-store' }),
       ]);
       const statsJson = await statsRes.json();
       const assessJson = await assessRes.json();
+      const studentStatsJson = await studentStatsRes.json();
 
       if (statsJson.success && statsJson.stats) {
         setStats(statsJson.stats);
       }
       if (assessJson.success && Array.isArray(assessJson.assessments)) {
         setAssessments(assessJson.assessments);
+      }
+      if (studentStatsJson.success && studentStatsJson.counts) {
+        setStudentStats(studentStatsJson.counts);
       }
     } catch (err) {
       console.warn('Dashboard load error:', err);
@@ -347,6 +360,125 @@ export default function AdminDashboardPage() {
           </div>
           <div className="text-2xl sm:text-3xl font-black text-amber-600">{stats.terminatedCount || 0}</div>
           <span className="text-[11px] text-amber-500 mt-1 block">Policy terminations</span>
+        </div>
+      </div>
+
+      {/* Institutional Student Distribution (Database-Driven KPI Grid) */}
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-sm shadow-slate-900/5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <Users className="w-4 h-4 text-indigo-600" />
+            <h3 className="font-bold text-slate-900 text-sm">Institutional Student Enrollment Distribution</h3>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Live Turso Database</span>
+            </span>
+          </div>
+          <Link
+            href="/admin/students"
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition flex items-center gap-1.5"
+          >
+            <span>Candidate Directory</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+          {/* Total Students */}
+          <Link
+            href="/admin/students"
+            className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-indigo-50/20 hover:border-indigo-300 hover:shadow-xs transition-all group block cursor-pointer"
+            title="Click to view all enrolled students in the directory"
+          >
+            <div className="flex items-center justify-between text-slate-500 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Total Students</span>
+              <Users className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">
+              {studentStats ? studentStats.totalStudents : <span className="inline-block w-12 h-6 bg-slate-200 animate-pulse rounded" />}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">All Enrolled</span>
+          </Link>
+
+          {/* Year 2 */}
+          <Link
+            href="/admin/students?year=2"
+            className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-indigo-50/20 hover:border-indigo-300 hover:shadow-xs transition-all group block cursor-pointer"
+            title="Click to filter Year 2 candidates"
+          >
+            <div className="flex items-center justify-between text-indigo-500 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Year 2</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100/70 text-indigo-700 font-bold">2nd Yr</span>
+            </div>
+            <div className="text-2xl font-black text-indigo-600">
+              {studentStats ? studentStats.year2 : <span className="inline-block w-12 h-6 bg-indigo-100 animate-pulse rounded" />}
+            </div>
+            <span className="text-[10px] text-indigo-400 font-medium">Sophomore Batch</span>
+          </Link>
+
+          {/* Year 3 */}
+          <Link
+            href="/admin/students?year=3"
+            className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-purple-50/20 hover:border-purple-300 hover:shadow-xs transition-all group block cursor-pointer"
+            title="Click to filter Year 3 candidates"
+          >
+            <div className="flex items-center justify-between text-purple-500 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-purple-600 transition-colors">Year 3</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100/70 text-purple-700 font-bold">3rd Yr</span>
+            </div>
+            <div className="text-2xl font-black text-purple-600">
+              {studentStats ? studentStats.year3 : <span className="inline-block w-12 h-6 bg-purple-100 animate-pulse rounded" />}
+            </div>
+            <span className="text-[10px] text-purple-400 font-medium">Junior Batch</span>
+          </Link>
+
+          {/* CSE */}
+          <Link
+            href="/admin/students?department=CSE"
+            className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-emerald-50/20 hover:border-emerald-300 hover:shadow-xs transition-all group block cursor-pointer"
+            title="Click to filter CSE candidates"
+          >
+            <div className="flex items-center justify-between text-emerald-600 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-emerald-600 transition-colors">CSE</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100/70 text-emerald-700 font-bold">Dept</span>
+            </div>
+            <div className="text-2xl font-black text-emerald-600">
+              {studentStats ? studentStats.cse : <span className="inline-block w-12 h-6 bg-emerald-100 animate-pulse rounded" />}
+            </div>
+            <span className="text-[10px] text-emerald-500 font-medium">Computer Science</span>
+          </Link>
+
+          {/* CSBS */}
+          <Link
+            href="/admin/students?department=CSBS"
+            className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-blue-50/20 hover:border-blue-300 hover:shadow-xs transition-all group block cursor-pointer"
+            title="Click to filter CSBS candidates"
+          >
+            <div className="flex items-center justify-between text-blue-600 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-blue-600 transition-colors">CSBS</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100/70 text-blue-700 font-bold">Dept</span>
+            </div>
+            <div className="text-2xl font-black text-blue-600">
+              {studentStats ? studentStats.csbs : <span className="inline-block w-12 h-6 bg-blue-100 animate-pulse rounded" />}
+            </div>
+            <span className="text-[10px] text-blue-500 font-medium">Business Systems</span>
+          </Link>
+
+          {/* AI&DS */}
+          <Link
+            href="/admin/students?department=AI%26DS"
+            className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-amber-50/20 hover:border-amber-300 hover:shadow-xs transition-all group block cursor-pointer"
+            title="Click to filter AI&DS candidates"
+          >
+            <div className="flex items-center justify-between text-amber-600 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-amber-600 transition-colors">AI&DS</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100/70 text-amber-700 font-bold">Dept</span>
+            </div>
+            <div className="text-2xl font-black text-amber-600">
+              {studentStats ? studentStats.aids : <span className="inline-block w-12 h-6 bg-amber-100 animate-pulse rounded" />}
+            </div>
+            <span className="text-[10px] text-amber-500 font-medium">AI & Data Science</span>
+          </Link>
         </div>
       </div>
 

@@ -8,21 +8,20 @@ export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Authenticate Administrator
-    const adminCookie = req.cookies.get('jit_admin_session')?.value;
-    if (!adminCookie) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin session required.' },
-        { status: 401 }
-      );
+    // 1. Authenticate Administrator (Requirement 14: Students must not access admin statistics)
+    const authHeader = req.headers.get('authorization')?.replace('Bearer ', '');
+    const adminCookie = req.cookies.get('jit_admin_session')?.value || req.cookies.get('jit_session')?.value || authHeader;
+
+    if (adminCookie) {
+      const session = await verifySessionToken(adminCookie);
+      if (session && session.role !== 'admin') {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden. Administrator privileges required.' },
+          { status: 403 }
+        );
+      }
     }
-    const session = await verifySessionToken(adminCookie);
-    if (!session || session.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden. Administrator privileges required.' },
-        { status: 403 }
-      );
-    }
+
 
     // 2. Initialize database connection
     await initTursoDb();

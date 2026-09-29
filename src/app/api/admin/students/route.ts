@@ -4,9 +4,35 @@ import { getStudentsWithDetails, upsertStudentInDb, recordActivityLogInDb, findS
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const students = await getStudentsWithDetails();
+    const searchParams = req.nextUrl?.searchParams;
+    const yearParam = searchParams?.get('year');
+    const deptParam = searchParams?.get('department');
+    const statusParam = searchParams?.get('status');
+    const searchParam = searchParams?.get('search');
+
+    const filters: {
+      year?: number;
+      department?: string;
+      status?: string;
+      search?: string;
+    } = {};
+
+    if (yearParam && yearParam !== 'all') {
+      filters.year = Number(yearParam);
+    }
+    if (deptParam && deptParam !== 'all') {
+      filters.department = deptParam;
+    }
+    if (statusParam && statusParam !== 'all') {
+      filters.status = statusParam;
+    }
+    if (searchParam && searchParam.trim()) {
+      filters.search = searchParam.trim();
+    }
+
+    const students = await getStudentsWithDetails(filters);
     return NextResponse.json({
       success: true,
       count: students.length,
