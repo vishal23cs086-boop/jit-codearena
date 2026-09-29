@@ -100,12 +100,10 @@ export default function LoginPage() {
             <span>Academic Year 2026–2027 Portal</span>
           </div>
 
-          <h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight">
-            Code.{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600">
-              Secure.
-            </span>{' '}
-            Era.
+          <h2 className="text-4xl lg:text-5xl font-black tracking-tight leading-tight">
+            <span className="text-[#0A2540]">Code.</span>{' '}
+            <span className="text-indigo-600">Secure.</span>{' '}
+            <span className="text-teal-600">Era.</span>
           </h2>
 
           <p className="text-sm text-slate-600 leading-relaxed">

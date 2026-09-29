@@ -63,6 +63,12 @@ export default function HomePage() {
             JIT <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-800">CodeArena</span>
           </h1>
 
+          <div className="text-xl sm:text-2xl font-black tracking-tight mb-3">
+            <span className="text-[#0A2540]">Code.</span>{' '}
+            <span className="text-indigo-600">Secure.</span>{' '}
+            <span className="text-teal-600">Era.</span>
+          </div>
+
           <p className="text-xs sm:text-sm font-bold text-indigo-600 uppercase tracking-widest mb-6">
             Institutional Online Coding Assessment Platform
           </p>
@@ -275,7 +281,7 @@ export default function HomePage() {
             JIT CodeArena • Institutional Online Coding Assessment Platform
           </p>
           <p className="text-[11px] text-slate-500">
-            Academic Session: 2026–2027 • Department of Computer Science and Engineering
+            Academic Session: 2026–2027
           </p>
         </div>
       </footer>
