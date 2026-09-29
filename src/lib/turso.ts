@@ -202,6 +202,56 @@ export async function initTursoDb(): Promise<void> {
       stderr TEXT,
       compile_output TEXT,
       created_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS pdf_imports (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      uploaded_by TEXT NOT NULL DEFAULT 'admin',
+      academic_year INTEGER NOT NULL DEFAULT 2,
+      total_pages INTEGER DEFAULT 0,
+      questions_extracted INTEGER DEFAULT 0,
+      answers_extracted INTEGER DEFAULT 0,
+      valid_questions INTEGER DEFAULT 0,
+      invalid_questions INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PROCESSING',
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS pdf_import_questions (
+      id TEXT PRIMARY KEY,
+      import_id TEXT NOT NULL,
+      question_number INTEGER NOT NULL,
+      question_text TEXT NOT NULL,
+      option_a TEXT NOT NULL,
+      option_b TEXT NOT NULL,
+      option_c TEXT NOT NULL,
+      option_d TEXT NOT NULL,
+      correct_answer TEXT,
+      marks REAL DEFAULT 2,
+      academic_year INTEGER NOT NULL DEFAULT 2,
+      source_page INTEGER DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'VALID',
+      review_notes TEXT,
+      is_duplicate INTEGER DEFAULT 0,
+      duplicate_of_id TEXT,
+      created_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS mcq_submissions (
+      id TEXT PRIMARY KEY,
+      attempt_id TEXT NOT NULL,
+      test_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      selected_option TEXT,
+      correct_answer TEXT NOT NULL,
+      is_correct INTEGER NOT NULL DEFAULT 0,
+      marks_awarded REAL NOT NULL DEFAULT 0,
+      answered_at TEXT,
+      created_at TEXT NOT NULL
     );`
   ];
 
@@ -261,6 +311,24 @@ export async function initTursoDb(): Promise<void> {
     'ALTER TABLE questions ADD COLUMN starter_code TEXT;',
     'CREATE INDEX IF NOT EXISTS idx_questions_is_archived ON questions(is_archived);',
     'ALTER TABLE code_executions ADD COLUMN execution_number INTEGER DEFAULT 1;',
+    "ALTER TABLE questions ADD COLUMN question_type TEXT DEFAULT 'coding';",
+    'ALTER TABLE questions ADD COLUMN option_a TEXT;',
+    'ALTER TABLE questions ADD COLUMN option_b TEXT;',
+    'ALTER TABLE questions ADD COLUMN option_c TEXT;',
+    'ALTER TABLE questions ADD COLUMN option_d TEXT;',
+    'ALTER TABLE questions ADD COLUMN correct_answer TEXT;',
+    'ALTER TABLE questions ADD COLUMN source_pdf TEXT;',
+    'ALTER TABLE questions ADD COLUMN source_page INTEGER;',
+    'ALTER TABLE questions ADD COLUMN source_question_number INTEGER;',
+    "ALTER TABLE tests ADD COLUMN test_type TEXT DEFAULT 'coding';",
+    'ALTER TABLE tests ADD COLUMN negative_marking REAL DEFAULT 0;',
+    'ALTER TABLE tests ADD COLUMN show_results_immediately INTEGER DEFAULT 1;',
+    'CREATE INDEX IF NOT EXISTS idx_questions_type ON questions(question_type);',
+    'CREATE INDEX IF NOT EXISTS idx_tests_type ON tests(test_type);',
+    'CREATE INDEX IF NOT EXISTS idx_pdf_import_questions_import ON pdf_import_questions(import_id);',
+    'CREATE INDEX IF NOT EXISTS idx_mcq_subs_attempt ON mcq_submissions(attempt_id);',
+    'CREATE INDEX IF NOT EXISTS idx_mcq_subs_test ON mcq_submissions(test_id);',
+    'CREATE INDEX IF NOT EXISTS idx_mcq_subs_student ON mcq_submissions(student_id);',
   ];
 
   for (const alt of alters) {
@@ -2258,6 +2326,11 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
   const test: any = tRes.rows[0];
   const testYear = Number(test.year || 2);
 
+  // If this assessment is an MCQ assessment, delegate directly to MCQ engine
+  if (test.test_type === 'mcq') {
+    return await startOrGetMcqAssessmentAttempt(testId, studentId);
+  }
+
   // 3. Status Guard: Must be live/active/published
   const testStatus = String(test.status || 'draft').toLowerCase();
   if (testStatus !== 'live' && testStatus !== 'active' && testStatus !== 'published') {
@@ -3241,6 +3314,7 @@ export async function getStudentAssessmentResultFromDb(testId: string, studentId
   const attRes = await client.execute({
     sql: `SELECT ta.*, t.title as test_title, t.description as test_description, t.duration as test_duration,
                  t.total_marks as test_total_marks, t.passing_marks as test_passing_marks, t.year as test_year,
+                 t.test_type,
                  s.register_number, s.full_name, s.department, s.year as student_year
           FROM test_attempts ta
           JOIN tests t ON ta.test_id = t.id
@@ -3302,6 +3376,7 @@ export async function getStudentAssessmentResultFromDb(testId: string, studentId
     attempt_id: String(att.id),
     test_id: String(att.test_id),
     test_title: String(att.test_title),
+    test_type: String(att.test_type || (att.max_score === 60 ? 'mcq' : 'coding')),
     student_id: String(att.student_id),
     register_number: String(att.register_number),
     full_name: String(att.full_name),
@@ -3618,3 +3693,1079 @@ export async function migrateQuestionsToThreeTestCasesAndCleanStarterCode(resetS
     summary,
   };
 }
+
+// -------------------------------------------------------------
+// ADVANCED MCQ & PDF IMPORT DATABASE FUNCTIONS
+// -------------------------------------------------------------
+
+export async function findDuplicateQuestionsInDb(questionText: string, year: number) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const cleanText = questionText.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleanText.length < 10) return { isDuplicate: false };
+
+  const res = await client.execute({
+    sql: 'SELECT id, title, description FROM questions WHERE year = ? AND (is_archived = 0 OR is_archived IS NULL)',
+    args: [year],
+  });
+
+  const words = cleanText.split(' ').filter((w) => w.length > 2);
+  if (words.length === 0) return { isDuplicate: false };
+
+  for (const row of res.rows) {
+    const existingClean = `${row.title} ${row.description || ''}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (existingClean === cleanText) {
+      return { isDuplicate: true, duplicateId: String(row.id), title: String(row.title) };
+    }
+
+    const existingWords = new Set(existingClean.split(' ').filter((w) => w.length > 2));
+    let matchCount = 0;
+    for (const w of words) {
+      if (existingWords.has(w)) matchCount++;
+    }
+    const similarity = matchCount / Math.max(words.length, existingWords.size);
+    if (similarity >= 0.85) {
+      return { isDuplicate: true, duplicateId: String(row.id), title: String(row.title) };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
+export async function createPdfImportInDb(data: {
+  filename: string;
+  uploaded_by?: string;
+  academic_year: number;
+  total_pages: number;
+  questions_extracted: number;
+  answers_extracted: number;
+  valid_questions: number;
+  invalid_questions: number;
+  status: string;
+  error_message?: string | null;
+  questions: Array<{
+    question_number: number;
+    question_text: string;
+    option_a: string;
+    option_b: string;
+    option_c: string;
+    option_d: string;
+    correct_answer?: string | null;
+    marks?: number;
+    academic_year: number;
+    source_page: number;
+    status: string;
+    review_notes?: string | null;
+    is_duplicate?: number;
+    duplicate_of_id?: string | null;
+  }>;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const importId = `imp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `INSERT INTO pdf_imports (
+      id, filename, uploaded_by, academic_year, total_pages,
+      questions_extracted, answers_extracted, valid_questions, invalid_questions,
+      status, error_message, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      importId,
+      data.filename,
+      data.uploaded_by || 'admin',
+      data.academic_year,
+      data.total_pages,
+      data.questions_extracted,
+      data.answers_extracted,
+      data.valid_questions,
+      data.invalid_questions,
+      data.status,
+      data.error_message || null,
+      now,
+      now,
+    ],
+  });
+
+  for (const q of data.questions) {
+    const qId = `impq-${Date.now()}-${q.question_number}-${Math.random().toString(36).substring(2, 6)}`;
+    await client.execute({
+      sql: `INSERT INTO pdf_import_questions (
+        id, import_id, question_number, question_text, option_a, option_b, option_c, option_d,
+        correct_answer, marks, academic_year, source_page, status, review_notes,
+        is_duplicate, duplicate_of_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        qId,
+        importId,
+        q.question_number,
+        q.question_text,
+        q.option_a,
+        q.option_b,
+        q.option_c,
+        q.option_d,
+        q.correct_answer || null,
+        q.marks || 2,
+        q.academic_year,
+        q.source_page,
+        q.status,
+        q.review_notes || null,
+        q.is_duplicate || 0,
+        q.duplicate_of_id || null,
+        now,
+      ],
+    });
+  }
+
+  return { importId, status: data.status };
+}
+
+export async function getPdfImportFromDb(importId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const res = await client.execute({
+    sql: 'SELECT * FROM pdf_imports WHERE id = ? LIMIT 1',
+    args: [importId],
+  });
+
+  if (res.rows.length === 0) return null;
+  const row: any = res.rows[0];
+
+  return {
+    id: String(row.id),
+    filename: String(row.filename),
+    uploaded_by: String(row.uploaded_by),
+    academic_year: Number(row.academic_year),
+    total_pages: Number(row.total_pages || 0),
+    questions_extracted: Number(row.questions_extracted || 0),
+    answers_extracted: Number(row.answers_extracted || 0),
+    valid_questions: Number(row.valid_questions || 0),
+    invalid_questions: Number(row.invalid_questions || 0),
+    status: String(row.status),
+    error_message: row.error_message ? String(row.error_message) : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export async function getPdfImportQuestionsFromDb(importId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const res = await client.execute({
+    sql: 'SELECT * FROM pdf_import_questions WHERE import_id = ? ORDER BY question_number ASC',
+    args: [importId],
+  });
+
+  return res.rows.map((row: any) => ({
+    id: String(row.id),
+    import_id: String(row.import_id),
+    question_number: Number(row.question_number),
+    question_text: String(row.question_text),
+    option_a: String(row.option_a || ''),
+    option_b: String(row.option_b || ''),
+    option_c: String(row.option_c || ''),
+    option_d: String(row.option_d || ''),
+    correct_answer: row.correct_answer ? String(row.correct_answer) : null,
+    marks: Number(row.marks || 2),
+    academic_year: Number(row.academic_year || 2),
+    source_page: Number(row.source_page || 1),
+    status: String(row.status),
+    review_notes: row.review_notes ? String(row.review_notes) : null,
+    is_duplicate: Number(row.is_duplicate || 0),
+    duplicate_of_id: row.duplicate_of_id ? String(row.duplicate_of_id) : null,
+    created_at: String(row.created_at),
+  }));
+}
+
+export async function updatePdfImportQuestionInDb(
+  qId: string,
+  data: {
+    question_text?: string;
+    option_a?: string;
+    option_b?: string;
+    option_c?: string;
+    option_d?: string;
+    correct_answer?: string | null;
+    marks?: number;
+    status?: string;
+    review_notes?: string | null;
+  }
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const updates: string[] = [];
+  const args: any[] = [];
+
+  if (data.question_text !== undefined) {
+    updates.push('question_text = ?');
+    args.push(data.question_text.trim());
+  }
+  if (data.option_a !== undefined) {
+    updates.push('option_a = ?');
+    args.push(data.option_a.trim());
+  }
+  if (data.option_b !== undefined) {
+    updates.push('option_b = ?');
+    args.push(data.option_b.trim());
+  }
+  if (data.option_c !== undefined) {
+    updates.push('option_c = ?');
+    args.push(data.option_c.trim());
+  }
+  if (data.option_d !== undefined) {
+    updates.push('option_d = ?');
+    args.push(data.option_d.trim());
+  }
+  if (data.correct_answer !== undefined) {
+    updates.push('correct_answer = ?');
+    args.push(data.correct_answer ? data.correct_answer.toUpperCase().trim() : null);
+  }
+  if (data.marks !== undefined) {
+    updates.push('marks = ?');
+    args.push(Number(data.marks));
+  }
+  if (data.status !== undefined) {
+    updates.push('status = ?');
+    args.push(data.status);
+  }
+  if (data.review_notes !== undefined) {
+    updates.push('review_notes = ?');
+    args.push(data.review_notes);
+  }
+
+  if (updates.length > 0) {
+    args.push(qId);
+    await client.execute({
+      sql: `UPDATE pdf_import_questions SET ${updates.join(', ')} WHERE id = ?`,
+      args,
+    });
+  }
+
+  const res = await client.execute({
+    sql: 'SELECT * FROM pdf_import_questions WHERE id = ? LIMIT 1',
+    args: [qId],
+  });
+
+  return res.rows[0] ? (res.rows[0] as any) : null;
+}
+
+export async function approvePdfImportQuestionsInDb(importId: string, questionIds?: string[]) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const imp = await getPdfImportFromDb(importId);
+  if (!imp) throw new Error('PDF Import record not found.');
+
+  let sql = 'SELECT * FROM pdf_import_questions WHERE import_id = ?';
+  const args: any[] = [importId];
+
+  if (Array.isArray(questionIds) && questionIds.length > 0) {
+    sql += ` AND id IN (${questionIds.map(() => '?').join(',')})`;
+    args.push(...questionIds);
+  } else {
+    // Approve all valid or approved questions
+    sql += " AND status != 'REJECTED'";
+  }
+
+  const res = await client.execute({ sql, args });
+  const questionsToApprove = res.rows;
+
+  if (questionsToApprove.length === 0) {
+    throw new Error('No eligible questions found to approve.');
+  }
+
+  const now = new Date().toISOString();
+  let approvedCount = 0;
+  const createdQuestionIds: string[] = [];
+
+  for (const q of questionsToApprove) {
+    const qRow: any = q;
+    const finalQId = `q-mcq-${Date.now()}-${qRow.question_number}-${Math.random().toString(36).substring(2, 6)}`;
+
+    await client.execute({
+      sql: `INSERT INTO questions (
+        id, test_id, title, description, question_type, option_a, option_b, option_c, option_d,
+        correct_answer, marks, year, topic, difficulty, source_pdf, source_page,
+        source_question_number, is_active, is_archived, created_at
+      ) VALUES (?, 'bank', ?, ?, 'mcq', ?, ?, ?, ?, ?, ?, ?, 'General MCQ', 'Medium', ?, ?, ?, 1, 0, ?)`,
+      args: [
+        finalQId,
+        qRow.question_text.slice(0, 100).trim(),
+        qRow.question_text.trim(),
+        qRow.option_a,
+        qRow.option_b,
+        qRow.option_c,
+        qRow.option_d,
+        (qRow.correct_answer || 'A').toUpperCase().trim(),
+        Number(qRow.marks || 2),
+        Number(qRow.academic_year || imp.academic_year || 2),
+        imp.filename,
+        Number(qRow.source_page || 1),
+        Number(qRow.question_number),
+        now,
+      ],
+    });
+
+    await client.execute({
+      sql: "UPDATE pdf_import_questions SET status = 'APPROVED' WHERE id = ?",
+      args: [qRow.id],
+    });
+
+    createdQuestionIds.push(finalQId);
+    approvedCount++;
+  }
+
+  await client.execute({
+    sql: "UPDATE pdf_imports SET status = 'IMPORTED', updated_at = ? WHERE id = ?",
+    args: [now, importId],
+  });
+
+  return {
+    success: true,
+    importId,
+    approvedCount,
+    createdQuestionIds,
+  };
+}
+
+export async function createMcqAssessmentInDb(data: {
+  title: string;
+  code?: string;
+  description?: string;
+  instructions?: string;
+  year: number;
+  duration_minutes?: number;
+  question_count?: number;
+  marks_per_question?: number;
+  passing_marks?: number;
+  start_time?: string;
+  end_time?: string;
+  status?: string;
+  import_id?: string;
+  question_ids?: string[];
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const title = (data.title || '').trim();
+  if (!title) throw new Error('Assessment title is required.');
+
+  const testYear = Number(data.year);
+  if (testYear !== 2 && testYear !== 3) {
+    throw new Error('Academic year must be strictly 2 (2nd Year) or 3 (3rd Year).');
+  }
+
+  const duration = Number(data.duration_minutes || 60);
+  const qCount = Number(data.question_count || 30);
+  const marksPerQ = Number(data.marks_per_question || 2);
+  const totalMarks = qCount * marksPerQ;
+  const passingMarks = Number(data.passing_marks !== undefined ? data.passing_marks : Math.round(totalMarks * 0.4));
+
+  const testId = `test-mcq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  let code = (data.code || '').trim().toUpperCase();
+  if (!code) {
+    code = `JIT-Y${testYear}-MCQ-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  await client.execute({
+    sql: `INSERT INTO tests (
+      id, title, description, code, instructions, duration, total_marks,
+      passing_marks, start_time, end_time, status, year, question_count,
+      test_type, is_archived, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'mcq', 0, ?, ?)`,
+    args: [
+      testId,
+      title,
+      data.description ? data.description.trim() : `MCQ Assessment for Year ${testYear} students.`,
+      code,
+      data.instructions || 'Select the correct option for each question. Answers are saved automatically.',
+      duration,
+      totalMarks,
+      passingMarks,
+      data.start_time || null,
+      data.end_time || null,
+      data.status || 'published',
+      testYear,
+      qCount,
+      now,
+      now,
+    ],
+  });
+
+  // Attach questions to this test if provided
+  if (Array.isArray(data.question_ids) && data.question_ids.length > 0) {
+    for (let i = 0; i < data.question_ids.length; i++) {
+      const qId = data.question_ids[i];
+      await client.execute({
+        sql: 'UPDATE questions SET test_id = ? WHERE id = ?',
+        args: [testId, qId],
+      });
+    }
+  }
+
+  return {
+    id: testId,
+    title,
+    code,
+    year: testYear,
+    duration,
+    question_count: qCount,
+    total_marks: totalMarks,
+    passing_marks: passingMarks,
+    test_type: 'mcq',
+    status: data.status || 'published',
+  };
+}
+
+export async function startOrGetMcqAssessmentAttempt(testId: string, studentId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // 1. Fetch test
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [testId],
+  });
+  if (testRes.rows.length === 0) {
+    const err: any = new Error('Assessment not found.');
+    err.status = 404;
+    throw err;
+  }
+  const test: any = testRes.rows[0];
+
+  // 2. Fetch student
+  const studentRes = await client.execute({
+    sql: 'SELECT * FROM students WHERE id = ? LIMIT 1',
+    args: [studentId],
+  });
+  if (studentRes.rows.length === 0) {
+    const err: any = new Error('Student not found.');
+    err.status = 404;
+    throw err;
+  }
+  const student: any = studentRes.rows[0];
+
+  // 3. Strict Academic Year Isolation Guard
+  if (Number(student.year) !== Number(test.year)) {
+    const err: any = new Error(
+      `Access Denied: This assessment is restricted to Year ${test.year} students. Your registered profile is Year ${student.year}.`
+    );
+    err.status = 403;
+    throw err;
+  }
+
+  // 4. Check for existing attempt
+  const existingAttemptRes = await client.execute({
+    sql: `SELECT * FROM test_attempts 
+          WHERE test_id = ? AND student_id = ? 
+          ORDER BY created_at DESC LIMIT 1`,
+    args: [testId, studentId],
+  });
+
+  const now = new Date().toISOString();
+  const durationMin = Number(test.duration || 60);
+
+  if (existingAttemptRes.rows.length > 0) {
+    const existingAttempt: any = existingAttemptRes.rows[0];
+    const attemptId = String(existingAttempt.id);
+
+    // Fetch frozen assigned questions in order
+    const assignedQRes = await client.execute({
+      sql: `SELECT q.id, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d,
+                   q.marks, q.year, aq.question_order
+            FROM attempt_questions aq
+            JOIN questions q ON aq.question_id = q.id
+            WHERE aq.attempt_id = ?
+            ORDER BY aq.question_order ASC`,
+      args: [attemptId],
+    });
+
+    let answers: Record<string, any> = {};
+    if (existingAttempt.answers) {
+      try {
+        answers = JSON.parse(String(existingAttempt.answers));
+      } catch {}
+    }
+
+    // Sanitize questions: NEVER leak correct_answer to client!
+    const sanitizedQuestions = assignedQRes.rows.map((row: any) => ({
+      id: String(row.id),
+      question_number: Number(row.question_order),
+      question_text: String(row.description || row.title),
+      option_a: String(row.option_a || ''),
+      option_b: String(row.option_b || ''),
+      option_c: String(row.option_c || ''),
+      option_d: String(row.option_d || ''),
+      marks: Number(row.marks || 2),
+      year: Number(row.year),
+    }));
+
+    return {
+      isExisting: true,
+      attempt: {
+        id: attemptId,
+        test_id: testId,
+        student_id: studentId,
+        start_time: String(existingAttempt.start_time),
+        ends_at: String(existingAttempt.ends_at || ''),
+        status: String(existingAttempt.status),
+        score: Number(existingAttempt.score || 0),
+        max_score: Number(existingAttempt.max_score || test.total_marks || 60),
+        answers,
+      },
+      test: {
+        id: String(test.id),
+        title: String(test.title),
+        description: String(test.description || ''),
+        duration: durationMin,
+        duration_minutes: durationMin,
+        total_marks: Number(test.total_marks || 60),
+        passing_marks: Number(test.passing_marks || 24),
+        year: Number(test.year),
+        test_type: 'mcq',
+      },
+      questions: sanitizedQuestions,
+    };
+  }
+
+  // 5. New Attempt: Randomize and assign frozen question set
+  const poolRes = await client.execute({
+    sql: `SELECT id FROM questions 
+          WHERE (year = ? OR test_id = ?) 
+            AND question_type = 'mcq'
+            AND (is_archived = 0 OR is_archived IS NULL)
+            AND (is_active = 1 OR is_active IS NULL)`,
+    args: [Number(test.year), testId],
+  });
+
+  let poolIds = poolRes.rows.map((r: any) => String(r.id));
+  if (poolIds.length === 0) {
+    // If no questions marked specifically as 'mcq', check all questions attached to test
+    const testSpecificRes = await client.execute({
+      sql: 'SELECT id FROM questions WHERE test_id = ? AND (is_archived = 0 OR is_archived IS NULL)',
+      args: [testId],
+    });
+    poolIds = testSpecificRes.rows.map((r: any) => String(r.id));
+  }
+
+  if (poolIds.length === 0) {
+    const err: any = new Error(`No MCQ questions are currently available for Year ${test.year}.`);
+    err.status = 400;
+    throw err;
+  }
+
+  // Shuffle question pool (Fisher-Yates)
+  for (let i = poolIds.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [poolIds[i], poolIds[j]] = [poolIds[j], poolIds[i]];
+  }
+
+  const targetCount = Math.min(poolIds.length, Number(test.question_count || 30));
+  const selectedQuestionIds = poolIds.slice(0, targetCount);
+
+  const attemptId = `att-mcq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const endsAt = new Date(Date.now() + durationMin * 60 * 1000).toISOString();
+
+  // Create attempt in test_attempts
+  await client.execute({
+    sql: `INSERT INTO test_attempts (
+      id, test_id, student_id, start_time, ends_at, status, score,
+      max_score, answers, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'in_progress', 0, ?, '{}', ?)`,
+    args: [
+      attemptId,
+      testId,
+      studentId,
+      now,
+      endsAt,
+      Number(test.total_marks || targetCount * 2),
+      now,
+    ],
+  });
+
+  // Freeze assigned questions in attempt_questions table
+  for (let i = 0; i < selectedQuestionIds.length; i++) {
+    const qId = selectedQuestionIds[i];
+    const aqId = `aq-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+    await client.execute({
+      sql: `INSERT INTO attempt_questions (id, attempt_id, question_id, question_order, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [aqId, attemptId, qId, i + 1, now],
+    });
+  }
+
+  // Retrieve assigned questions
+  const qDetailsRes = await client.execute({
+    sql: `SELECT q.id, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d,
+                 q.marks, q.year, aq.question_order
+          FROM attempt_questions aq
+          JOIN questions q ON aq.question_id = q.id
+          WHERE aq.attempt_id = ?
+          ORDER BY aq.question_order ASC`,
+    args: [attemptId],
+  });
+
+  const sanitizedQuestions = qDetailsRes.rows.map((row: any) => ({
+    id: String(row.id),
+    question_number: Number(row.question_order),
+    question_text: String(row.description || row.title),
+    option_a: String(row.option_a || ''),
+    option_b: String(row.option_b || ''),
+    option_c: String(row.option_c || ''),
+    option_d: String(row.option_d || ''),
+    marks: Number(row.marks || 2),
+    year: Number(row.year),
+  }));
+
+  return {
+    isExisting: false,
+    attempt: {
+      id: attemptId,
+      test_id: testId,
+      student_id: studentId,
+      start_time: now,
+      ends_at: endsAt,
+      status: 'in_progress',
+      score: 0,
+      max_score: Number(test.total_marks || targetCount * 2),
+      answers: {},
+    },
+    test: {
+      id: String(test.id),
+      title: String(test.title),
+      description: String(test.description || ''),
+      duration: durationMin,
+      duration_minutes: durationMin,
+      total_marks: Number(test.total_marks || targetCount * 2),
+      passing_marks: Number(test.passing_marks || Math.round(targetCount * 2 * 0.4)),
+      year: Number(test.year),
+      test_type: 'mcq',
+    },
+    questions: sanitizedQuestions,
+  };
+}
+
+export async function saveStudentMcqAnswerInDb(
+  attemptId: string,
+  questionId: string,
+  studentId: string,
+  selectedOption: string | null
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const attRes = await client.execute({
+    sql: 'SELECT * FROM test_attempts WHERE id = ? LIMIT 1',
+    args: [attemptId],
+  });
+  if (attRes.rows.length === 0) throw new Error('Assessment attempt not found.');
+  const attempt: any = attRes.rows[0];
+
+  if (String(attempt.student_id) !== studentId) {
+    throw new Error('Unauthorized: Student ID does not match assessment attempt owner.');
+  }
+
+  const currentStatus = String(attempt.status || '').toLowerCase();
+  if (currentStatus === 'completed' || currentStatus === 'submitted' || currentStatus === 'auto_submitted') {
+    throw new Error('Assessment attempt has already concluded. No further answer submissions permitted.');
+  }
+
+  // Timer check
+  if (attempt.ends_at) {
+    const endsAtMs = new Date(attempt.ends_at).getTime();
+    if (Date.now() > endsAtMs + 5000) {
+      throw new Error('Assessment deadline has expired.');
+    }
+  }
+
+  let answers: Record<string, any> = {};
+  if (attempt.answers) {
+    try {
+      answers = JSON.parse(String(attempt.answers));
+    } catch {}
+  }
+
+  const now = new Date().toISOString();
+  if (selectedOption) {
+    answers[questionId] = {
+      selected_option: selectedOption.toUpperCase().trim(),
+      updated_at: now,
+    };
+  } else {
+    delete answers[questionId];
+  }
+
+  await client.execute({
+    sql: 'UPDATE test_attempts SET answers = ? WHERE id = ?',
+    args: [JSON.stringify(answers), attemptId],
+  });
+
+  return { success: true, saved_at: now };
+}
+
+export async function submitStudentMcqAssessmentInDb(testId: string, studentId: string, attemptId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const attRes = await client.execute({
+    sql: 'SELECT * FROM test_attempts WHERE id = ? AND student_id = ? LIMIT 1',
+    args: [attemptId, studentId],
+  });
+  if (attRes.rows.length === 0) throw new Error('Attempt not found for student.');
+  const attempt: any = attRes.rows[0];
+
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [testId],
+  });
+  if (testRes.rows.length === 0) throw new Error('Test not found.');
+  const test: any = testRes.rows[0];
+
+  // Fetch assigned questions with authoritative correct_answer from database
+  const qRes = await client.execute({
+    sql: `SELECT q.id, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d,
+                 q.correct_answer, q.marks, aq.question_order
+          FROM attempt_questions aq
+          JOIN questions q ON aq.question_id = q.id
+          WHERE aq.attempt_id = ?
+          ORDER BY aq.question_order ASC`,
+    args: [attemptId],
+  });
+
+  let studentAnswers: Record<string, any> = {};
+  if (attempt.answers) {
+    try {
+      studentAnswers = JSON.parse(String(attempt.answers));
+    } catch {}
+  }
+
+  const now = new Date().toISOString();
+  let totalQuestions = qRes.rows.length;
+  let answeredCount = 0;
+  let correctCount = 0;
+  let incorrectCount = 0;
+  let marksObtained = 0;
+  let maxMarks = 0;
+
+  const detailedResults: any[] = [];
+
+  for (const row of qRes.rows) {
+    const q: any = row;
+    const qId = String(q.id);
+    const qMarks = Number(q.marks || 2);
+    maxMarks += qMarks;
+
+    const correctAns = (q.correct_answer || '').toUpperCase().trim();
+    const studentAnsObj = studentAnswers[qId];
+    const studentChoice = typeof studentAnsObj === 'object' && studentAnsObj?.selected_option
+      ? studentAnsObj.selected_option
+      : (typeof studentAnsObj === 'string' ? studentAnsObj : null);
+
+    const isAnswered = Boolean(studentChoice);
+    const isCorrect = isAnswered && studentChoice.toUpperCase().trim() === correctAns;
+
+    let marksAwarded = 0;
+    if (isAnswered) {
+      answeredCount++;
+      if (isCorrect) {
+        correctCount++;
+        marksAwarded = qMarks;
+        marksObtained += qMarks;
+      } else {
+        incorrectCount++;
+      }
+    }
+
+    const subId = `mcqsub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    await client.execute({
+      sql: `INSERT INTO mcq_submissions (
+        id, attempt_id, test_id, student_id, question_id, selected_option,
+        correct_answer, is_correct, marks_awarded, answered_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        subId,
+        attemptId,
+        testId,
+        studentId,
+        qId,
+        studentChoice || null,
+        correctAns,
+        isCorrect ? 1 : 0,
+        marksAwarded,
+        studentAnsObj?.updated_at || now,
+        now,
+      ],
+    });
+
+    detailedResults.push({
+      question_id: qId,
+      question_order: Number(q.question_order),
+      question_text: String(q.description || q.title),
+      selected_option: studentChoice || null,
+      correct_answer: correctAns,
+      is_correct: isCorrect,
+      marks_awarded: marksAwarded,
+      max_marks: qMarks,
+    });
+  }
+
+  const unansweredCount = totalQuestions - answeredCount;
+  const percentage = maxMarks > 0 ? Math.round((marksObtained / maxMarks) * 10000) / 100 : 0;
+
+  const startTimeMs = new Date(attempt.start_time).getTime();
+  const endTimeMs = new Date(now).getTime();
+  const timeTakenSeconds = Math.max(0, Math.round((endTimeMs - startTimeMs) / 1000));
+
+  // Update test_attempts in Turso
+  await client.execute({
+    sql: `UPDATE test_attempts 
+          SET status = 'completed', end_time = ?, score = ?, max_score = ?,
+              percentage = ?, time_taken_seconds = ?, question_results = ?
+          WHERE id = ?`,
+    args: [
+      now,
+      marksObtained,
+      maxMarks,
+      percentage,
+      timeTakenSeconds,
+      JSON.stringify(detailedResults),
+      attemptId,
+    ],
+  });
+
+  // Re-rank all completed attempts for this test: Score DESC, time_taken_seconds ASC
+  const allCompletedRes = await client.execute({
+    sql: `SELECT id FROM test_attempts 
+          WHERE test_id = ? AND status IN ('completed', 'submitted', 'auto_submitted')
+          ORDER BY score DESC, time_taken_seconds ASC, end_time ASC`,
+    args: [testId],
+  });
+
+  for (let r = 0; r < allCompletedRes.rows.length; r++) {
+    const rankId = String(allCompletedRes.rows[r].id);
+    await client.execute({
+      sql: 'UPDATE test_attempts SET completion_rank = ? WHERE id = ?',
+      args: [r + 1, rankId],
+    });
+  }
+
+  return {
+    success: true,
+    attempt_id: attemptId,
+    test_id: testId,
+    student_id: studentId,
+    total_questions: totalQuestions,
+    answered: answeredCount,
+    answered_count: answeredCount,
+    correct: correctCount,
+    correct_count: correctCount,
+    incorrect: incorrectCount,
+    incorrect_count: incorrectCount,
+    unanswered: unansweredCount,
+    unanswered_count: unansweredCount,
+    marks_obtained: marksObtained,
+    score: marksObtained,
+    maximum_marks: maxMarks,
+    max_score: maxMarks,
+    percentage,
+    time_taken_seconds: timeTakenSeconds,
+    status: 'completed',
+    results: detailedResults,
+  };
+}
+
+export async function getMcqAssessmentAnalyticsFromDb(testId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
+    args: [testId],
+  });
+  if (testRes.rows.length === 0) throw new Error('Test not found.');
+  const test: any = testRes.rows[0];
+
+  // Attempts summary
+  const attRes = await client.execute({
+    sql: `SELECT ta.*, s.register_number, s.full_name, s.department, s.year as student_year
+          FROM test_attempts ta
+          JOIN students s ON ta.student_id = s.id
+          WHERE ta.test_id = ?
+          ORDER BY ta.score DESC, ta.time_taken_seconds ASC`,
+    args: [testId],
+  });
+
+  const totalStarted = attRes.rows.length;
+  const completedAttempts = attRes.rows.filter((a: any) =>
+    ['completed', 'submitted', 'auto_submitted'].includes(String(a.status).toLowerCase())
+  );
+  const inProgressCount = totalStarted - completedAttempts.length;
+
+  let totalScore = 0;
+  let highestScore = 0;
+  let lowestScore = completedAttempts.length > 0 ? 999999 : 0;
+  let totalTime = 0;
+
+  for (const c of completedAttempts) {
+    const sc = Number(c.score || 0);
+    totalScore += sc;
+    if (sc > highestScore) highestScore = sc;
+    if (sc < lowestScore) lowestScore = sc;
+    totalTime += Number(c.time_taken_seconds || 0);
+  }
+
+  const averageScore = completedAttempts.length > 0 ? Math.round((totalScore / completedAttempts.length) * 10) / 10 : 0;
+  const averageTimeSeconds = completedAttempts.length > 0 ? Math.round(totalTime / completedAttempts.length) : 0;
+
+  // Question-wise accuracy stats
+  const qAccuracyRes = await client.execute({
+    sql: `SELECT q.id as question_id, q.title, q.description,
+                 COUNT(ms.id) as total_attempts,
+                 SUM(CASE WHEN ms.is_correct = 1 THEN 1 ELSE 0 END) as correct_count,
+                 SUM(CASE WHEN ms.is_correct = 0 AND ms.selected_option IS NOT NULL THEN 1 ELSE 0 END) as incorrect_count
+          FROM questions q
+          LEFT JOIN mcq_submissions ms ON q.id = ms.question_id AND ms.test_id = ?
+          WHERE (q.test_id = ? OR q.id IN (SELECT question_id FROM attempt_questions WHERE attempt_id IN (SELECT id FROM test_attempts WHERE test_id = ?)))
+          GROUP BY q.id
+          ORDER BY q.created_at ASC`,
+    args: [testId, testId, testId],
+  });
+
+  const questionStats = qAccuracyRes.rows.map((row: any, idx: number) => {
+    const totalAtt = Number(row.total_attempts || 0);
+    const cor = Number(row.correct_count || 0);
+    const incor = Number(row.incorrect_count || 0);
+    const unans = totalAtt - cor - incor;
+    const accuracy = totalAtt > 0 ? Math.round((cor / totalAtt) * 10000) / 100 : 0;
+
+    return {
+      question_number: idx + 1,
+      question_id: String(row.question_id),
+      question_text: String(row.description || row.title),
+      total_attempts: totalAtt,
+      correct: cor,
+      incorrect: incor,
+      unanswered: Math.max(0, unans),
+      accuracy_percentage: accuracy,
+    };
+  });
+
+  // Leaderboard
+  const leaderboard = completedAttempts.map((row: any, index: number) => ({
+    rank: Number(row.completion_rank || index + 1),
+    student_id: String(row.student_id),
+    register_number: String(row.register_number),
+    full_name: String(row.full_name),
+    department: String(row.department || 'CSE'),
+    score: Number(row.score || 0),
+    max_score: Number(row.max_score || test.total_marks || 60),
+    percentage: Number(row.percentage || 0),
+    time_taken_seconds: Number(row.time_taken_seconds || 0),
+    status: String(row.status),
+    completed_at: row.end_time ? String(row.end_time) : null,
+  }));
+
+  return {
+    test: {
+      id: String(test.id),
+      title: String(test.title),
+      code: String(test.code || ''),
+      year: Number(test.year),
+      total_marks: Number(test.total_marks),
+      duration: Number(test.duration),
+    },
+    summary: {
+      total_students_started: totalStarted,
+      completed_count: completedAttempts.length,
+      in_progress_count: inProgressCount,
+      average_score: averageScore,
+      highest_score: highestScore,
+      lowest_score: lowestScore === 999999 ? 0 : lowestScore,
+      average_time_seconds: averageTimeSeconds,
+    },
+    leaderboard,
+    question_stats: questionStats,
+  };
+}
+
+export async function getMcqStudentResultDrilldownFromDb(testId: string, studentId: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const attRes = await client.execute({
+    sql: `SELECT ta.*, s.register_number, s.full_name, s.department, s.year as student_year,
+                 t.title as test_title, t.total_marks as test_total_marks, t.passing_marks as test_passing_marks
+          FROM test_attempts ta
+          JOIN students s ON ta.student_id = s.id
+          JOIN tests t ON ta.test_id = t.id
+          WHERE ta.test_id = ? AND ta.student_id = ?
+          ORDER BY ta.created_at DESC LIMIT 1`,
+    args: [testId, studentId],
+  });
+
+  if (attRes.rows.length === 0) return null;
+  const att: any = attRes.rows[0];
+
+  const subRes = await client.execute({
+    sql: `SELECT ms.*, q.title, q.description, q.option_a, q.option_b, q.option_c, q.option_d, q.marks
+          FROM mcq_submissions ms
+          JOIN questions q ON ms.question_id = q.id
+          WHERE ms.attempt_id = ?
+          ORDER BY ms.created_at ASC`,
+    args: [att.id],
+  });
+
+  return {
+    student: {
+      id: String(att.student_id),
+      register_number: String(att.register_number),
+      full_name: String(att.full_name),
+      department: String(att.department),
+      year: Number(att.student_year),
+    },
+    assessment: {
+      id: String(att.test_id),
+      title: String(att.test_title),
+      total_marks: Number(att.test_total_marks),
+      passing_marks: Number(att.test_passing_marks),
+    },
+    attempt: {
+      id: String(att.id),
+      start_time: String(att.start_time),
+      end_time: att.end_time ? String(att.end_time) : null,
+      score: Number(att.score || 0),
+      percentage: Number(att.percentage || 0),
+      time_taken_seconds: Number(att.time_taken_seconds || 0),
+      completion_rank: Number(att.completion_rank || 1),
+      status: String(att.status),
+    },
+    questions: subRes.rows.map((row: any, idx: number) => ({
+      question_number: idx + 1,
+      question_id: String(row.question_id),
+      question_text: String(row.description || row.title),
+      option_a: String(row.option_a || ''),
+      option_b: String(row.option_b || ''),
+      option_c: String(row.option_c || ''),
+      option_d: String(row.option_d || ''),
+      selected_option: row.selected_option ? String(row.selected_option) : null,
+      correct_answer: String(row.correct_answer),
+      is_correct: Number(row.is_correct) === 1,
+      marks_awarded: Number(row.marks_awarded || 0),
+      max_marks: Number(row.marks || 2),
+    })),
+  };
+}
+

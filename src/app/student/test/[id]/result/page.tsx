@@ -23,21 +23,28 @@ import {
 interface QuestionResultItem {
   question_id: string;
   question_order: number;
-  title: string;
+  title?: string;
+  question_text?: string;
   topic?: string;
   difficulty?: string;
-  marks: number;
-  score: number;
-  status: string;
+  marks?: number;
+  max_marks?: number;
+  score?: number;
+  marks_awarded?: number;
+  status?: string;
   passed_test_cases?: number;
   total_test_cases?: number;
   is_passed?: boolean;
+  selected_option?: string | null;
+  correct_answer?: string;
+  is_correct?: boolean;
 }
 
 interface AssessmentResultData {
   attempt_id: string;
   test_id: string;
   test_title: string;
+  test_type?: 'coding' | 'mcq' | string;
   student_id: string;
   register_number: string;
   full_name: string;
@@ -222,75 +229,149 @@ export default function TestResultPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider bg-slate-50">
-                  <th className="py-3 px-3">#</th>
-                  <th className="py-3 px-4">Question Title</th>
-                  <th className="py-3 px-3">Topic</th>
-                  <th className="py-3 px-3">Difficulty</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Score Earned</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
-                {result.questions.map((q, idx) => {
-                  const isAccepted = q.status === 'Accepted' || q.status === 'SUCCESS' || q.score > 0;
-                  return (
-                    <tr key={q.question_id || idx} className="hover:bg-slate-50 transition">
-                      <td className="py-3 px-3 text-slate-400 font-bold">{q.question_order || idx + 1}</td>
-                      <td className="py-3 px-4 font-sans font-semibold text-slate-900">
-                        <span>{q.title}</span>
-                      </td>
-                      <td className="py-3 px-3 font-sans text-slate-600">
-                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                          {q.topic || 'Algorithms'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 font-sans capitalize text-slate-600">
-                        {q.difficulty || 'Easy'}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        {q.status === 'Unattempted' ? (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold border border-slate-200">
+            {result.test_type === 'mcq' ? (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider bg-slate-50">
+                    <th className="py-3 px-3">#</th>
+                    <th className="py-3 px-4">Question Statement</th>
+                    <th className="py-3 px-3 text-center">Your Response</th>
+                    <th className="py-3 px-3 text-center">Correct Key</th>
+                    <th className="py-3 px-3 text-center">Result</th>
+                    <th className="py-3 px-4 text-right">Marks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {result.questions.map((q, idx) => {
+                    const studentAns = q.selected_option;
+                    const correctAns = q.correct_answer;
+                    const isCorrect = q.is_correct ?? (Boolean(studentAns) && studentAns === correctAns);
+                    const qMarks = q.max_marks ?? q.marks ?? 2;
+                    const earned = q.marks_awarded ?? (isCorrect ? qMarks : 0);
+
+                    return (
+                      <tr key={q.question_id || idx} className="hover:bg-slate-50 transition">
+                        <td className="py-3 px-3 text-slate-400 font-bold">{q.question_order || idx + 1}</td>
+                        <td className="py-3 px-4 font-sans font-medium text-slate-900 max-w-md">
+                          <p className="line-clamp-2">{q.question_text || q.title}</p>
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold font-mono">
+                          {studentAns ? (
+                            <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs">
+                              Option {studentAns}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] font-normal font-sans">Unanswered</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold font-mono">
+                          {correctAns ? (
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs">
+                              Option {correctAns}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center font-sans">
+                          {!studentAns ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">
                               Unattempted
                             </span>
-                            <span className="text-[10px] font-mono text-slate-400">0 / 3 tests</span>
-                          </div>
-                        ) : isAccepted ? (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Passed
+                          ) : isCorrect ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              Correct
                             </span>
-                            <span className="text-[10px] font-mono text-emerald-600 font-semibold">
-                              Passed: {q.passed_test_cases ?? 3} / {q.total_test_cases ?? 3}
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[11px] font-semibold border border-rose-200">
+                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                              Incorrect
                             </span>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-semibold border border-rose-200">
-                              <XCircle className="w-3 h-3 text-rose-600" />
-                              {q.status || 'Failed'}
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-500">
-                              Passed: {q.passed_test_cases ?? 0} / {q.total_test_cases ?? 3}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold font-mono">
-                        <span className={q.score > 0 ? 'text-emerald-600' : 'text-slate-400'}>
-                          {q.score}
-                        </span>{' '}
-                        <span className="text-slate-400 font-normal">/ {q.marks}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold font-mono text-xs">
+                          <span className={earned > 0 ? 'text-emerald-600' : 'text-slate-400'}>
+                            {earned}
+                          </span>{' '}
+                          <span className="text-slate-400 font-normal">/ {qMarks}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider bg-slate-50">
+                    <th className="py-3 px-3">#</th>
+                    <th className="py-3 px-4">Question Title</th>
+                    <th className="py-3 px-3">Topic</th>
+                    <th className="py-3 px-3">Difficulty</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Score Earned</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {result.questions.map((q, idx) => {
+                    const isAccepted = q.status === 'Accepted' || q.status === 'SUCCESS' || (q.score ?? 0) > 0;
+                    return (
+                      <tr key={q.question_id || idx} className="hover:bg-slate-50 transition">
+                        <td className="py-3 px-3 text-slate-400 font-bold">{q.question_order || idx + 1}</td>
+                        <td className="py-3 px-4 font-sans font-semibold text-slate-900">
+                          <span>{q.title || q.question_text}</span>
+                        </td>
+                        <td className="py-3 px-3 font-sans text-slate-600">
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {q.topic || 'Algorithms'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-sans capitalize text-slate-600">
+                          {q.difficulty || 'Easy'}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {q.status === 'Unattempted' ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold border border-slate-200">
+                                Unattempted
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-400">0 / 3 tests</span>
+                            </div>
+                          ) : isAccepted ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Passed
+                              </span>
+                              <span className="text-[10px] font-mono text-emerald-600 font-semibold">
+                                Passed: {q.passed_test_cases ?? 3} / {q.total_test_cases ?? 3}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-semibold border border-rose-200">
+                                <XCircle className="w-3 h-3 text-rose-600" />
+                                {q.status || 'Failed'}
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-500">
+                                Passed: {q.passed_test_cases ?? 0} / {q.total_test_cases ?? 3}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold font-mono">
+                          <span className={(q.score ?? 0) > 0 ? 'text-emerald-600' : 'text-slate-400'}>
+                            {q.score ?? 0}
+                          </span>{' '}
+                          <span className="text-slate-400 font-normal">/ {q.marks ?? 25}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

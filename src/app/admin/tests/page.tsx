@@ -56,6 +56,7 @@ interface AssessmentItem {
   start_time: string;
   end_time: string;
   status: 'draft' | 'scheduled' | 'live' | 'completed' | 'closed' | 'archived';
+  test_type?: 'coding' | 'mcq' | string;
   year: number; // 2 or 3
   question_count: number;
   is_archived: boolean;
@@ -427,6 +428,13 @@ export default function AssessmentManagementPage() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+          <Link
+            href="/admin/mcq/import"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm shadow-emerald-600/20 flex items-center gap-2 transition"
+          >
+            <FileCode className="w-4 h-4" />
+            <span>Import MCQ PDF</span>
+          </Link>
           <button
             onClick={openCreateModal}
             className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm shadow-indigo-600/20 flex items-center gap-2 transition"
@@ -538,6 +546,11 @@ export default function AssessmentManagementPage() {
                             >
                               {Number(test.year) === 3 ? '3rd Year Assessment' : '2nd Year Assessment'}
                             </span>
+                            {test.test_type === 'mcq' && (
+                              <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200">
+                                MCQ
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 font-mono text-[10px] rounded border border-slate-200">
@@ -623,6 +636,17 @@ export default function AssessmentManagementPage() {
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* MCQ Analytics (if MCQ test) */}
+                          {test.test_type === 'mcq' && (
+                            <Link
+                              href={`/admin/mcq/analytics/${test.id}`}
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
+                              title="View MCQ Performance & Leaderboard"
+                            >
+                              <Award className="w-3.5 h-3.5 text-indigo-600" />
+                            </Link>
+                          )}
 
                           {/* Live Toggle */}
                           {isLive ? (

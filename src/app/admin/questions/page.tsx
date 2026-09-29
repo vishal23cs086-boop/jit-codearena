@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Question, DifficultyLevel, QuestionTopic, TestCase } from '@/types';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
@@ -18,6 +19,7 @@ import {
   GraduationCap,
   Sparkles,
   Edit3,
+  UploadCloud,
 } from 'lucide-react';
 
 const TOPICS: QuestionTopic[] = [
@@ -346,13 +348,22 @@ export default function QuestionBankPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm shadow-indigo-600/20"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Problem</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <Link
+            href="/admin/mcq/import"
+            className="px-4 py-2.5 bg-white hover:bg-slate-50 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center gap-2 border border-indigo-200 shadow-xs"
+          >
+            <UploadCloud className="w-4 h-4 text-indigo-600" />
+            <span>Import MCQ PDF</span>
+          </Link>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm shadow-indigo-600/20"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Problem</span>
+          </button>
+        </div>
       </div>
 
       {/* Year Filter Buttons & Stats Pills */}

@@ -12,6 +12,7 @@ import { PythonMonacoEditor } from '@/components/editor/PythonMonacoEditor';
 import { ConsolePanel } from '@/components/exam/ConsolePanel';
 import { TimerBadge } from '@/components/exam/TimerBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { McqAssessmentView } from '@/components/exam/McqAssessmentView';
 import {
   Code2,
   ChevronLeft,
@@ -39,6 +40,8 @@ export default function CodingTestPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
   const [attemptId, setAttemptId] = useState<string>('');
+  const [endsAt, setEndsAt] = useState<string>('');
+  const [initialAnswers, setInitialAnswers] = useState<any>({});
   const [isExistingAttempt, setIsExistingAttempt] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<{ status: number; text: string } | null>(null);
 
@@ -110,6 +113,8 @@ export default function CodingTestPage() {
         }
 
         setAttemptId(data.attempt.id);
+        setEndsAt(data.attempt.ends_at || '');
+        setInitialAnswers(data.attempt?.answers || {});
         setIsExistingAttempt(Boolean(data.isExisting));
         setTest(data.test);
         setQuestions(data.questions || []);
@@ -445,6 +450,19 @@ export default function CodingTestPage() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // If this is an MCQ assessment, render dedicated high-performance MCQ assessment view
+  if (test?.test_type === 'mcq') {
+    return (
+      <McqAssessmentView
+        test={test}
+        attemptId={attemptId}
+        endsAt={endsAt}
+        questions={questions as any}
+        initialAnswers={initialAnswers}
+      />
     );
   }
 
