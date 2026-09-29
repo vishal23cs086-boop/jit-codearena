@@ -63,6 +63,7 @@ export async function PUT(
       start_time: normalizedStart,
       end_time: normalizedEnd,
       status: body.status,
+      is_archived: body.is_archived,
       year: body.year !== undefined ? Number(body.year) : undefined,
       question_count: normalizedQuestionCount,
       questions: body.questions,

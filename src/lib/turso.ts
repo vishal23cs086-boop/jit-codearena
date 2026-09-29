@@ -1680,6 +1680,7 @@ export async function updateAssessmentInDb(
     end_time?: string;
     end_at?: string;
     status?: string;
+    is_archived?: boolean | number;
     year?: number;
     question_count?: number;
     questions?: Array<{
@@ -1853,6 +1854,13 @@ export async function updateAssessmentInDb(
   if (data.status !== undefined) {
     updates.push('status = ?');
     args.push(data.status);
+    if (data.status !== 'archived' && data.is_archived === undefined && existing.is_archived) {
+      updates.push('is_archived = 0');
+    }
+  }
+  if (data.is_archived !== undefined) {
+    updates.push('is_archived = ?');
+    args.push(data.is_archived ? 1 : 0);
   }
 
   // 7. Question pool validation
@@ -1979,6 +1987,69 @@ export async function deleteOrArchiveAssessmentInDb(id: string) {
       message: 'Assessment and all associated questions deleted successfully.',
     };
   }
+}
+
+export async function unarchiveAssessmentInDb(
+  id: string,
+  targetStatus: string = 'draft',
+  unarchivedBy: string = 'admin'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const testRes = await client.execute({
+    sql: 'SELECT * FROM tests WHERE id = ?',
+    args: [id],
+  });
+
+  if (testRes.rows.length === 0) {
+    const err: any = new Error('Assessment not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const testRow: any = testRes.rows[0];
+  const now = new Date().toISOString();
+
+  // Validate targetStatus
+  const allowed = ['draft', 'scheduled', 'live', 'closed'];
+  const newStatus = allowed.includes(targetStatus.toLowerCase()) ? targetStatus.toLowerCase() : 'draft';
+
+  // Unarchive: set is_archived = 0, status = newStatus, updated_at = now
+  await client.execute({
+    sql: 'UPDATE tests SET is_archived = 0, status = ?, updated_at = ? WHERE id = ?',
+    args: [newStatus, now, id],
+  });
+
+  // Record audit trail in activity_logs
+  try {
+    await client.execute({
+      sql: `INSERT INTO activity_logs (
+        id, test_id, student_id, student_name, register_number, event_type, description, metadata, timestamp
+      ) VALUES (?, ?, 'ADMIN', ?, 'ADMIN', 'ASSESSMENT_UNARCHIVED', ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id,
+        unarchivedBy,
+        `Admin ${unarchivedBy} unarchived assessment "${testRow.title}" (${testRow.code || id}). Restored to ${newStatus.toUpperCase()} status.`,
+        JSON.stringify({ unarchived_by: unarchivedBy, unarchived_at: now, assessment_id: id, status: newStatus }),
+        now,
+      ],
+    });
+  } catch (err) {
+    console.warn('Could not write unarchive audit log:', err);
+  }
+
+  const restored = await getAssessmentWithQuestions(id);
+
+  return {
+    success: true,
+    message: `Assessment "${testRow.title}" unarchived successfully and restored to ${newStatus.toUpperCase()}.`,
+    id,
+    status: newStatus,
+    is_archived: false,
+    assessment: restored,
+  };
 }
 
 // -------------------------------------------------------------
