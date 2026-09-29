@@ -107,6 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({ children }) => {
     { label: 'Live Monitor', href: '/admin/monitor', icon: Activity, isLive: true },
     { label: 'Students', href: '/admin/students', icon: Users },
     { label: 'Assessments', href: '/admin/tests', icon: Layers },
+    { label: 'Rankings', href: '/admin/rankings', icon: Award },
     { label: 'PDF Import', href: '/admin/mcq/import', icon: Sparkles },
     { label: 'Question Bank', href: '/admin/questions', icon: BookOpen },
     { label: 'Login Activity', href: '/admin/login-activity', icon: ShieldCheck },

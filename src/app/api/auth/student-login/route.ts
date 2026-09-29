@@ -65,7 +65,10 @@ export async function POST(req: NextRequest) {
     // Password verification: If password is stored, verify; otherwise allow default test access
     if (student.password_hash && password) {
       const { verifyPassword, hashPassword, getTursoClient } = await import('@/lib/turso');
-      const isMatch = verifyPassword(password, student.password_hash);
+      let isMatch = verifyPassword(password, student.password_hash);
+      if (!isMatch && (password.toUpperCase() === student.register_number.toUpperCase())) {
+        isMatch = verifyPassword(password.toUpperCase(), student.password_hash) || verifyPassword(password.toLowerCase(), student.password_hash);
+      }
       if (!isMatch) {
         return NextResponse.json(
           {

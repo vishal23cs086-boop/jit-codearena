@@ -22,6 +22,7 @@ import {
   X,
   ShieldCheck,
   Check,
+  Award,
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DashboardDrilldownModal, DrilldownCategory } from '@/components/admin/DashboardDrilldownModal';
@@ -36,6 +37,7 @@ interface DashboardStats {
   completedCountResetAt?: string | null;
   completedCountResetBy?: string | null;
   totalViolations: number;
+  terminatedCount?: number;
   recentLogs: Array<{
     id: string;
     student_name: string;
@@ -56,6 +58,7 @@ export default function AdminDashboardPage() {
     completedCountResetAt: null,
     completedCountResetBy: null,
     totalViolations: 0,
+    terminatedCount: 0,
     recentLogs: [],
   });
   const [assessments, setAssessments] = useState<any[]>([]);
@@ -204,6 +207,13 @@ export default function AdminDashboardPage() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           <Link
+            href="/admin/rankings"
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition border border-indigo-200 shadow-sm"
+          >
+            <Award className="w-4 h-4 text-indigo-600" />
+            <span>Rankings &amp; Leaderboard</span>
+          </Link>
+          <Link
             href="/admin/monitor"
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-600/20"
           >
@@ -221,7 +231,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Main KPI Statistics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {/* Total Students */}
         <div
           onClick={() => setDrilldownCategory('totalStudents')}
@@ -321,6 +331,22 @@ export default function AdminDashboardPage() {
           </div>
           <div className="text-2xl sm:text-3xl font-black text-rose-600">{stats.totalViolations}</div>
           <span className="text-[11px] text-rose-500 mt-1 block">Security anomalies</span>
+        </div>
+
+        {/* Terminated Attempts */}
+        <div
+          onClick={() => setDrilldownCategory('terminated')}
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-amber-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          title="Click to drill down into proctoring terminated sessions and take action"
+        >
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-amber-600 transition-colors">Terminated</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all">
+              <AlertTriangle className="w-4 h-4 text-amber-600 group-hover:text-white transition-colors" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-amber-600">{stats.terminatedCount || 0}</div>
+          <span className="text-[11px] text-amber-500 mt-1 block">Policy terminations</span>
         </div>
       </div>
 

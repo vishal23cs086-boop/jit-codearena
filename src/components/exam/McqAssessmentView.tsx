@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useExamGuard } from '@/hooks/useExamGuard';
 import { ExamGuardModal } from '@/components/exam/ExamGuard';
+import { FormattedQuestionContent } from '@/components/exam/FormattedQuestionContent';
 import {
   Clock,
   CheckCircle2,
@@ -260,6 +261,7 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
   const answeredCount = Object.keys(answers).filter((k) => Boolean(answers[k])).length;
   const totalCount = questions.length;
   const unansweredCount = totalCount - answeredCount;
+  const isAllAnswered = answeredCount === totalCount && totalCount > 0;
 
   // Format time remaining MM:SS
   const formatTimer = (sec: number) => {
@@ -282,6 +284,9 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
         copyPasteCount={examGuard.copyPasteCount}
         onRequestFullscreen={examGuard.requestFullscreen}
         onDismissWarning={examGuard.dismissWarning}
+        isTerminated={examGuard.isTerminated}
+        terminationReason={examGuard.terminationReason}
+        onViewScorecard={() => router.replace(`/student/test/${test.id}/result`)}
       />
 
       {/* Top Header Bar */}
@@ -334,15 +339,26 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
             <span>{formatTimer(remainingSeconds)}</span>
           </div>
 
-          {/* Submit Button */}
+          {/* Submit Button - Only enabled when 100% of questions answered */}
           <button
             onClick={() => setShowSubmitModal(true)}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition hover:scale-[1.02] disabled:opacity-50"
+            disabled={isSubmitting || !isAllAnswered}
+            title={
+              !isAllAnswered
+                ? `Complete all questions to submit (${answeredCount}/${totalCount} answered)`
+                : 'Ready to submit assessment'
+            }
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl shadow-xs transition ${
+              isAllAnswered
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-[1.02]'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+            }`}
           >
             <Send className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Finish & Submit</span>
-            <span className="sm:hidden">Submit</span>
+            <span className="hidden sm:inline">
+              {isAllAnswered ? 'Finish & Submit' : `Answered: ${answeredCount} / ${totalCount}`}
+            </span>
+            <span className="sm:hidden">{`${answeredCount}/${totalCount}`}</span>
           </button>
         </div>
       </header>
@@ -377,9 +393,7 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
                 </div>
 
                 {/* Question Statement */}
-                <div className="text-base sm:text-lg font-semibold text-slate-900 leading-relaxed whitespace-pre-wrap">
-                  {currentQuestion.question_text}
-                </div>
+                <FormattedQuestionContent text={currentQuestion.question_text} />
 
                 {/* Options (A, B, C, D) */}
                 <div className="space-y-3 pt-2">
@@ -464,10 +478,23 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
             ) : (
               <button
                 onClick={() => setShowSubmitModal(true)}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition hover:scale-[1.02]"
+                disabled={isSubmitting || !isAllAnswered}
+                title={
+                  !isAllAnswered
+                    ? `Complete all questions to submit (${answeredCount}/${totalCount} answered)`
+                    : 'Review and finalize assessment'
+                }
+                className={`flex items-center gap-2 px-6 py-2.5 text-xs font-bold rounded-xl shadow-xs transition ${
+                  isAllAnswered
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-[1.02]'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                }`}
               >
-                <span>Review & Submit</span>
+                <span>
+                  {isAllAnswered
+                    ? 'Review & Submit'
+                    : `Complete all to submit (${answeredCount}/${totalCount})`}
+                </span>
                 <Send className="w-4 h-4" />
               </button>
             )}
@@ -545,11 +572,24 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
           <div className="pt-4 border-t border-slate-100">
             <button
               onClick={() => setShowSubmitModal(true)}
-              disabled={isSubmitting}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition hover:scale-[1.01] flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={isSubmitting || !isAllAnswered}
+              title={
+                !isAllAnswered
+                  ? `Complete all questions to submit (${answeredCount}/${totalCount} answered)`
+                  : 'Submit assessment'
+              }
+              className={`w-full py-3 text-xs font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-2 ${
+                isAllAnswered
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-[1.01]'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+              }`}
             >
               <FileCheck className="w-4 h-4" />
-              <span>Submit Assessment</span>
+              <span>
+                {isAllAnswered
+                  ? 'Submit Assessment'
+                  : `Answer All (${answeredCount}/${totalCount})`}
+              </span>
             </button>
           </div>
         </aside>
@@ -589,9 +629,13 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
               </div>
             </div>
 
-            {unansweredCount > 0 && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
-                <strong>Attention:</strong> You still have <strong>{unansweredCount}</strong> unanswered questions. Unanswered questions will receive 0 marks.
+            {unansweredCount > 0 ? (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 leading-relaxed font-semibold">
+                <strong>Submission Blocked:</strong> You have answered {answeredCount} of {totalCount} questions. All {totalCount} questions must be answered before you can submit the assessment.
+              </div>
+            ) : (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 leading-relaxed">
+                <strong>All {totalCount} questions answered!</strong> Once submitted, your answers will be evaluated and locked.
               </div>
             )}
 
@@ -613,8 +657,12 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleSubmitAssessment(false)}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50"
+                disabled={isSubmitting || !isAllAnswered}
+                className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl shadow-xs transition ${
+                  isAllAnswered
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                }`}
               >
                 {isSubmitting ? (
                   <>
@@ -624,7 +672,11 @@ export const McqAssessmentView: React.FC<McqAssessmentViewProps> = ({
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    <span>Yes, Submit Exam</span>
+                    <span>
+                      {isAllAnswered
+                        ? 'Yes, Submit Exam'
+                        : `Answer All (${answeredCount}/${totalCount})`}
+                    </span>
                   </>
                 )}
               </button>

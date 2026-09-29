@@ -12,6 +12,9 @@ interface ExamGuardProps {
   copyPasteCount: number;
   onRequestFullscreen: () => void;
   onDismissWarning: () => void;
+  isTerminated?: boolean;
+  terminationReason?: string | null;
+  onViewScorecard?: () => void;
 }
 
 export const ExamGuardModal: React.FC<ExamGuardProps> = ({
@@ -23,11 +26,49 @@ export const ExamGuardModal: React.FC<ExamGuardProps> = ({
   copyPasteCount,
   onRequestFullscreen,
   onDismissWarning,
+  isTerminated,
+  terminationReason,
+  onViewScorecard,
 }) => {
   return (
     <>
+      {/* 0. Irrevocable Termination Overlay (Requirement 12) */}
+      {isTerminated && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xl flex items-center justify-center p-4 select-none">
+          <div className="glass-card rounded-3xl max-w-lg w-full p-8 text-center shadow-2xl border-2 border-rose-500 bg-white space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 p-3 bg-rose-50 border-2 border-rose-200 rounded-2xl mx-auto shadow-sm flex items-center justify-center text-rose-600">
+              <ShieldAlert className="w-10 h-10 text-rose-600" />
+            </div>
+            <div>
+              <span className="inline-block px-3 py-1 bg-rose-100 border border-rose-300 text-rose-800 rounded-full font-mono text-xs font-black uppercase tracking-wider mb-2">
+                STATUS: TERMINATED
+              </span>
+              <h3 className="text-xl font-black text-slate-900">Assessment Terminated</h3>
+            </div>
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-left text-xs space-y-1.5">
+              <span className="font-bold text-rose-900 block">Termination Cause:</span>
+              <p className="text-rose-700 leading-relaxed font-mono">
+                {terminationReason || 'Excessive proctoring violations recorded (violation_count > 3)'}
+              </p>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Your test session has been permanently locked by the automated proctoring monitor. No further answers or submissions will be accepted. Your record has been flagged for disciplinary review by the Department Head and Examination Committee.
+            </p>
+            {onViewScorecard && (
+              <button
+                type="button"
+                onClick={onViewScorecard}
+                className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl transition shadow-md text-xs"
+              >
+                View Assessment Status & Scorecard
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 1. Fullscreen Enforcement Overlay (Displayed if test started but student is not in fullscreen) */}
-      {!isFullscreen && (
+      {!isTerminated && !isFullscreen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="glass-card rounded-3xl max-w-lg w-full p-8 text-center shadow-2xl border border-slate-200/90 relative overflow-hidden bg-white">
             <div className="w-16 h-16 p-2 bg-slate-50 border border-slate-200 rounded-2xl mx-auto mb-4 shadow-xs flex items-center justify-center">

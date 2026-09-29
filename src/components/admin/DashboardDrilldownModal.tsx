@@ -22,7 +22,8 @@ export type DrilldownCategory =
   | 'online'
   | 'in_assessment'
   | 'completed'
-  | 'violations';
+  | 'violations'
+  | 'terminated';
 
 interface DashboardDrilldownModalProps {
   category: DrilldownCategory | null;
@@ -111,6 +112,56 @@ export const DashboardDrilldownModal: React.FC<DashboardDrilldownModalProps> = (
       badge: 'Proctoring Security Audit',
       description: 'Real-time security deviations and anti-cheating incidents recorded in DB',
     },
+    terminated: {
+      label: 'Terminated',
+      icon: AlertTriangle,
+      color: 'amber',
+      badge: 'Proctoring Terminations',
+      description: 'Examination attempts automatically or manually terminated due to security violations',
+    },
+  };
+
+  const handleRemoveTermination = async (studentId: string, testId: string) => {
+    const reason = prompt('Reason for removing proctoring termination:', 'Administrative review and clearance');
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/admin/students/${studentId}/restore-termination`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_id: testId, reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Termination successfully removed. Attempt restored to in-progress.');
+        fetchRecords(activeTab);
+      } else {
+        alert(data.error || 'Failed to remove termination.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Request failed.');
+    }
+  };
+
+  const handleResetAssessment = async (studentId: string, testId: string) => {
+    if (!confirm('Are you sure you want to reset this candidate\'s assessment attempt? This will allow them to start over.')) return;
+    const reason = prompt('Reason for resetting attempt:', 'Administrative re-attempt grant');
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/admin/students/${studentId}/reset-attempt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_id: testId, reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Assessment attempt successfully reset.');
+        fetchRecords(activeTab);
+      } else {
+        alert(data.error || 'Failed to reset assessment attempt.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Request failed.');
+    }
   };
 
   const currentTab = tabConfig[activeTab];
@@ -147,6 +198,8 @@ export const DashboardDrilldownModal: React.FC<DashboardDrilldownModalProps> = (
                   ? 'bg-blue-50 border border-blue-200 text-blue-700'
                   : activeTab === 'completed'
                   ? 'bg-purple-50 border border-purple-200 text-purple-700'
+                  : activeTab === 'terminated'
+                  ? 'bg-amber-50 border border-amber-200 text-amber-700'
                   : 'bg-rose-50 border border-rose-200 text-rose-700'
               }`}
             >
@@ -501,6 +554,79 @@ export const DashboardDrilldownModal: React.FC<DashboardDrilldownModalProps> = (
                                 History
                               </button>
                             )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {activeTab === 'terminated' && (
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                        <th className="py-3 px-4">Student</th>
+                        <th className="py-3 px-3 font-mono">Roll No</th>
+                        <th className="py-3 px-2">Dept</th>
+                        <th className="py-3 px-2 text-center">Year</th>
+                        <th className="py-3 px-3">Assessment</th>
+                        <th className="py-3 px-3">Violations</th>
+                        <th className="py-3 px-3">Termination Reason</th>
+                        <th className="py-3 px-3">Terminated At</th>
+                        <th className="py-3 px-4 text-right">Administrative Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredRecords.map((t) => (
+                        <tr key={t.attempt_id || t.id} className="hover:bg-slate-50/70 transition">
+                          <td className="py-3 px-4">
+                            <span className="font-bold text-slate-900 block">{t.student_name || t.name}</span>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-bold text-indigo-600">
+                            {t.register_number}
+                          </td>
+                          <td className="py-3 px-2 font-semibold text-slate-700">{t.department}</td>
+                          <td className="py-3 px-2 text-center font-bold text-slate-700">Year {t.year}</td>
+                          <td className="py-3 px-3 text-slate-800 font-medium max-w-[150px] truncate">
+                            {t.assessment_title}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">
+                              <AlertTriangle className="w-3 h-3 text-amber-600" />
+                              {t.violation_count || 3} violations
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-slate-600 text-[11px] max-w-[180px] truncate" title={t.termination_reason}>
+                            {t.termination_reason || 'Policy breach limit reached'}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-slate-500 text-[11px] whitespace-nowrap">
+                            {t.terminated_at ? new Date(t.terminated_at).toLocaleString() : 'N/A'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleRemoveTermination(t.student_id, t.test_id)}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-lg text-[11px] transition border border-emerald-200"
+                                title="Remove proctoring termination and restore candidate to exam"
+                              >
+                                Remove Termination
+                              </button>
+                              <button
+                                onClick={() => handleResetAssessment(t.student_id, t.test_id)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-[11px] transition border border-slate-200"
+                                title="Reset assessment attempt"
+                              >
+                                Reset Test
+                              </button>
+                              {onSelectStudent && (
+                                <button
+                                  onClick={() => onSelectStudent(t.student_id)}
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-[11px] transition border border-indigo-200"
+                                >
+                                  Profile
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

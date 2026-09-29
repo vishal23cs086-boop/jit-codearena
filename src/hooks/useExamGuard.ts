@@ -8,6 +8,7 @@ interface ExamGuardOptions {
   studentId: string;
   attemptId: string;
   onSecurityEvent?: (type: ActivityEventType, details: Record<string, unknown>) => void;
+  onTerminated?: (reason: string) => void;
   maxWarnings?: number;
 }
 
@@ -16,6 +17,7 @@ export function useExamGuard({
   studentId,
   attemptId,
   onSecurityEvent,
+  onTerminated,
   maxWarnings = 3,
 }: ExamGuardOptions) {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -25,6 +27,8 @@ export function useExamGuard({
   const [warningCount, setWarningCount] = useState(0);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [showWarningModal, setShowWarningModal] = useState(false);
+  const [isTerminated, setIsTerminated] = useState(false);
+  const [terminationReason, setTerminationReason] = useState<string | null>(null);
 
   const lastEventTimeRef = useRef<number>(0);
   const lastClipboardTimeRef = useRef<number>(0);
@@ -55,12 +59,22 @@ export function useExamGuard({
             eventType: type,
             details,
           }),
-        }).catch(() => {});
+        })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (data?.terminated) {
+              const reason = data.reason || 'Excessive proctoring violations recorded (violation_count > 3)';
+              setIsTerminated(true);
+              setTerminationReason(reason);
+              if (onTerminated) onTerminated(reason);
+            }
+          })
+          .catch(() => {});
       } catch {
         // Safe fail
       }
     },
-    [studentId, attemptId, onSecurityEvent]
+    [studentId, attemptId, onSecurityEvent, onTerminated]
   );
 
   const issueWarning = useCallback(
@@ -257,5 +271,7 @@ export function useExamGuard({
     showWarningModal,
     dismissWarning: () => setShowWarningModal(false),
     requestFullscreen,
+    isTerminated,
+    terminationReason,
   };
 }

@@ -51,9 +51,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Finalize test error:', error);
+    const status = error?.status || 500;
     return NextResponse.json(
-      { error: error?.message || 'Failed to finalize test' },
-      { status: 500 }
+      {
+        error: error?.message || 'Failed to finalize test',
+        answeredCount: error?.answeredCount,
+        totalQuestions: error?.totalQuestions,
+        terminated: error?.terminated,
+      },
+      { status }
     );
   }
 }

@@ -35,6 +35,43 @@ export interface ParsedPdfResult {
 }
 
 /**
+ * Normalizes question text by stripping punctuation, extra spaces, and casing.
+ */
+export function normalizeQuestionText(text: string): string {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Calculates similarity between two question texts based on token overlap.
+ * Returns 1.0 for exact normalized matches, and Jaccard token overlap for partial matches.
+ */
+export function calculateQuestionSimilarity(textA: string, textB: string): number {
+  const normA = normalizeQuestionText(textA);
+  const normB = normalizeQuestionText(textB);
+  if (!normA || !normB) return 0;
+  if (normA === normB) return 1.0;
+
+  const wordsA = normA.split(' ').filter((w) => w.length > 2);
+  const wordsB = normB.split(' ').filter((w) => w.length > 2);
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+
+  const setA = new Set(wordsA);
+  const setB = new Set(wordsB);
+
+  let common = 0;
+  for (const w of setA) {
+    if (setB.has(w)) common++;
+  }
+
+  const union = new Set([...setA, ...setB]).size;
+  return union > 0 ? common / union : 0;
+}
+
+/**
  * Validates a PDF file buffer for size, header, and basic integrity.
  */
 export function validatePdfBuffer(buffer: Buffer | Uint8Array, filename: string): { valid: boolean; error?: string } {
@@ -432,6 +469,30 @@ export async function parseMcqPdf(
     // Sort questions by question_number ascending
     questions.sort((a, b) => a.question_number - b.question_number);
 
+    // Step 6.5: Intra-paper duplicate question detection (Exact match or > 85% token overlap)
+    let duplicateCount = 0;
+    for (let i = 0; i < questions.length; i++) {
+      const currentQ = questions[i];
+      for (let j = 0; j < i; j++) {
+        const earlierQ = questions[j];
+        const similarity = calculateQuestionSimilarity(currentQ.question_text, earlierQ.question_text);
+        if (similarity >= 0.85) {
+          const wasValid = currentQ.status === 'VALID';
+          currentQ.is_duplicate = 1;
+          currentQ.duplicate_of_id = String(earlierQ.question_number);
+          currentQ.status = 'DUPLICATE';
+          const matchType = similarity === 1.0 ? 'Exact duplicate' : `Similar question (${Math.round(similarity * 100)}% match)`;
+          currentQ.review_notes = `${matchType} of Question ${earlierQ.question_number}${currentQ.review_notes ? '; ' + currentQ.review_notes : ''}`;
+          duplicateCount++;
+          if (wasValid) {
+            validCount = Math.max(0, validCount - 1);
+            invalidCount++;
+          }
+          break;
+        }
+      }
+    }
+
     // Step 7: Answer Key count vs Question count validation
     const answersDetectedCount = answerKeyMap.size;
     const questionsDetectedCount = questions.length;
@@ -447,6 +508,9 @@ export async function parseMcqPdf(
     } else if (answersDetectedCount === 0) {
       overallStatus = 'REVIEW_REQUIRED';
       errorMessage = 'No answer key detected on the last page. Please review and input the answer key in the review screen.';
+    } else if (duplicateCount > 0) {
+      overallStatus = 'REVIEW_REQUIRED';
+      errorMessage = `Detected ${duplicateCount} duplicate or highly similar question(s) within this paper. Duplicates must be resolved before publishing.`;
     } else if (answersDetectedCount !== questionsDetectedCount) {
       overallStatus = 'REVIEW_REQUIRED';
       errorMessage = `Answer key mismatch: Detected ${questionsDetectedCount} questions but ${answersDetectedCount} answer key entries.`;

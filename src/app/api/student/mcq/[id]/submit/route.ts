@@ -26,7 +26,7 @@ export async function POST(
 
     const { id } = await context.params;
     const body = await req.json();
-    const { attemptId } = body;
+    const { attemptId, isAutoSubmit } = body;
 
     if (!attemptId) {
       return NextResponse.json(
@@ -35,14 +35,23 @@ export async function POST(
       );
     }
 
-    const result = await submitStudentMcqAssessmentInDb(id, session.id, attemptId);
+    const result = await submitStudentMcqAssessmentInDb(id, session.id, attemptId, {
+      isAutoSubmit: Boolean(isAutoSubmit),
+    });
 
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('Submit MCQ assessment error:', error);
+    const status = error?.status || 500;
     return NextResponse.json(
-      { success: false, error: error?.message || 'Failed to submit MCQ assessment.' },
-      { status: 500 }
+      {
+        success: false,
+        error: error?.message || 'Failed to submit MCQ assessment.',
+        answeredCount: error?.answeredCount,
+        totalQuestions: error?.totalQuestions,
+        terminated: error?.terminated,
+      },
+      { status }
     );
   }
 }

@@ -18,6 +18,7 @@ import {
   FileX,
   XCircle,
   HelpCircle,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface QuestionResultItem {
@@ -154,40 +155,75 @@ export default function TestResultPage() {
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-3 shadow-xs relative z-10">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>JANSONS INSTITUTE OF TECHNOLOGY • OFFICIAL EVALUATION SCORECARD</span>
-        </div>
+        {result.status === 'terminated' ? (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-50 border border-rose-300 text-rose-800 text-xs font-black mb-3 shadow-xs relative z-10">
+            <ShieldAlert className="w-4 h-4 text-rose-600" />
+            <span>ATTEMPT TERMINATED BY PROCTORING SYSTEM</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-3 shadow-xs relative z-10">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>JANSONS INSTITUTE OF TECHNOLOGY • OFFICIAL EVALUATION SCORECARD</span>
+          </div>
+        )}
 
         <h1 className="text-3xl sm:text-4xl font-black text-slate-900 mb-2 relative z-10">
           Assessment Report & Scorecard
         </h1>
-        <p className="text-slate-600 text-sm max-w-xl mx-auto mb-6 relative z-10">
+        <p className="text-slate-600 text-sm max-w-xl mx-auto mb-4 relative z-10">
           Candidate: <span className="font-semibold text-slate-900">{result.full_name}</span> (
           <span className="font-mono text-slate-800 font-bold">{result.register_number}</span>) • {result.department} Year {result.student_year}
         </p>
 
+        {result.status === 'terminated' && (
+          <div className="max-w-2xl mx-auto my-4 p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-left text-xs space-y-1 relative z-10 shadow-xs">
+            <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping" />
+              <span>STATUS: TERMINATED</span>
+            </div>
+            <p className="text-rose-800 font-medium">
+              <strong>Cause:</strong> Excessive proctoring violations recorded (violation_count &gt; 3)
+            </p>
+            <p className="text-slate-600 text-[11px] leading-relaxed">
+              This assessment attempt was terminated due to repeated security and proctoring policy breaches. Your test attempt has been locked and recorded to the administrative disciplinary audit stream.
+            </p>
+          </div>
+        )}
+
         {/* Completion Rank Pill */}
-        <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold shadow-xs relative z-10">
-          <Award className="w-5 h-5 text-amber-600" />
-          <span>Finish Order: Rank #{result.completion_rank} to Complete</span>
-        </div>
+        {result.status === 'terminated' ? (
+          <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold shadow-xs relative z-10">
+            <ShieldAlert className="w-5 h-5 text-rose-600" />
+            <span>Status: Disqualified (Terminated)</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold shadow-xs relative z-10">
+            <Award className="w-5 h-5 text-amber-600" />
+            <span>Finish Order: Rank #{result.completion_rank} to Complete</span>
+          </div>
+        )}
       </div>
 
       {/* KPI Results Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
           <span className="text-[11px] text-slate-500 font-medium block mb-1">Final Score</span>
-          <div className="text-2xl font-black text-emerald-600">{result.score.toFixed(1)}</div>
+          <div className={`text-2xl font-black ${result.status === 'terminated' ? 'text-rose-600' : 'text-emerald-600'}`}>
+            {result.score.toFixed(1)}
+          </div>
           <span className="text-[10px] text-slate-400">out of {result.total_marks}</span>
         </div>
 
         <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
           <span className="text-[11px] text-slate-500 font-medium block mb-1">Percentage</span>
           <div className="text-2xl font-black text-slate-900">{result.percentage}%</div>
-          <span className={`text-[10px] font-bold ${result.is_passed ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {result.is_passed ? 'Status: PASSED' : 'Status: FAILED'}
-          </span>
+          {result.status === 'terminated' ? (
+            <span className="text-[10px] font-bold text-rose-700">Status: TERMINATED</span>
+          ) : (
+            <span className={`text-[10px] font-bold ${result.is_passed ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {result.is_passed ? 'Status: PASSED' : 'Status: FAILED'}
+            </span>
+          )}
         </div>
 
         <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
@@ -198,8 +234,8 @@ export default function TestResultPage() {
 
         <div className="glass-card-hover rounded-2xl p-4 text-center border border-slate-200/90 bg-white">
           <span className="text-[11px] text-slate-500 font-medium block mb-1">Evaluation</span>
-          <div className={`text-xl font-bold capitalize mt-1 ${result.is_passed ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {result.is_passed ? 'Passed' : 'Not Passed'}
+          <div className={`text-xl font-bold capitalize mt-1 ${result.status === 'terminated' ? 'text-rose-700' : (result.is_passed ? 'text-emerald-600' : 'text-rose-600')}`}>
+            {result.status === 'terminated' ? 'Terminated' : (result.is_passed ? 'Passed' : 'Not Passed')}
           </div>
           <span className="text-[10px] text-slate-400">Pass Mark: {result.passing_marks}</span>
         </div>

@@ -277,6 +277,7 @@ export async function initTursoDb(): Promise<void> {
     'ALTER TABLE students ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE students ADD COLUMN account_deleted INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE students ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1;',
+    "ALTER TABLE students ADD COLUMN academic_year TEXT DEFAULT '2026-2027';",
     'ALTER TABLE questions ADD COLUMN year INTEGER NOT NULL DEFAULT 2;',
     "ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT 'Algorithms';",
     "ALTER TABLE questions ADD COLUMN input_format TEXT DEFAULT '';",
@@ -340,6 +341,13 @@ export async function initTursoDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_mcq_subs_student ON mcq_submissions(student_id);',
     'CREATE INDEX IF NOT EXISTS idx_dash_state_assess ON assessment_dashboard_state(assessment_id);',
     'CREATE INDEX IF NOT EXISTS idx_dash_state_reset_at ON assessment_dashboard_state(completed_count_reset_at);',
+    'ALTER TABLE test_attempts ADD COLUMN termination_reason TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN terminated_at TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN reset_by TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN reset_at TEXT;',
+    'ALTER TABLE test_attempts ADD COLUMN reset_reason TEXT;',
+    'ALTER TABLE questions ADD COLUMN code_block TEXT;',
+    'CREATE INDEX IF NOT EXISTS idx_test_attempts_status ON test_attempts(status);',
   ];
 
   for (const alt of alters) {
@@ -749,6 +757,7 @@ export async function getStudentProfileDetails(studentId: string) {
       year: Number(s.year),
       section: String(s.section || 'A'),
       phone: s.phone ? String(s.phone) : undefined,
+      academic_year: s.academic_year ? String(s.academic_year) : '2026-2027',
       status: (s.status as 'active' | 'disabled' | 'archived') || 'active',
       is_archived: Number(s.is_archived || 0) === 1,
       created_at: String(s.created_at),
@@ -2441,15 +2450,31 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     throw err;
   }
 
-  // 6. Check for active attempt in progress
+  // 6. Check for active or previous attempt (excluding reset attempts)
   const attRes = await client.execute({
-    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND (status = 'in_progress' OR status = 'not_started') ORDER BY start_time DESC LIMIT 1",
+    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND status != 'reset' ORDER BY start_time DESC LIMIT 1",
     args: [studentId, testId],
   });
 
   if (attRes.rows.length > 0) {
     const existingAttempt: any = attRes.rows[0];
     const attemptId = String(existingAttempt.id);
+
+    if (existingAttempt.status === 'terminated') {
+      const err: any = new Error(existingAttempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+      err.status = 403;
+      err.terminated = true;
+      err.attempt = existingAttempt;
+      throw err;
+    }
+
+    if (existingAttempt.status === 'completed' || existingAttempt.status === 'submitted' || existingAttempt.status === 'auto_submitted') {
+      const err: any = new Error('You have already completed and submitted this assessment.');
+      err.status = 400;
+      err.alreadyCompleted = true;
+      err.attemptId = attemptId;
+      throw err;
+    }
 
     // Retrieve already frozen assigned questions from attempt_questions
     const aqRes = await client.execute({
@@ -2707,7 +2732,7 @@ export async function verifyQuestionForStudentAttempt(
   questionId: string,
   attemptId?: string,
   sessionVersion?: number
-): Promise<{ valid: boolean; error?: string; code?: number }> {
+): Promise<{ valid: boolean; error?: string; code?: number; terminated?: boolean }> {
   await initTursoDb();
   const client = getTursoClient();
 
@@ -2759,11 +2784,18 @@ export async function verifyQuestionForStudentAttempt(
 
       // Status guard: only active attempts can run code or save code
       const currentStatus = String(att.status || '').toLowerCase();
+      if (currentStatus === 'terminated') {
+        return {
+          valid: false,
+          error: att.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.',
+          code: 403,
+          terminated: true,
+        };
+      }
       if (
         currentStatus === 'completed' ||
         currentStatus === 'submitted' ||
-        currentStatus === 'auto_submitted' ||
-        currentStatus === 'terminated'
+        currentStatus === 'auto_submitted'
       ) {
         return {
           valid: false,
@@ -2907,12 +2939,13 @@ export async function getDashboardStatsFromDb(assessmentId: string = 'global') {
     completedCountArgs.push(resetTimestamp, resetTimestamp);
   }
 
-  const [studentsRes, presenceRes, attemptsRes, allAttemptsRes, violationsRes] = await Promise.all([
+  const [studentsRes, presenceRes, attemptsRes, allAttemptsRes, violationsRes, terminatedRes] = await Promise.all([
     client.execute("SELECT COUNT(*) as count FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"),
     getPresenceListFromDb(),
     client.execute({ sql: completedCountSql, args: completedCountArgs }),
     client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE (status = 'completed' OR status = 'submitted' OR status = 'auto_submitted')"),
     client.execute('SELECT SUM(violation_count) as total_violations FROM student_presence'),
+    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE status = 'terminated'"),
   ]);
 
   const totalStudents = Number(studentsRes.rows[0]?.count || 0);
@@ -2921,6 +2954,7 @@ export async function getDashboardStatsFromDb(assessmentId: string = 'global') {
   const completedAttempts = Number(attemptsRes.rows[0]?.count || 0);
   const allTimeCompletedAttempts = Number(allAttemptsRes.rows[0]?.count || 0);
   const totalViolations = Number(violationsRes.rows[0]?.total_violations || 0);
+  const terminatedCount = Number(terminatedRes.rows[0]?.count || 0);
 
   const recentLogs = await getActivityLogsFromDb(20);
 
@@ -2933,6 +2967,7 @@ export async function getDashboardStatsFromDb(assessmentId: string = 'global') {
     completedCountResetAt: resetTimestamp,
     completedCountResetBy: resetBy,
     totalViolations,
+    terminatedCount,
     recentLogs,
   };
 }
@@ -3228,6 +3263,40 @@ export async function getDashboardDrilldownFromDb(category: string) {
       });
     }
 
+    case 'terminated': {
+      // TERMINATED: Show students with terminated attempts
+      const res = await client.execute(`
+        SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.end_time,
+               ta.score, ta.max_score, ta.status, ta.tab_switches, ta.fullscreen_exits,
+               ta.violation_count, ta.termination_reason, ta.terminated_at,
+               s.full_name as student_name, s.register_number, s.department, s.year,
+               t.title as test_title
+        FROM test_attempts ta
+        INNER JOIN students s ON ta.student_id = s.id
+        LEFT JOIN tests t ON ta.test_id = t.id
+        WHERE ta.status = 'terminated'
+        ORDER BY ta.terminated_at DESC, ta.start_time DESC
+      `);
+      return res.rows.map((r: any) => ({
+        id: String(r.student_id),
+        attempt_id: String(r.attempt_id),
+        test_id: String(r.test_id),
+        student_id: String(r.student_id),
+        name: String(r.student_name || 'Candidate'),
+        student_name: String(r.student_name || 'Candidate'),
+        register_number: String(r.register_number),
+        department: String(r.department || 'CSE'),
+        year: Number(r.year || 2),
+        assessment_title: String(r.test_title || 'Examination'),
+        status: 'terminated',
+        terminated_at: String(r.terminated_at || r.end_time || ''),
+        termination_reason: String(r.termination_reason || 'Excessive proctoring violations recorded (violation_count > 3)'),
+        tab_switches: Number(r.tab_switches || 0),
+        fullscreen_exits: Number(r.fullscreen_exits || 0),
+        violation_count: Number(r.violation_count || 0),
+      }));
+    }
+
     default:
       return [];
   }
@@ -3323,6 +3392,13 @@ export async function finalizeAssessmentAttemptInDb(params: {
   const attempt: any = aRes.rows[0];
   const targetTestId = attempt.test_id || params.testId;
 
+  if (attempt.status === 'terminated') {
+    const err: any = new Error(attempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+    err.status = 403;
+    err.terminated = true;
+    throw err;
+  }
+
   // 2. Fetch test
   const tRes = await client.execute({
     sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
@@ -3343,6 +3419,36 @@ export async function finalizeAssessmentAttemptInDb(params: {
   });
 
   const assignedQuestions = aqRes.rows;
+
+  // Enforce all questions answered before manual submission (Requirement 1)
+  if (!isAutoSubmit && assignedQuestions.length > 0) {
+    let answeredCount = 0;
+    for (const row of assignedQuestions) {
+      const qId = String(row.question_id);
+      const subRes = await client.execute({
+        sql: `SELECT id FROM submissions WHERE (attempt_id = ? OR student_id = ?) AND question_id = ? LIMIT 1`,
+        args: [attemptId, studentId, qId],
+      });
+      let hasAns = subRes.rows.length > 0;
+      if (!hasAns && attempt.answers) {
+        try {
+          const ans = JSON.parse(String(attempt.answers));
+          if (ans[qId] && (typeof ans[qId] === 'string' ? ans[qId].trim() : ans[qId].code?.trim())) {
+            hasAns = true;
+          }
+        } catch {}
+      }
+      if (hasAns) answeredCount++;
+    }
+
+    if (answeredCount < assignedQuestions.length) {
+      const err: any = new Error(`All questions must be answered before submitting (${answeredCount}/${assignedQuestions.length} answered).`);
+      err.status = 400;
+      err.answeredCount = answeredCount;
+      err.totalQuestions = assignedQuestions.length;
+      throw err;
+    }
+  }
 
   // 4. Calculate score per assigned question from Turso submissions table (server-authoritative)
   let computedTotalScore = 0;
@@ -4210,7 +4316,8 @@ export async function validatePdfImportInDb(importId: string) {
   let reviewCount = 0;
   let totalMarks = 0;
 
-  for (const row of rows) {
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
     const qNum = Number(row.question_number);
     const qText = String(row.question_text || '').trim();
     const optA = String(row.option_a || '').trim();
@@ -4242,17 +4349,61 @@ export async function validatePdfImportInDb(importId: string) {
       rowIssues.push('Duplicate option texts detected');
     }
 
-    if (rowIssues.length > 0) {
+    // Intra-paper duplicate question text check (Exact match or > 85% token overlap)
+    let isDuplicateQuestion = false;
+    let duplicateOfQNum: number | null = null;
+    const normCurrent = qText.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const wordsCurrent = new Set(normCurrent.split(' ').filter((w) => w.length > 2));
+
+    for (let prevIdx = 0; prevIdx < idx; prevIdx++) {
+      const prevRow = rows[prevIdx];
+      const prevText = String(prevRow.question_text || '').trim();
+      const normPrev = prevText.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+      if (normCurrent && normPrev) {
+        if (normCurrent === normPrev) {
+          isDuplicateQuestion = true;
+          duplicateOfQNum = Number(prevRow.question_number);
+          rowIssues.push(`Exact duplicate of Question ${duplicateOfQNum}`);
+          break;
+        }
+
+        const wordsPrev = new Set(normPrev.split(' ').filter((w) => w.length > 2));
+        if (wordsCurrent.size > 0 && wordsPrev.size > 0) {
+          let common = 0;
+          for (const w of wordsCurrent) {
+            if (wordsPrev.has(w)) common++;
+          }
+          const union = new Set([...wordsCurrent, ...wordsPrev]).size;
+          const similarity = union > 0 ? common / union : 0;
+          if (similarity >= 0.85) {
+            isDuplicateQuestion = true;
+            duplicateOfQNum = Number(prevRow.question_number);
+            rowIssues.push(`Similar question (${Math.round(similarity * 100)}% match) of Question ${duplicateOfQNum}`);
+            break;
+          }
+        }
+      }
+    }
+
+    if (isDuplicateQuestion) {
       reviewCount++;
       issues.push({ question_number: qNum, error: rowIssues.join('; ') });
       await client.execute({
-        sql: "UPDATE pdf_import_questions SET status = 'NEEDS_REVIEW', review_notes = ? WHERE id = ?",
+        sql: "UPDATE pdf_import_questions SET status = 'DUPLICATE', is_duplicate = 1, duplicate_of_id = ?, review_notes = ? WHERE id = ?",
+        args: [String(duplicateOfQNum), rowIssues.join('; '), String(row.id)],
+      });
+    } else if (rowIssues.length > 0) {
+      reviewCount++;
+      issues.push({ question_number: qNum, error: rowIssues.join('; ') });
+      await client.execute({
+        sql: "UPDATE pdf_import_questions SET status = 'NEEDS_REVIEW', is_duplicate = 0, duplicate_of_id = NULL, review_notes = ? WHERE id = ?",
         args: [rowIssues.join('; '), String(row.id)],
       });
     } else {
       validCount++;
       await client.execute({
-        sql: "UPDATE pdf_import_questions SET status = 'VALID', review_notes = NULL WHERE id = ?",
+        sql: "UPDATE pdf_import_questions SET status = 'VALID', is_duplicate = 0, duplicate_of_id = NULL, review_notes = NULL WHERE id = ?",
         args: [String(row.id)],
       });
     }
@@ -4293,10 +4444,11 @@ export async function approvePdfImportQuestionsInDb(importId: string, questionId
   }
 
   const res = await client.execute({ sql, args });
-  const questionsToApprove = res.rows;
+  // Exclude duplicate questions from being approved
+  const questionsToApprove = res.rows.filter((q: any) => !q.is_duplicate && q.status !== 'DUPLICATE' && q.status !== 'REJECTED');
 
   if (questionsToApprove.length === 0) {
-    throw new Error('No eligible questions found to approve.');
+    throw new Error('No eligible questions found to approve (unresolved duplicates or invalid questions detected).');
   }
 
   const now = new Date().toISOString();
@@ -4481,10 +4633,10 @@ export async function startOrGetMcqAssessmentAttempt(testId: string, studentId: 
     throw err;
   }
 
-  // 4. Check for existing attempt
+  // 4. Check for existing attempt (excluding reset attempts)
   const existingAttemptRes = await client.execute({
     sql: `SELECT * FROM test_attempts 
-          WHERE test_id = ? AND student_id = ? 
+          WHERE test_id = ? AND student_id = ? AND status != 'reset'
           ORDER BY created_at DESC LIMIT 1`,
     args: [testId, studentId],
   });
@@ -4565,14 +4717,14 @@ export async function startOrGetMcqAssessmentAttempt(testId: string, studentId: 
     args: [Number(test.year), testId],
   });
 
-  let poolIds = poolRes.rows.map((r: any) => String(r.id));
+  let poolIds = Array.from(new Set(poolRes.rows.map((r: any) => String(r.id))));
   if (poolIds.length === 0) {
     // If no questions marked specifically as 'mcq', check all questions attached to test
     const testSpecificRes = await client.execute({
       sql: 'SELECT id FROM questions WHERE test_id = ? AND (is_archived = 0 OR is_archived IS NULL)',
       args: [testId],
     });
-    poolIds = testSpecificRes.rows.map((r: any) => String(r.id));
+    poolIds = Array.from(new Set(testSpecificRes.rows.map((r: any) => String(r.id))));
   }
 
   if (poolIds.length === 0) {
@@ -4693,6 +4845,12 @@ export async function saveStudentMcqAnswerInDb(
   }
 
   const currentStatus = String(attempt.status || '').toLowerCase();
+  if (currentStatus === 'terminated') {
+    const err: any = new Error(attempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+    err.status = 403;
+    err.terminated = true;
+    throw err;
+  }
   if (currentStatus === 'completed' || currentStatus === 'submitted' || currentStatus === 'auto_submitted') {
     throw new Error('Assessment attempt has already concluded. No further answer submissions permitted.');
   }
@@ -4730,7 +4888,12 @@ export async function saveStudentMcqAnswerInDb(
   return { success: true, saved_at: now };
 }
 
-export async function submitStudentMcqAssessmentInDb(testId: string, studentId: string, attemptId: string) {
+export async function submitStudentMcqAssessmentInDb(
+  testId: string,
+  studentId: string,
+  attemptId: string,
+  options?: { isAutoSubmit?: boolean }
+) {
   await initTursoDb();
   const client = getTursoClient();
 
@@ -4740,6 +4903,13 @@ export async function submitStudentMcqAssessmentInDb(testId: string, studentId: 
   });
   if (attRes.rows.length === 0) throw new Error('Attempt not found for student.');
   const attempt: any = attRes.rows[0];
+
+  if (attempt.status === 'terminated') {
+    const err: any = new Error(attempt.termination_reason || 'Assessment attempt has been terminated due to proctoring violations.');
+    err.status = 403;
+    err.terminated = true;
+    throw err;
+  }
 
   const testRes = await client.execute({
     sql: 'SELECT * FROM tests WHERE id = ? LIMIT 1',
@@ -4766,9 +4936,31 @@ export async function submitStudentMcqAssessmentInDb(testId: string, studentId: 
     } catch {}
   }
 
+  // Pre-calculate answered count & validate completion
+  let answeredCount = 0;
+  for (const row of qRes.rows) {
+    const qId = String(row.id);
+    const studentAnsObj = studentAnswers[qId];
+    const studentChoice = typeof studentAnsObj === 'object' && studentAnsObj?.selected_option
+      ? studentAnsObj.selected_option
+      : (typeof studentAnsObj === 'string' ? studentAnsObj : null);
+    if (studentChoice && String(studentChoice).trim()) {
+      answeredCount++;
+    }
+  }
+
+  const isAutoSubmit = Boolean(options?.isAutoSubmit);
+  if (!isAutoSubmit && qRes.rows.length > 0 && answeredCount < qRes.rows.length) {
+    const err: any = new Error(`All questions must be answered before submitting (${answeredCount}/${qRes.rows.length} answered).`);
+    err.status = 400;
+    err.answeredCount = answeredCount;
+    err.totalQuestions = qRes.rows.length;
+    throw err;
+  }
+
   const now = new Date().toISOString();
   let totalQuestions = qRes.rows.length;
-  let answeredCount = 0;
+  answeredCount = 0;
   let correctCount = 0;
   let incorrectCount = 0;
   let marksObtained = 0;
@@ -5082,4 +5274,306 @@ export async function getMcqStudentResultDrilldownFromDb(testId: string, student
     })),
   };
 }
+
+// -------------------------------------------------------------
+// SERVER-SIDE ASSESSMENT RANKINGS ENGINE (DETERMINISTIC)
+// -------------------------------------------------------------
+export async function getAssessmentRankingsFromDb(params: {
+  testId?: string;
+  year?: number;
+  search?: string;
+  status?: string;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const conditions: string[] = [];
+  const args: any[] = [];
+
+  if (params.testId && params.testId !== 'all') {
+    conditions.push('ta.test_id = ?');
+    args.push(params.testId);
+  }
+  if (params.year && params.year > 0) {
+    conditions.push('s.year = ?');
+    args.push(Number(params.year));
+  }
+  if (params.status && params.status !== 'all') {
+    conditions.push('ta.status = ?');
+    args.push(params.status);
+  } else {
+    // By default, exclude reset attempts from ranking display unless explicitly requested
+    conditions.push("ta.status != 'reset'");
+  }
+  if (params.search && params.search.trim()) {
+    const s = `%${params.search.trim()}%`;
+    conditions.push('(s.full_name LIKE ? OR s.register_number LIKE ?)');
+    args.push(s, s);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Deterministic order:
+  // 1. score DESC (highest score first)
+  // 2. time_taken_seconds ASC (fastest completion breaks ties)
+  // 3. end_time ASC (earlier submission breaks further ties)
+  // 4. ta.id ASC (tie-breaker is non-random)
+  const query = `
+    SELECT ta.id as attempt_id, ta.test_id, ta.student_id, ta.start_time, ta.end_time,
+           ta.score, ta.max_score, ta.percentage, ta.time_taken_seconds, ta.status,
+           ta.tab_switches, ta.fullscreen_exits, ta.violation_count, ta.termination_reason, ta.terminated_at,
+           s.full_name as student_name, s.register_number, s.department, s.year as student_year,
+           t.title as test_title, t.total_marks as test_total_marks, t.test_type,
+           (SELECT COUNT(*) FROM attempt_questions aq WHERE aq.attempt_id = ta.id) as total_questions,
+           (
+             CASE 
+               WHEN t.test_type = 'mcq' THEN (SELECT COUNT(*) FROM mcq_submissions ms WHERE ms.attempt_id = ta.id AND ms.selected_option IS NOT NULL AND ms.selected_option != '')
+               ELSE (SELECT COUNT(DISTINCT sub.question_id) FROM submissions sub WHERE (sub.attempt_id = ta.id OR sub.student_id = ta.student_id))
+             END
+           ) as attempted_questions
+    FROM test_attempts ta
+    INNER JOIN students s ON ta.student_id = s.id
+    LEFT JOIN tests t ON ta.test_id = t.id
+    ${whereClause}
+    ORDER BY 
+      CASE WHEN ta.status IN ('completed', 'submitted', 'auto_submitted') THEN 1 ELSE 2 END ASC,
+      ta.score DESC,
+      CASE WHEN ta.time_taken_seconds > 0 THEN ta.time_taken_seconds ELSE 999999 END ASC,
+      CASE WHEN ta.end_time IS NOT NULL THEN ta.end_time ELSE '9999-12-31' END ASC,
+      ta.id ASC
+  `;
+
+  const res = await client.execute({ sql: query, args });
+
+  return res.rows.map((r: any, idx: number) => {
+    const timeTaken = Number(r.time_taken_seconds || 0);
+    const mins = Math.floor(timeTaken / 60);
+    const secs = timeTaken % 60;
+    const timeTakenDisplay = timeTaken > 0 ? `${mins}m ${secs.toString().padStart(2, '0')}s` : '-';
+
+    const totalQ = Number(r.total_questions || 30);
+    const attemptedQ = Number(r.attempted_questions || (r.status === 'completed' ? totalQ : 0));
+
+    return {
+      rank: idx + 1,
+      attempt_id: String(r.attempt_id),
+      student_id: String(r.student_id),
+      student_name: String(r.student_name || 'Candidate'),
+      register_number: String(r.register_number),
+      department: String(r.department || 'CSE'),
+      year: Number(r.student_year || 2),
+      test_id: String(r.test_id),
+      test_title: String(r.test_title || 'Assessment'),
+      test_type: String(r.test_type || 'coding'),
+      score: Number(r.score || 0),
+      max_score: Number(r.max_score || r.test_total_marks || 60),
+      percentage: Number(r.percentage || (r.max_score ? Math.round((Number(r.score || 0) / Number(r.max_score)) * 100) : 0)),
+      time_taken_seconds: timeTaken,
+      time_taken_display: timeTakenDisplay,
+      questions_attempted: `${attemptedQ} / ${totalQ}`,
+      attempted_count: attemptedQ,
+      total_questions: totalQ,
+      status: String(r.status),
+      end_time: r.end_time ? String(r.end_time) : null,
+      completed_at_display: r.end_time ? new Date(r.end_time).toLocaleString() : '-',
+      termination_reason: r.termination_reason ? String(r.termination_reason) : null,
+      terminated_at: r.terminated_at ? String(r.terminated_at) : null,
+      violation_count: Number(r.violation_count || 0),
+    };
+  });
+}
+
+// -------------------------------------------------------------
+// ADMIN ACTION: RESTORE TERMINATED STUDENT
+// -------------------------------------------------------------
+export async function restoreTerminatedStudentInDb(
+  studentId: string,
+  testId?: string,
+  restoredBy: string = 'admin',
+  reason: string = 'Administrative review and clearance'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const query = testId
+    ? "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND status = 'terminated' ORDER BY created_at DESC LIMIT 1"
+    : "SELECT * FROM test_attempts WHERE student_id = ? AND status = 'terminated' ORDER BY created_at DESC LIMIT 1";
+  const args = testId ? [studentId, testId] : [studentId];
+
+  const attRes = await client.execute({ sql: query, args });
+  if (attRes.rows.length === 0) {
+    throw new Error('No terminated assessment attempt found for this student.');
+  }
+
+  const attempt: any = attRes.rows[0];
+  const targetAttemptId = String(attempt.id);
+  const targetTestId = String(attempt.test_id);
+  const now = new Date().toISOString();
+
+  // Restore attempt status to 'in_progress', preserve violation logs and violation count
+  await client.execute({
+    sql: `UPDATE test_attempts 
+          SET status = 'in_progress', 
+              termination_reason = NULL, 
+              terminated_at = NULL 
+          WHERE id = ?`,
+    args: [targetAttemptId],
+  });
+
+  // Restore student presence
+  await client.execute({
+    sql: `UPDATE student_presence 
+          SET session_status = 'IN_ASSESSMENT', 
+              active_assessment_id = ? 
+          WHERE student_id = ?`,
+    args: [targetTestId, studentId],
+  });
+
+  // Record audited admin action in activity_logs
+  await recordActivityLogInDb({
+    test_id: targetTestId,
+    student_id: studentId,
+    event_type: 'ADMIN_RESTORE_TERMINATION',
+    description: `Termination removed by ${restoredBy}. Reason: ${reason}. Attempt restored to in_progress.`,
+    metadata: {
+      attempt_id: targetAttemptId,
+      restored_by: restoredBy,
+      reason,
+      restored_at: now,
+      previous_violations: attempt.violation_count || 0,
+    },
+  });
+
+  return {
+    success: true,
+    attempt_id: targetAttemptId,
+    test_id: targetTestId,
+    restored_at: now,
+  };
+}
+
+// -------------------------------------------------------------
+// ADMIN ACTION: RESET ASSESSMENT ATTEMPT FOR INDIVIDUAL STUDENT
+// -------------------------------------------------------------
+export async function resetStudentAssessmentAttemptInDb(
+  studentId: string,
+  testId: string,
+  resetBy: string = 'admin',
+  reason: string = 'Administrative re-attempt grant'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  // Fetch the current/latest attempt (regardless of status, but not already reset)
+  const attRes = await client.execute({
+    sql: "SELECT * FROM test_attempts WHERE student_id = ? AND test_id = ? AND status != 'reset' ORDER BY created_at DESC LIMIT 1",
+    args: [studentId, testId],
+  });
+
+  const now = new Date().toISOString();
+
+  if (attRes.rows.length > 0) {
+    const attempt: any = attRes.rows[0];
+    const attemptId = String(attempt.id);
+
+    // Mark attempt as 'reset' (NEVER delete!)
+    await client.execute({
+      sql: `UPDATE test_attempts 
+            SET status = 'reset', 
+                reset_by = ?, 
+                reset_at = ?, 
+                reset_reason = ? 
+            WHERE id = ?`,
+      args: [resetBy, now, reason, attemptId],
+    });
+  }
+
+  // Clear student presence active assessment
+  await client.execute({
+    sql: `UPDATE student_presence 
+          SET session_status = 'ONLINE', 
+              active_assessment_id = NULL, 
+              violation_count = 0, 
+              current_question_index = 0 
+          WHERE student_id = ?`,
+    args: [studentId],
+  });
+
+  // Record audited admin action in activity_logs
+  await recordActivityLogInDb({
+    test_id: testId,
+    student_id: studentId,
+    event_type: 'ADMIN_RESET_ASSESSMENT',
+    description: `Assessment reset by ${resetBy}. Reason: ${reason}. Old attempt archived as reset, student can start fresh.`,
+    metadata: {
+      test_id: testId,
+      reset_by: resetBy,
+      reason,
+      reset_at: now,
+    },
+  });
+
+  return {
+    success: true,
+    student_id: studentId,
+    test_id: testId,
+    reset_at: now,
+  };
+}
+
+// -------------------------------------------------------------
+// ADMIN ACTION: SAFE CLEANUP / ARCHIVE FOR TESTS & UNUSED QUESTIONS
+// -------------------------------------------------------------
+export async function cleanupAssessmentsAndQuestionsInDb(params: {
+  target: 'draft_tests' | 'unused_questions';
+  adminName: string;
+}) {
+  await initTursoDb();
+  const client = getTursoClient();
+  const now = new Date().toISOString();
+  let affectedCount = 0;
+
+  if (params.target === 'draft_tests') {
+    // Only archive tests in 'draft' status that have NO student attempts
+    const testsRes = await client.execute(`
+      SELECT t.id, t.title FROM tests t
+      WHERE t.status = 'draft' AND t.is_archived = 0
+        AND NOT EXISTS (SELECT 1 FROM test_attempts ta WHERE ta.test_id = t.id)
+    `);
+    for (const row of testsRes.rows) {
+      await client.execute({
+        sql: 'UPDATE tests SET is_archived = 1, status = "archived", updated_at = ? WHERE id = ?',
+        args: [now, String(row.id)],
+      });
+      affectedCount++;
+    }
+  } else if (params.target === 'unused_questions') {
+    // Only archive questions that have NEVER been used in attempts or submissions
+    const qRes = await client.execute(`
+      SELECT q.id FROM questions q
+      WHERE (q.is_archived = 0 OR q.is_archived IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM attempt_questions aq WHERE aq.question_id = q.id)
+        AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.question_id = q.id)
+        AND NOT EXISTS (SELECT 1 FROM mcq_submissions ms WHERE ms.question_id = q.id)
+    `);
+    for (const row of qRes.rows) {
+      await client.execute({
+        sql: 'UPDATE questions SET is_archived = 1, is_active = 0 WHERE id = ?',
+        args: [String(row.id)],
+      });
+      affectedCount++;
+    }
+  }
+
+  await recordActivityLogInDb({
+    student_id: 'admin',
+    student_name: params.adminName || 'Admin',
+    event_type: 'ADMIN_DATA_CLEANUP',
+    description: `Safe cleanup executed for ${params.target}. Affected ${affectedCount} records without deleting student data or submissions.`,
+    metadata: { target: params.target, affected_count: affectedCount, executed_by: params.adminName, timestamp: now },
+  });
+
+  return { success: true, affectedCount, target: params.target, executedAt: now };
+}
+
 
