@@ -3,50 +3,71 @@
 Sandboxed Python execution service that replaces Judge0 for graded submissions.
 
 ```
-Student browser ── "Run" ──► Pyodide (Python in the browser, no server work)
+Student browser ── "Run" with custom input ──► Pyodide (Python in the browser, no server work)
       │
-      └── "Submit" ──► Next.js /api/code/submit ──► Runner /v1/execute ──► nsjail ─► python3
-                         (hidden test cases stay         one request per submission,
-                          on the server)                 test cases run in parallel
+      ├── "Run" (test cases) ──┐
+      └── "Submit" ────────────┴─► Next.js /api/code/* ──► Runner /v1/execute ──► sandbox ─► python3
+                                   (hidden test cases stay     one request per run/submission,
+                                    on the server)             test cases run in parallel
 ```
 
-## What the sandbox enforces (per test case)
+## Sandbox modes (`RUNNER_SANDBOX`)
 
-| Limit | Value |
-|---|---|
-| Network | None (own network namespace, no interfaces) |
-| File system | Read-only Python install + the student's file; private `/tmp` |
-| User | Unprivileged `nobody` inside the jail |
-| CPU time | Question's time limit (rounded up to whole seconds) |
-| Wall clock | 2 × CPU limit + 1 s |
-| Memory | 256 MB address space (max 512) |
-| Output | 64 KB stdout/stderr |
-| Files / processes | 32 open files, 64 processes, no file writes outside `/tmp` |
+| | `nsjail` (college / own server) | `restricted` (Railway) |
+|---|---|---|
+| Needs | Docker with `privileged: true` | Any Docker host, container runs as root |
+| Network | None (own network namespace) | Blocked in Python (socket, urllib, http, ssl…) |
+| Files | Only the Python install + the program | Whole container readable (no secrets in it); writes only in the run's own folder |
+| Other runs / runner secrets | Invisible | Separate uid per worker; `/proc` blocked; empty environment |
+| Subprocess / native code | Blocked by namespaces | Blocked (os.system, subprocess, fork, ctypes…) |
+| CPU / memory / output / file size | Enforced | Enforced |
 
-## Deploy (Linux server, Docker)
+Both modes run a **self-test at startup** (runs Python, can't reach the network,
+can't read runner secrets, can't spawn processes) and refuse to start if it fails.
+Example: `nsjail` on Railway exits with "nsjail needs a privileged container".
 
-Size: 1,000 students → **8 vCPU / 16 GB RAM** is comfortable. Ubuntu 22.04/24.04.
+Use `nsjail` wherever you can run a privileged container; `restricted` is the
+fallback for platforms that don't allow one.
+
+## Deploy on Railway (restricted mode)
+
+1. Service → **Settings → Source**: Root Directory `/runner`, branch `main`.
+2. **Settings → Config-as-code**: Railway Config File `/runner/railway.json`
+   (Railway does not look inside the Root Directory for it).
+3. **Variables**:
+   - `RUNNER_SANDBOX` = `restricted`
+   - `RUNNER_TOKEN` = output of `openssl rand -hex 32`
+   - optional `RUNNER_WORKERS` = number of vCPUs on your plan
+4. **Settings → Networking → Generate Domain** (target port: the `PORT` Railway
+   assigns; the server listens on it automatically).
+5. Deploy. The logs must show `Sandbox self-test passed (restricted).`
+   Check `https://<your-domain>/healthz`.
+
+## Deploy on the college server (nsjail mode)
+
+Size for 1,000 students: **8+ vCPU / 16 GB RAM**, Ubuntu 22.04/24.04 with Docker.
 
 ```bash
-# on the server
 git clone <this repo> && cd <repo>/runner
 echo "RUNNER_TOKEN=$(openssl rand -hex 32)" > .env
 docker compose up -d --build
 curl localhost:8787/healthz
 ```
 
-Then set these in the Next.js app (`.env.local` / Vercel env vars), using the same token:
+Put it behind HTTPS (Caddy/nginx) or firewall port 8787 to the app's IPs.
+
+## Connecting the app (Vercel)
+
+In Vercel → Settings → Environment Variables (Production):
 
 ```env
-RUNNER_URL=https://runner.your-college.edu    # or http://SERVER_IP:8787
-RUNNER_TOKEN=<value from runner/.env>
+RUNNER_URL=https://<railway-domain or college server>
+RUNNER_TOKEN=<same value as the runner's RUNNER_TOKEN>
 ```
 
-Remove both to fall back to Judge0.
-
-**Network:** only the Next.js app needs to reach port 8787. Put it behind HTTPS
-(Caddy/nginx) or restrict it with a firewall to your app's IPs. The token
-protects it either way, but don't leave it open over plain HTTP on the internet.
+Redeploy the Vercel project after changing them. **Switching from Railway to
+the college server later = change these two values and redeploy.** Nothing else
+in the app changes. Remove both to fall back to Judge0.
 
 ## Before the real exam: load test on the actual server
 
@@ -72,7 +93,8 @@ own machine only; the server refuses to start that way when `NODE_ENV=production
 | Env var | Default | |
 |---|---|---|
 | `RUNNER_TOKEN` | (required) | Shared secret, 32+ chars |
-| `RUNNER_WORKERS` | CPU count | Test cases run at once |
+| `RUNNER_WORKERS` | CPU count − 1 | Test cases run at once |
 | `RUNNER_MAX_QUEUE` | 5000 | Waiting test cases before returning 503 |
 | `RUNNER_QUEUE_TIMEOUT_MS` | 45000 | Max wait for a slot before 503 |
-| `RUNNER_SANDBOX` | `nsjail` | `none` = unsafe dev mode |
+| `RUNNER_SANDBOX` | `nsjail` | `restricted` for Railway; `none` = unsafe dev mode |
+| `RUNNER_UID_BASE` | 20000 | restricted mode: worker N runs as uid BASE+N |

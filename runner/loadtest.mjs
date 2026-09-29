@@ -35,6 +35,7 @@ const cases = Array.from({ length: CASES }, (_, i) => makeCase(i));
 const latencies = [];
 const counts = { ok: 0, busy: 0, error: 0, wrong: 0 };
 const statuses = {};
+const caseTimes = [];
 
 async function submitOnce() {
   const started = Date.now();
@@ -48,7 +49,10 @@ async function submitOnce() {
     if (res.status === 503) return counts.busy++;
     if (!res.ok) return counts.error++;
     const data = await res.json();
-    for (const r of data.results) statuses[r.status] = (statuses[r.status] || 0) + 1;
+    for (const r of data.results) {
+      statuses[r.status] = (statuses[r.status] || 0) + 1;
+      caseTimes.push(r.timeMs);
+    }
     if (data.results.every((r) => r.status === 'SUCCESS')) counts.ok++;
     else counts.wrong++;
   } catch {
@@ -83,3 +87,5 @@ console.log(`Submissions: ${total}  ok=${counts.ok}  busy(503)=${counts.busy}  e
 console.log(`Throughput: ${(total / secs).toFixed(1)} submissions/s, ${((total * CASES) / secs).toFixed(1)} test cases/s`);
 console.log(`Latency: p50=${pct(latencies, 50)}ms  p95=${pct(latencies, 95)}ms  p99=${pct(latencies, 99)}ms  max=${latencies.at(-1)}ms`);
 console.log('Case statuses:', statuses);
+caseTimes.sort((a, b) => a - b);
+console.log(`Measured run time per case (feeds the speed score): p50=${pct(caseTimes, 50)}ms  p95=${pct(caseTimes, 95)}ms  max=${caseTimes.at(-1)}ms`);

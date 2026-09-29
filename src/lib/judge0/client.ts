@@ -28,7 +28,8 @@ interface RunnerCaseResult {
   status: 'SUCCESS' | 'RUNTIME_ERROR' | 'TIME_LIMIT' | 'MEMORY_LIMIT' | 'OUTPUT_LIMIT' | 'COMPILATION_ERROR' | 'INTERNAL_ERROR';
   stdout: string;
   stderr: string;
-  timeMs: number;
+  timeMs: number; // CPU time, like Judge0's "time"
+  memoryKb: number | null;
 }
 
 function runnerConfig() {
@@ -102,7 +103,7 @@ export async function executeViaRunner(
       compile_output: r.status === 'COMPILATION_ERROR' ? r.stderr : null,
       status: { id: r.status === 'SUCCESS' ? 3 : 11, description: r.status },
       time: (r.timeMs / 1000).toFixed(3),
-      memory: null,
+      memory: r.memoryKb,
     };
   });
 }

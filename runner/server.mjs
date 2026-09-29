@@ -16,12 +16,13 @@
 import http from 'node:http';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { prepareBox, runOnce } from './sandbox.mjs';
+import { runCode, selfTest } from './sandbox.mjs';
 
 const PORT = Number(process.env.PORT || 8787);
 const TOKEN = (process.env.RUNNER_TOKEN || '').trim();
 const SANDBOX = process.env.RUNNER_SANDBOX || 'nsjail';
-const WORKERS = Number(process.env.RUNNER_WORKERS || os.cpus().length);
+// Leave one core for this process so it notices finished runs promptly
+const WORKERS = Number(process.env.RUNNER_WORKERS || Math.max(1, os.cpus().length - 1));
 const MAX_QUEUE = Number(process.env.RUNNER_MAX_QUEUE || 5000);
 const QUEUE_TIMEOUT_MS = Number(process.env.RUNNER_QUEUE_TIMEOUT_MS || 45000);
 
@@ -36,12 +37,16 @@ if (TOKEN.length < 32) {
   console.error('RUNNER_TOKEN must be set to a random value of at least 32 characters.');
   process.exit(1);
 }
-if (SANDBOX !== 'nsjail' && SANDBOX !== 'none') {
-  console.error(`Unknown RUNNER_SANDBOX "${SANDBOX}" (expected "nsjail" or "none").`);
+if (!['nsjail', 'restricted', 'none'].includes(SANDBOX)) {
+  console.error(`Unknown RUNNER_SANDBOX "${SANDBOX}" (expected "nsjail", "restricted" or "none").`);
   process.exit(1);
 }
 if (SANDBOX === 'none' && process.env.NODE_ENV === 'production') {
   console.error('RUNNER_SANDBOX=none runs student code without isolation and is refused in production.');
+  process.exit(1);
+}
+if (SANDBOX === 'restricted' && process.getuid() !== 0 && process.env.NODE_ENV === 'production') {
+  console.error('RUNNER_SANDBOX=restricted must run as root so each run can switch to its own unprivileged user.');
   process.exit(1);
 }
 
@@ -49,16 +54,18 @@ if (SANDBOX === 'none' && process.env.NODE_ENV === 'production') {
 // Worker pool
 // ------------------------------------------------------------------------------
 
-let active = 0;
+// Each worker slot has a number; in restricted mode it also picks the uid the
+// run executes as, so two concurrent runs never share a uid.
+const freeSlots = Array.from({ length: WORKERS }, (_, i) => i);
 const queue = [];
+const active = () => WORKERS - freeSlots.length;
 
 class QueueFullError extends Error {}
 class QueueTimeoutError extends Error {}
 
 function acquireSlot() {
-  if (active < WORKERS) {
-    active++;
-    return Promise.resolve();
+  if (freeSlots.length > 0) {
+    return Promise.resolve(freeSlots.pop());
   }
   if (queue.length >= MAX_QUEUE) {
     return Promise.reject(new QueueFullError('Runner queue is full.'));
@@ -74,22 +81,22 @@ function acquireSlot() {
   });
 }
 
-function releaseSlot() {
+function releaseSlot(slot) {
   const next = queue.shift();
   if (next) {
     clearTimeout(next.timer);
-    next.resolve(); // hand the slot straight to the next job
+    next.resolve(slot); // hand the slot straight to the next job
   } else {
-    active--;
+    freeSlots.push(slot);
   }
 }
 
-async function runCase(boxDir, stdin, limits) {
-  await acquireSlot();
+async function runCase(code, stdin, limits) {
+  const slot = await acquireSlot();
   try {
-    return await runOnce(SANDBOX, boxDir, stdin, limits);
+    return await runCode(SANDBOX, code, stdin, limits, slot);
   } finally {
-    releaseSlot();
+    releaseSlot(slot);
   }
 }
 
@@ -159,10 +166,9 @@ async function handleExecute(req, res) {
     memoryLimitMb: Math.min(MAX_MEMORY_MB, Math.max(32, Number(body.memoryLimitMb) || DEFAULT_MEMORY_MB)),
   };
 
-  const box = await prepareBox(body.code);
   try {
     // Cases of one submission run in parallel across free slots
-    const results = await Promise.all(body.cases.map((c) => runCase(box.dir, c.stdin || '', limits)));
+    const results = await Promise.all(body.cases.map((c) => runCase(body.code, c.stdin || '', limits)));
     send(res, 200, { results });
   } catch (err) {
     if (err instanceof QueueFullError || err instanceof QueueTimeoutError) {
@@ -171,14 +177,12 @@ async function handleExecute(req, res) {
       console.error('execute failed:', err);
       send(res, 500, { error: 'Runner internal error.' });
     }
-  } finally {
-    box.cleanup().catch(() => {});
   }
 }
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/healthz') {
-    return send(res, 200, { ok: true, sandbox: SANDBOX, workers: WORKERS, active, queued: queue.length });
+    return send(res, 200, { ok: true, sandbox: SANDBOX, workers: WORKERS, active: active(), queued: queue.length });
   }
   if (req.method === 'POST' && req.url === '/v1/execute') {
     handleExecute(req, res).catch((err) => {
@@ -191,6 +195,20 @@ const server = http.createServer((req, res) => {
 });
 
 server.requestTimeout = 120000;
+
+// Refuse to serve if the sandbox doesn't actually isolate code (e.g. nsjail on a
+// platform without privileged containers): students would otherwise see bogus errors.
+const failures = await selfTest(SANDBOX);
+if (failures.length > 0) {
+  console.error(`Sandbox self-test FAILED for RUNNER_SANDBOX=${SANDBOX}:`);
+  for (const f of failures) console.error(`  - ${f}`);
+  if (SANDBOX === 'nsjail') {
+    console.error('nsjail needs a privileged container. On platforms without one (e.g. Railway) set RUNNER_SANDBOX=restricted.');
+  }
+  process.exit(1);
+}
+console.log(`Sandbox self-test passed (${SANDBOX}).`);
+
 server.listen(PORT, () => {
   console.log(`JIT CodeArena runner listening on :${PORT} (sandbox=${SANDBOX}, workers=${WORKERS})`);
   if (SANDBOX === 'none') {
