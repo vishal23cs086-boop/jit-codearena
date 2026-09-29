@@ -31,7 +31,7 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StudentProfileDrawer } from '@/components/admin/StudentProfileDrawer';
 
-const DEPARTMENTS = ['CSE', 'IT', 'AI&DS', 'ECE', 'MECH', 'CIVIL', 'EEE', 'CSBS'];
+const DEPARTMENTS = ['CSE', 'AI&DS', 'ECE', 'MECH', 'CIVIL', 'CSBS'];
 const YEARS = [1, 2, 3, 4];
 const SECTIONS = ['A', 'B', 'C', 'D'];
 

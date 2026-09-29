@@ -19,12 +19,10 @@ import {
 
 const DEPARTMENTS = [
   'CSE',
-  'IT',
   'AI&DS',
   'ECE',
   'MECH',
   'CIVIL',
-  'EEE',
   'CSBS',
 ];
 

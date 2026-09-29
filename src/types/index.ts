@@ -68,7 +68,7 @@ export interface Profile {
 
 export interface StudentProfile extends Profile {
   register_number: string;
-  department: string; // CSE, IT, AI&DS, ECE, MECH, CIVIL, EEE, CSBS
+  department: string; // CSE, AI&DS, ECE, MECH, CIVIL, CSBS
   year: number; // 1, 2, 3, 4
   section?: string;
   phone?: string;
