@@ -109,8 +109,8 @@ export default function HomePage() {
                 <span className="font-semibold text-emerald-700">Secure Online Evaluation</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Department</span>
-                <span className="font-semibold text-slate-800">Computer Science and Engineering</span>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Participating Departments</span>
+                <span className="font-semibold text-slate-800">CSE • CSBS • AI&DS</span>
               </div>
             </div>
           </div>
