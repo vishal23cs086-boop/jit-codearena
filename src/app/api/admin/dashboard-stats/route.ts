@@ -1,9 +1,10 @@
-﻿import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardStatsFromDb } from '@/lib/turso';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const stats = await getDashboardStatsFromDb();
+    const assessmentId = req.nextUrl.searchParams.get('assessmentId') || 'global';
+    const stats = await getDashboardStatsFromDb(assessmentId);
     return NextResponse.json({
       success: true,
       stats,

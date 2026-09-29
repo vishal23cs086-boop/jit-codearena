@@ -252,6 +252,15 @@ export async function initTursoDb(): Promise<void> {
       marks_awarded REAL NOT NULL DEFAULT 0,
       answered_at TEXT,
       created_at TEXT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS assessment_dashboard_state (
+      id TEXT PRIMARY KEY,
+      assessment_id TEXT DEFAULT 'global',
+      completed_count_reset_at TEXT NOT NULL,
+      reset_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );`
   ];
 
@@ -329,6 +338,8 @@ export async function initTursoDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_mcq_subs_attempt ON mcq_submissions(attempt_id);',
     'CREATE INDEX IF NOT EXISTS idx_mcq_subs_test ON mcq_submissions(test_id);',
     'CREATE INDEX IF NOT EXISTS idx_mcq_subs_student ON mcq_submissions(student_id);',
+    'CREATE INDEX IF NOT EXISTS idx_dash_state_assess ON assessment_dashboard_state(assessment_id);',
+    'CREATE INDEX IF NOT EXISTS idx_dash_state_reset_at ON assessment_dashboard_state(completed_count_reset_at);',
   ];
 
   for (const alt of alters) {
@@ -2789,16 +2800,47 @@ export async function getActivityLogsFromDb(limit = 50, testId?: string) {
 }
 
 // -------------------------------------------------------------
-// DASHBOARD STATS
+// DASHBOARD STATS & COUNTER MANAGEMENT
 // -------------------------------------------------------------
-export async function getDashboardStatsFromDb() {
+export async function getDashboardStatsFromDb(assessmentId: string = 'global') {
   await initTursoDb();
   const client = getTursoClient();
 
-  const [studentsRes, presenceRes, attemptsRes, violationsRes] = await Promise.all([
+  // 1. Fetch active reset timestamp for dashboard completion counter
+  let resetRecord: any = null;
+  try {
+    const resetRes = await client.execute({
+      sql: `SELECT completed_count_reset_at, reset_by, assessment_id 
+            FROM assessment_dashboard_state 
+            WHERE assessment_id = ? OR assessment_id = 'global' 
+            ORDER BY completed_count_reset_at DESC LIMIT 1`,
+      args: [assessmentId],
+    });
+    if (resetRes.rows.length > 0) {
+      resetRecord = resetRes.rows[0];
+    }
+  } catch (err) {
+    // Graceful fallback if table is initializing
+  }
+
+  const resetTimestamp = resetRecord?.completed_count_reset_at ? String(resetRecord.completed_count_reset_at) : null;
+  const resetBy = resetRecord?.reset_by ? String(resetRecord.reset_by) : null;
+
+  // 2. Build completion counter query:
+  // If resetTimestamp exists: count ONLY completed attempts completed strictly AFTER the reset timestamp
+  let completedCountSql = "SELECT COUNT(*) as count FROM test_attempts WHERE (status = 'completed' OR status = 'submitted' OR status = 'auto_submitted')";
+  const completedCountArgs: any[] = [];
+
+  if (resetTimestamp) {
+    completedCountSql += " AND ((end_time IS NOT NULL AND end_time > ?) OR (end_time IS NULL AND created_at > ?))";
+    completedCountArgs.push(resetTimestamp, resetTimestamp);
+  }
+
+  const [studentsRes, presenceRes, attemptsRes, allAttemptsRes, violationsRes] = await Promise.all([
     client.execute("SELECT COUNT(*) as count FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"),
     getPresenceListFromDb(),
-    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE status = 'completed' OR status = 'submitted'"),
+    client.execute({ sql: completedCountSql, args: completedCountArgs }),
+    client.execute("SELECT COUNT(*) as count FROM test_attempts WHERE (status = 'completed' OR status = 'submitted' OR status = 'auto_submitted')"),
     client.execute('SELECT SUM(violation_count) as total_violations FROM student_presence'),
   ]);
 
@@ -2806,6 +2848,7 @@ export async function getDashboardStatsFromDb() {
   const onlineCount = presenceRes.filter((p) => p.session_status === 'ONLINE' || p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING').length;
   const inAssessmentCount = presenceRes.filter((p) => p.session_status === 'IN_ASSESSMENT' || p.session_status === 'WARNING').length;
   const completedAttempts = Number(attemptsRes.rows[0]?.count || 0);
+  const allTimeCompletedAttempts = Number(allAttemptsRes.rows[0]?.count || 0);
   const totalViolations = Number(violationsRes.rows[0]?.total_violations || 0);
 
   const recentLogs = await getActivityLogsFromDb(20);
@@ -2815,9 +2858,92 @@ export async function getDashboardStatsFromDb() {
     onlineCount,
     inAssessmentCount,
     completedAttempts,
+    allTimeCompletedAttempts,
+    completedCountResetAt: resetTimestamp,
+    completedCountResetBy: resetBy,
     totalViolations,
     recentLogs,
   };
+}
+
+export async function resetCompletedCountInDb(
+  resetBy: string,
+  assessmentId: string = 'global'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const now = new Date().toISOString();
+  const id = `state-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // Store new reset state (non-destructive, preserves all actual student attempt rows)
+  await client.execute({
+    sql: `INSERT INTO assessment_dashboard_state (
+      id, assessment_id, completed_count_reset_at, reset_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [id, assessmentId, now, resetBy, now, now],
+  });
+
+  // Record audit trail in activity_logs
+  try {
+    await client.execute({
+      sql: `INSERT INTO activity_logs (
+        id, test_id, student_id, student_name, register_number, event_type, description, metadata, timestamp
+      ) VALUES (?, ?, 'ADMIN', ?, 'ADMIN', 'DASHBOARD_COMPLETED_RESET', ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        assessmentId === 'global' ? null : assessmentId,
+        resetBy,
+        `Admin ${resetBy} reset the dashboard completed count for ${assessmentId === 'global' ? 'all assessments' : `assessment ${assessmentId}`}. Historical student attempts were preserved.`,
+        JSON.stringify({ reset_by: resetBy, reset_at: now, assessment_id: assessmentId }),
+        now,
+      ],
+    });
+  } catch (err) {
+    console.warn('Could not write reset audit log:', err);
+  }
+
+  return {
+    success: true,
+    reset_at: now,
+    reset_by: resetBy,
+    assessment_id: assessmentId,
+  };
+}
+
+export async function restoreCompletedCountInDb(
+  assessmentId: string = 'global',
+  restoredBy: string = 'admin'
+) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const now = new Date().toISOString();
+
+  await client.execute({
+    sql: `DELETE FROM assessment_dashboard_state WHERE assessment_id = ?`,
+    args: [assessmentId],
+  });
+
+  try {
+    await client.execute({
+      sql: `INSERT INTO activity_logs (
+        id, test_id, student_id, student_name, register_number, event_type, description, metadata, timestamp
+      ) VALUES (?, ?, 'ADMIN', ?, 'ADMIN', 'DASHBOARD_COMPLETED_RESTORED', ?, ?, ?)`,
+      args: [
+        `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        assessmentId === 'global' ? null : assessmentId,
+        restoredBy,
+        `Admin ${restoredBy} restored the full historical completed count for ${assessmentId === 'global' ? 'all assessments' : `assessment ${assessmentId}`}.`,
+        JSON.stringify({ restored_by: restoredBy, restored_at: now, assessment_id: assessmentId }),
+        now,
+      ],
+    });
+  } catch (err) {
+    console.warn('Could not write restore audit log:', err);
+  }
+
+  return { success: true };
 }
 
 // -------------------------------------------------------------

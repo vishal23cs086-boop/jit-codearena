@@ -18,6 +18,10 @@ import {
   ExternalLink,
   RefreshCw,
   AlertTriangle,
+  RotateCcw,
+  X,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DashboardDrilldownModal, DrilldownCategory } from '@/components/admin/DashboardDrilldownModal';
@@ -28,6 +32,9 @@ interface DashboardStats {
   onlineCount: number;
   inAssessmentCount: number;
   completedAttempts: number;
+  allTimeCompletedAttempts?: number;
+  completedCountResetAt?: string | null;
+  completedCountResetBy?: string | null;
   totalViolations: number;
   recentLogs: Array<{
     id: string;
@@ -45,6 +52,9 @@ export default function AdminDashboardPage() {
     onlineCount: 0,
     inAssessmentCount: 0,
     completedAttempts: 0,
+    allTimeCompletedAttempts: 0,
+    completedCountResetAt: null,
+    completedCountResetBy: null,
     totalViolations: 0,
     recentLogs: [],
   });
@@ -53,6 +63,11 @@ export default function AdminDashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [drilldownCategory, setDrilldownCategory] = useState<DrilldownCategory | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+
+  // Reset Completed Count state
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const loadData = async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -86,10 +101,74 @@ export default function AdminDashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleResetCompletedCount = async () => {
+    try {
+      setResetting(true);
+      const res = await fetch('/api/admin/dashboard/reset-completed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset',
+          assessmentId: 'global',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to reset completed count.');
+      }
+
+      setShowResetModal(false);
+      setToastMessage('✓ Dashboard completion counter reset to 0. All student records, attempts, and submissions remain preserved.');
+      await loadData(true);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reset completed count.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleRestoreCompletedCount = async () => {
+    try {
+      setResetting(true);
+      const res = await fetch('/api/admin/dashboard/reset-completed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'restore',
+          assessmentId: 'global',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to restore count.');
+      }
+
+      setShowResetModal(false);
+      setToastMessage('✓ Full historical completion count restored.');
+      await loadData(true);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to restore completed count.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const liveAssessments = assessments.filter((a) => a.status === 'live');
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl border border-slate-700 text-xs flex items-center gap-3 animate-fade-in">
+          <span>{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative overflow-hidden border border-slate-200/90 shadow-sm shadow-slate-900/5">
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-50/60 rounded-full blur-3xl pointer-events-none" />
@@ -119,7 +198,7 @@ export default function AdminDashboardPage() {
         <div className="flex items-center gap-3 relative z-10">
           <button
             onClick={() => loadData(false)}
-            className="p-2.5 bg-white hover:bg-slate-50 rounded-xl text-slate-600 border border-slate-200 shadow-xs"
+            className="p-2.5 bg-white hover:bg-slate-50 rounded-xl text-slate-600 border border-slate-200 shadow-xs transition"
             title="Refresh statistics"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -191,20 +270,41 @@ export default function AdminDashboardPage() {
           <span className="text-[11px] text-slate-500 mt-1 block">Attempting tests</span>
         </div>
 
-        {/* Completed Attempts */}
+        {/* Completed Attempts with Secure Reset Control */}
         <div
           onClick={() => setDrilldownCategory('completed')}
-          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-purple-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group"
+          className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/90 shadow-sm shadow-slate-900/5 hover:border-purple-400 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer group relative"
           title="Click to drill down into completed assessment submissions"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-purple-600 transition-colors">Completed</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-purple-600 transition-colors">Completed</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowResetModal(true);
+                }}
+                className="text-[10px] font-semibold text-slate-500 hover:text-purple-700 bg-slate-100 hover:bg-purple-100 px-2 py-0.5 rounded-md transition border border-slate-200/80 flex items-center gap-1"
+                title="Reset completion counter for a new session"
+              >
+                <RotateCcw className="w-2.5 h-2.5 text-purple-600" />
+                <span>Reset Completed Count</span>
+              </button>
+            </div>
             <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
               <CheckCircle2 className="w-4 h-4 text-purple-600 group-hover:text-white transition-colors" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-purple-600">{stats.completedAttempts}</div>
-          <span className="text-[11px] text-slate-500 mt-1 block">Finalized submissions</span>
+          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
+            <span>{stats.completedCountResetAt ? 'Since last reset' : 'Finalized submissions'}</span>
+            {stats.completedCountResetAt && stats.allTimeCompletedAttempts !== undefined && (
+              <span className="text-[10px] font-medium text-purple-600" title={`Historical submissions: ${stats.allTimeCompletedAttempts}`}>
+                ({stats.allTimeCompletedAttempts} all-time)
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Security Warnings */}
@@ -243,80 +343,65 @@ export default function AdminDashboardPage() {
           </div>
 
           {liveAssessments.length > 0 ? (
-            <div className="space-y-4">
-              {liveAssessments.map((t) => (
-                <div key={t.id} className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-4">
-                  <div className="flex items-start justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {liveAssessments.map((test) => (
+                <div
+                  key={test.id}
+                  className="p-5 rounded-2xl border border-emerald-100 bg-emerald-50/20 space-y-3 relative overflow-hidden"
+                >
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-lg font-bold text-slate-900">{t.title}</h4>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{t.description}</p>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[10px] uppercase">
-                      LIVE
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 text-xs font-mono bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-                    <div>
-                      <span className="text-slate-500 block mb-1 text-[11px] uppercase tracking-wider font-semibold">Duration</span>
-                      <span className="font-bold text-slate-900">{t.duration} Mins</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block mb-1 text-[11px] uppercase tracking-wider font-semibold">Questions</span>
-                      <span className="font-bold text-emerald-600">{t.question_count} Problems</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block mb-1 text-[11px] uppercase tracking-wider font-semibold">Participants</span>
-                      <span className="font-bold text-indigo-600 block">{t.participant_count} Attempts</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider">
+                        LIVE NOW • YEAR {test.year}
+                      </span>
+                      <h4 className="font-bold text-slate-900 text-sm mt-1">{test.title}</h4>
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">Code: {test.code || 'N/A'}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2">
-                    <Link
-                      href="/admin/monitor"
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition shadow-sm shadow-indigo-600/20"
-                    >
-                      Invigilate Candidates
-                    </Link>
-                    <span className="font-mono text-[11px] text-slate-400">Code: {t.code || t.id.slice(0, 8)}</span>
+                  <div className="flex items-center gap-4 text-xs text-slate-600 pt-2 border-t border-emerald-100/60">
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{test.duration}m</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Year {test.year}</span>
+                    </div>
+                    <div className="flex items-center gap-1 ml-auto">
+                      <span className="font-bold text-emerald-700">{test.total_marks || 100} Marks</span>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <EmptyState
-              title="No active examination right now"
-              description="Scheduled examinations can be published or started from the Assessments management console."
-              action={{
-                label: "Create or Publish Assessment",
-                href: "/admin/tests",
-              }}
-            />
+            <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
+              <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-xs font-semibold text-slate-600">No examination is currently running live.</p>
+              <p className="text-[11px] text-slate-400 mt-1">Publish an assessment from the Assessments tab to initiate live invigilation.</p>
+            </div>
           )}
         </div>
 
-        {/* Live Streaming Activity Feed */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 sm:p-7 space-y-5 border border-slate-200/90 shadow-sm shadow-slate-900/5">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-amber-500" />
-              <span>Live Audit Stream</span>
-            </h3>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-mono font-semibold">
-              Turso Sync
-            </span>
+        {/* Live Proctoring & Security Feed */}
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 sm:p-7 space-y-4 border border-slate-200/90 shadow-sm shadow-slate-900/5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-600" />
+              <h3 className="font-bold text-slate-900 text-sm">Security & Audit Stream</h3>
+            </div>
+            <Link href="/admin/logs" className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition">
+              Full Logs
+            </Link>
           </div>
 
           {stats.recentLogs && stats.recentLogs.length > 0 ? (
-            <div className="space-y-3 font-mono text-xs max-h-96 overflow-y-auto pr-1">
-              {stats.recentLogs.map((l: any) => (
+            <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+              {stats.recentLogs.slice(0, 8).map((l) => (
                 <div
                   key={l.id}
-                  onClick={() => l.student_id && setSelectedStudentId(l.student_id)}
-                  className={`p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl space-y-1 hover:border-indigo-300 transition ${
-                    l.student_id ? 'cursor-pointer hover:bg-slate-50' : ''
-                  }`}
-                  title={l.student_id ? 'Click to inspect candidate security history' : undefined}
+                  className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition space-y-1"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-[11px] truncate max-w-[150px]">
@@ -358,6 +443,99 @@ export default function AdminDashboardPage() {
         studentId={selectedStudentId}
         onClose={() => setSelectedStudentId(null)}
       />
+
+      {/* SECURE RESET COMPLETED COUNT CONFIRMATION MODAL */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full border border-slate-200 shadow-2xl space-y-5 animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center">
+                  <RotateCcw className="w-4 h-4 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Reset Completed Count</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">Dashboard Metric Reset</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Explanatory Warning & Safety Guarantee */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-900 leading-snug">
+                Reset the completed count?
+              </p>
+              <div className="p-3.5 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900 leading-relaxed space-y-1.5">
+                <p className="font-semibold flex items-center gap-1.5 text-purple-950">
+                  <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Non-Destructive Counter Operation</span>
+                </p>
+                <p className="text-[12px] text-purple-900 leading-normal">
+                  This will reset the dashboard completion counter but will <strong>NOT</strong> delete student data, submissions, results, or attempts.
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                <div className="flex justify-between">
+                  <span>Current Displayed Count:</span>
+                  <strong className="text-slate-900">{stats.completedAttempts}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Historical Records:</span>
+                  <strong className="text-purple-700">{stats.allTimeCompletedAttempts || stats.completedAttempts} preserved in Turso</strong>
+                </div>
+                {stats.completedCountResetAt && (
+                  <div className="flex justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
+                    <span>Last Reset:</span>
+                    <span>{new Date(stats.completedCountResetAt).toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              {stats.completedCountResetAt ? (
+                <button
+                  type="button"
+                  onClick={handleRestoreCompletedCount}
+                  disabled={resetting}
+                  className="text-xs text-slate-500 hover:text-slate-800 underline transition"
+                  title="Remove the reset filter and show all historical completions"
+                >
+                  Restore All-Time
+                </button>
+              ) : <div />}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  disabled={resetting}
+                  className="px-4 py-2 text-xs text-slate-600 hover:text-slate-800 rounded-xl font-medium transition hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetCompletedCount}
+                  disabled={resetting}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${resetting ? 'animate-spin' : ''}`} />
+                  <span>{resetting ? 'Resetting...' : 'Reset Count'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
