@@ -381,8 +381,9 @@ export async function GET(req: NextRequest) {
     });
 
     // 8. Compute Dynamic Ranking within the Filtered Group (Requirement 13)
-    // Completed students ranked by highest score descending, then lowest time taken ascending
-    const completedStudents = filteredRows.filter((r) => r.status === 'COMPLETED');
+    // Completed students ranked by highest score descending, then lowest time taken ascending.
+    // Students with proctoring violations are not ranked; they are listed separately.
+    const completedStudents = filteredRows.filter((r) => r.status === 'COMPLETED' && r.violations === 0);
     completedStudents.sort((a, b) => {
       const scoreDiff = (b.score || 0) - (a.score || 0);
       if (scoreDiff !== 0) return scoreDiff;

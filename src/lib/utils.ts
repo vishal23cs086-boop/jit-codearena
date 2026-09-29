@@ -117,3 +117,67 @@ export function exportToExcel(filename: string, rows: Record<string, unknown>[])
   document.body.removeChild(link);
 }
 
+
+export interface ExportSection {
+  title: string;
+  rows: Record<string, unknown>[];
+}
+
+function downloadBlob(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function csvCell(value: unknown): string {
+  let cell = value === null || value === undefined ? '' : String(value);
+  cell = cell.replace(/"/g, '""');
+  return /("|,|\n)/.test(cell) ? `"${cell}"` : cell;
+}
+
+/** One CSV file with a titled block per section (sections with no rows are skipped). */
+export function exportSectionsToCsv(filename: string, sections: ExportSection[]) {
+  const blocks = sections
+    .filter((s) => s.rows.length > 0)
+    .map((s) => {
+      const keys = Object.keys(s.rows[0]);
+      return [csvCell(s.title), keys.map(csvCell).join(','), ...s.rows.map((r) => keys.map((k) => csvCell(r[k])).join(','))].join('\n');
+    });
+  if (blocks.length === 0) return;
+  downloadBlob(`${filename}.csv`, blocks.join('\n\n'), 'text/csv;charset=utf-8;');
+}
+
+/** One Excel file with a titled table per section (sections with no rows are skipped). */
+export function exportSectionsToExcel(filename: string, sections: ExportSection[]) {
+  const nonEmpty = sections.filter((s) => s.rows.length > 0);
+  if (nonEmpty.length === 0) return;
+  const esc = (v: unknown) => (v === null || v === undefined ? '' : String(v)).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+  html += '<head><meta charset="utf-8"/><style>th { background-color: #059669; color: white; font-weight: bold; } td, th { border: 1px solid #CBD5E1; padding: 6px 10px; font-family: sans-serif; font-size: 12px; } .text { mso-number-format:"\\@"; } h3 { font-family: sans-serif; }</style></head><body>';
+  for (const section of nonEmpty) {
+    const keys = Object.keys(section.rows[0]);
+    html += `<h3>${esc(section.title)}</h3><table><thead><tr>`;
+    keys.forEach((k) => {
+      html += `<th>${esc(k)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    section.rows.forEach((row) => {
+      html += '<tr>';
+      keys.forEach((k) => {
+        const kl = k.toLowerCase();
+        const isText = kl.includes('roll') || kl.includes('number') || kl.includes('time') || kl.includes('status');
+        html += `<td class="${isText ? 'text' : ''}">${esc(row[k])}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table><br/>';
+  }
+  html += '</body></html>';
+  downloadBlob(`${filename}.xls`, html, 'application/vnd.ms-excel;charset=utf-8;');
+}

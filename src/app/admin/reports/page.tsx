@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { exportToCsv, exportToExcel } from '@/lib/utils';
+import { exportToCsv, exportSectionsToCsv, exportSectionsToExcel } from '@/lib/utils';
 import { StudentProfileDrawer } from '@/components/admin/StudentProfileDrawer';
 import {
   FileSpreadsheet,
@@ -338,50 +338,185 @@ export default function AdminReportsPage() {
     return list;
   }, [rows, sortBy, sortOrder]);
 
-  // Export: Filtered Results CSV (Requirement 8 & 9)
-  const handleExportFilteredCSV = () => {
-    if (sortedRows.length === 0) return;
-    const exportDataset = sortedRows.map((r) => ({
+  // Students who broke proctoring rules (any violation, or terminated) are listed
+  // separately from the ranked results, on screen and in exports
+  const isFlagged = (r: ReportRow) => r.violations > 0 || r.status === 'TERMINATED';
+  const cleanRows = sortedRows.filter((r) => !isFlagged(r));
+  const flaggedRows = sortedRows.filter(isFlagged);
+
+  const renderResultsTable = (list: ReportRow[]) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 uppercase tracking-wider font-semibold text-[11px]">
+            <th className="py-3 px-3 text-center">Rank</th>
+            <th className="py-3 px-3">Roll No</th>
+            <th className="py-3 px-3">Name</th>
+            <th className="py-3 px-2">Dept</th>
+            <th className="py-3 px-2 text-center">Year</th>
+            <th className="py-3 px-3">Assessment</th>
+            <th className="py-3 px-3 text-right">Score</th>
+            <th className="py-3 px-2 text-right">Total</th>
+            <th className="py-3 px-3 text-center">%</th>
+            <th className="py-3 px-3 text-center">Time</th>
+            <th className="py-3 px-3 text-center">Violations</th>
+            <th className="py-3 px-3">Status</th>
+            <th className="py-3 px-3">Completion Time</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 font-mono">
+          {list.map((r) => {
+            const isClean = r.violations === 0;
+            return (
+              <tr key={r.id} className="hover:bg-slate-50/80 transition">
+                {/* RANK (Requirement 13) */}
+                <td className="py-3 px-3 text-center">
+                  {typeof r.rank === 'number' ? (
+                    <span
+                      className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                        r.rank === 1
+                          ? 'bg-amber-100 text-amber-800'
+                          : r.rank === 2
+                          ? 'bg-slate-200 text-slate-800'
+                          : r.rank === 3
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      {r.rank}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+
+                {/* ROLL NO (Clickable for student modal - Requirement 12) */}
+                <td className="py-3 px-3">
+                  <button
+                    onClick={() => setSelectedStudentForModal(r)}
+                    className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
+                    title="Click to view complete candidate examination record"
+                  >
+                    <span>{r.register_number}</span>
+                  </button>
+                </td>
+
+                {/* NAME */}
+                <td className="py-3 px-3 font-sans text-slate-900 font-semibold max-w-[180px] truncate">
+                  {r.name}
+                </td>
+
+                {/* DEPARTMENT */}
+                <td className="py-3 px-2 text-slate-700 font-semibold">{r.department}</td>
+
+                {/* YEAR */}
+                <td className="py-3 px-2 text-center text-slate-500 font-bold">{r.year}</td>
+
+                {/* ASSESSMENT */}
+                <td className="py-3 px-3 font-sans text-[11px] text-slate-600 max-w-[200px] truncate">
+                  {r.assessment}
+                </td>
+
+                {/* SCORE */}
+                <td className="py-3 px-3 text-right font-black text-emerald-600">
+                  {r.score !== null ? r.score : '—'}
+                </td>
+
+                {/* TOTAL MARKS */}
+                <td className="py-3 px-2 text-right text-slate-400">{r.total_marks}</td>
+
+                {/* PERCENTAGE */}
+                <td className="py-3 px-3 text-center font-bold text-slate-700">
+                  {r.percentage !== null ? `${r.percentage}%` : '—'}
+                </td>
+
+                {/* TIME TAKEN */}
+                <td className="py-3 px-3 text-center text-slate-500 text-[11px]">
+                  {r.time_taken_formatted}
+                </td>
+
+                {/* VIOLATIONS */}
+                <td className="py-3 px-3 text-center">
+                  {isClean ? (
+                    <span className="text-emerald-600 font-semibold text-[11px]">Clean</span>
+                  ) : (
+                    <span className="text-rose-600 font-bold text-[11px]">
+                      {r.violations} flags
+                    </span>
+                  )}
+                </td>
+
+                {/* STATUS */}
+                <td className="py-3 px-3 font-sans text-[11px]">
+                  <span
+                    className={`px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-[10px] ${
+                      r.status === 'COMPLETED'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : r.status === 'IN PROGRESS'
+                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        : r.status === 'TERMINATED'
+                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}
+                  >
+                    {r.status}
+                  </span>
+                </td>
+
+                {/* COMPLETION TIME */}
+                <td className="py-3 px-3 text-slate-500 text-[11px] font-sans">
+                  {r.completion_time}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  // Export rows: ranked results first, then rule violators in their own section
+  const reportSections = (missing: string | number) => {
+    const toExportRow = (r: ReportRow) => ({
       'Roll Number': r.register_number,
       Name: r.name,
       Department: r.department,
       Year: r.year,
       Assessment: r.assessment,
-      Score: r.score !== null ? r.score : '—',
+      Score: r.score !== null ? r.score : missing,
       'Total Marks': r.total_marks,
-      Percentage: r.percentage !== null ? `${r.percentage}%` : '—',
+      Percentage: r.percentage !== null ? `${r.percentage}%` : missing === 0 ? '0%' : missing,
       'Time Taken': r.time_taken_formatted,
       Violations: r.violations,
       Status: r.status,
       'Completion Time': r.completion_time,
       Rank: r.rank,
-    }));
+    });
+    return [
+      { title: `Results (${cleanRows.length})`, rows: cleanRows.map(toExportRow) },
+      {
+        title: `Rule violations (${flaggedRows.length}) - not ranked`,
+        rows: flaggedRows.map((r) => ({
+          ...toExportRow(r),
+          'Tab Switches': r.tab_switches,
+          'Fullscreen Exits': r.fullscreen_exits,
+        })),
+      },
+    ];
+  };
 
+  // Export: Filtered Results CSV (Requirement 8 & 9)
+  const handleExportFilteredCSV = () => {
+    if (sortedRows.length === 0) return;
     const filename = `JIT_CodeArena_Report_${appliedYear !== 'all' ? `Yr${appliedYear}_` : ''}${appliedDept !== 'all' ? `${appliedDept}_` : 'All_Depts'}`;
-    exportToCsv(filename, exportDataset);
+    exportSectionsToCsv(filename, reportSections('—'));
   };
 
   // Export: Filtered Results Excel (Requirement 9)
   const handleExportFilteredExcel = () => {
     if (sortedRows.length === 0) return;
-    const exportDataset = sortedRows.map((r) => ({
-      'Roll Number': r.register_number,
-      Name: r.name,
-      Department: r.department,
-      Year: r.year,
-      Assessment: r.assessment,
-      Score: r.score !== null ? r.score : 0,
-      'Total Marks': r.total_marks,
-      Percentage: r.percentage !== null ? `${r.percentage}%` : '0%',
-      'Time Taken': r.time_taken_formatted,
-      Violations: r.violations,
-      Status: r.status,
-      'Completion Time': r.completion_time,
-      Rank: r.rank,
-    }));
-
     const filename = `JIT_CodeArena_GradeSheet_${appliedYear !== 'all' ? `Yr${appliedYear}_` : ''}${appliedDept !== 'all' ? `${appliedDept}` : 'All'}`;
-    exportToExcel(filename, exportDataset);
+    exportSectionsToExcel(filename, reportSections(0));
   };
 
   // Export: Anti-Cheating Audit Incident Report (Requirement 10)
@@ -1321,134 +1456,25 @@ export default function AdminReportsPage() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-600 uppercase tracking-wider font-semibold text-[11px]">
-                  <th className="py-3 px-3 text-center">Rank</th>
-                  <th className="py-3 px-3">Roll No</th>
-                  <th className="py-3 px-3">Name</th>
-                  <th className="py-3 px-2">Dept</th>
-                  <th className="py-3 px-2 text-center">Year</th>
-                  <th className="py-3 px-3">Assessment</th>
-                  <th className="py-3 px-3 text-right">Score</th>
-                  <th className="py-3 px-2 text-right">Total</th>
-                  <th className="py-3 px-3 text-center">%</th>
-                  <th className="py-3 px-3 text-center">Time</th>
-                  <th className="py-3 px-3 text-center">Violations</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Completion Time</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
-                {sortedRows.map((r) => {
-                  const isClean = r.violations === 0;
-                  return (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition">
-                      {/* RANK (Requirement 13) */}
-                      <td className="py-3 px-3 text-center">
-                        {typeof r.rank === 'number' ? (
-                          <span
-                            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                              r.rank === 1
-                                ? 'bg-amber-100 text-amber-800'
-                                : r.rank === 2
-                                ? 'bg-slate-200 text-slate-800'
-                                : r.rank === 3
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'text-slate-600'
-                            }`}
-                          >
-                            {r.rank}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-
-                      {/* ROLL NO (Clickable for student modal - Requirement 12) */}
-                      <td className="py-3 px-3">
-                        <button
-                          onClick={() => setSelectedStudentForModal(r)}
-                          className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
-                          title="Click to view complete candidate examination record"
-                        >
-                          <span>{r.register_number}</span>
-                        </button>
-                      </td>
-
-                      {/* NAME */}
-                      <td className="py-3 px-3 font-sans text-slate-900 font-semibold max-w-[180px] truncate">
-                        {r.name}
-                      </td>
-
-                      {/* DEPARTMENT */}
-                      <td className="py-3 px-2 text-slate-700 font-semibold">{r.department}</td>
-
-                      {/* YEAR */}
-                      <td className="py-3 px-2 text-center text-slate-500 font-bold">{r.year}</td>
-
-                      {/* ASSESSMENT */}
-                      <td className="py-3 px-3 font-sans text-[11px] text-slate-600 max-w-[200px] truncate">
-                        {r.assessment}
-                      </td>
-
-                      {/* SCORE */}
-                      <td className="py-3 px-3 text-right font-black text-emerald-600">
-                        {r.score !== null ? r.score : '—'}
-                      </td>
-
-                      {/* TOTAL MARKS */}
-                      <td className="py-3 px-2 text-right text-slate-400">{r.total_marks}</td>
-
-                      {/* PERCENTAGE */}
-                      <td className="py-3 px-3 text-center font-bold text-slate-700">
-                        {r.percentage !== null ? `${r.percentage}%` : '—'}
-                      </td>
-
-                      {/* TIME TAKEN */}
-                      <td className="py-3 px-3 text-center text-slate-500 text-[11px]">
-                        {r.time_taken_formatted}
-                      </td>
-
-                      {/* VIOLATIONS */}
-                      <td className="py-3 px-3 text-center">
-                        {isClean ? (
-                          <span className="text-emerald-600 font-semibold text-[11px]">Clean</span>
-                        ) : (
-                          <span className="text-rose-600 font-bold text-[11px]">
-                            {r.violations} flags
-                          </span>
-                        )}
-                      </td>
-
-                      {/* STATUS */}
-                      <td className="py-3 px-3 font-sans text-[11px]">
-                        <span
-                          className={`px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-[10px] ${
-                            r.status === 'COMPLETED'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : r.status === 'IN PROGRESS'
-                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                              : r.status === 'TERMINATED'
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-slate-100 text-slate-600 border border-slate-200'
-                          }`}
-                        >
-                          {r.status}
-                        </span>
-                      </td>
-
-                      {/* COMPLETION TIME */}
-                      <td className="py-3 px-3 text-slate-500 text-[11px] font-sans">
-                        {r.completion_time}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {cleanRows.length > 0 ? (
+              renderResultsTable(cleanRows)
+            ) : (
+              <p className="text-xs text-slate-500 py-4">No candidates without rule violations for {activeFilterLabel}.</p>
+            )}
+            {flaggedRows.length > 0 && (
+              <div className="mt-8 break-before-page">
+                <h3 className="text-sm font-bold text-rose-700 flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-4 h-4" />
+                  Rule violations ({flaggedRows.length})
+                </h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Candidates with proctoring violations or a terminated attempt. They are not ranked with the results above.
+                </p>
+                {renderResultsTable(flaggedRows)}
+              </div>
+            )}
+          </>
         )}
       </div>
 
