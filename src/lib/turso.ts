@@ -393,6 +393,15 @@ export async function initTursoDb(): Promise<void> {
 
   // --- AUTOMATIC INSTITUTIONAL SEEDING (ENSURES 516 STUDENTS ON VERCEL & ANY ENVIRONMENT) ---
   try {
+    // Purge any legacy demo or test accounts not part of the official 516 master roster
+    await client.execute(`
+      DELETE FROM students
+      WHERE register_number IN ('23CS080', '23CS084', '25CS058', '23CS001', '23CS002', '22CS001', '22CS002')
+         OR register_number LIKE 'TEST%'
+         OR register_number LIKE 'TSTY%'
+         OR register_number LIKE 'AUDIT%'
+    `);
+
     const studentCountRes = await client.execute(
       "SELECT COUNT(*) as c FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"
     );
