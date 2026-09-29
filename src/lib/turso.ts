@@ -1,14 +1,38 @@
 import { createClient, type Client } from '@libsql/client';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import studentsMasterData from '@/data/students-master.json';
+import testsMasterData from '@/data/tests-master.json';
+import questionsMasterData from '@/data/questions-master.json';
 
 let tursoClientInstance: Client | null = null;
 let isInitialized = false;
 
 export function getTursoClient(): Client {
   if (!tursoClientInstance) {
-    const url = process.env.TURSO_DATABASE_URL && process.env.TURSO_DATABASE_URL.trim() !== ''
+    let url = process.env.TURSO_DATABASE_URL && process.env.TURSO_DATABASE_URL.trim() !== ''
       ? process.env.TURSO_DATABASE_URL
-      : 'file:jit_codearena_local.db';
+      : '';
+
+    if (!url) {
+      if (process.env.VERCEL) {
+        // On Vercel serverless execution, the root working directory is read-only.
+        // /tmp is the only writable scratch filesystem.
+        const tmpDbPath = path.join('/tmp', 'jit_codearena_local.db');
+        const seedDbPath = path.join(process.cwd(), 'jit_codearena_local.db');
+        if (!fs.existsSync(tmpDbPath) && fs.existsSync(seedDbPath)) {
+          try {
+            fs.copyFileSync(seedDbPath, tmpDbPath);
+          } catch (e) {
+            console.warn('Could not copy seed database to /tmp:', e);
+          }
+        }
+        url = `file:${tmpDbPath}`;
+      } else {
+        url = 'file:jit_codearena_local.db';
+      }
+    }
 
     const authToken = process.env.TURSO_AUTH_TOKEN && process.env.TURSO_AUTH_TOKEN.trim() !== ''
       ? process.env.TURSO_AUTH_TOKEN
@@ -365,6 +389,106 @@ export async function initTursoDb(): Promise<void> {
     await client.execute('UPDATE students SET session_version = 1 WHERE session_version IS NULL');
   } catch {
     // safe non-blocking
+  }
+
+  // --- AUTOMATIC INSTITUTIONAL SEEDING (ENSURES 516 STUDENTS ON VERCEL & ANY ENVIRONMENT) ---
+  try {
+    const studentCountRes = await client.execute(
+      "SELECT COUNT(*) as c FROM students WHERE (account_deleted = 0 OR account_deleted IS NULL) AND (is_archived = 0 OR is_archived IS NULL) AND (status != 'archived' OR status IS NULL)"
+    );
+    const existingCount = Number(studentCountRes.rows[0]?.c || 0);
+
+    if (existingCount < 516 && Array.isArray(studentsMasterData) && studentsMasterData.length > 0) {
+      const now = new Date().toISOString();
+      for (const s of studentsMasterData) {
+        await client.execute({
+          sql: `INSERT INTO students (
+                  id, register_number, full_name, email, department, year, section, phone,
+                  password_hash, status, is_active, is_archived, account_deleted, session_version,
+                  academic_year, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(register_number) DO UPDATE SET
+                  full_name = excluded.full_name,
+                  department = excluded.department,
+                  year = excluded.year,
+                  section = excluded.section,
+                  academic_year = excluded.academic_year,
+                  status = 'active',
+                  is_active = 1,
+                  is_archived = 0,
+                  account_deleted = 0,
+                  password_hash = COALESCE(excluded.password_hash, students.password_hash),
+                  updated_at = excluded.updated_at`,
+          args: [
+            s.id,
+            s.register_number.trim().toUpperCase(),
+            s.full_name.trim(),
+            s.email,
+            s.department.trim(),
+            Number(s.year),
+            s.section || 'A',
+            s.phone || null,
+            s.password_hash,
+            s.status || 'active',
+            s.is_active ?? 1,
+            s.is_archived ?? 0,
+            s.account_deleted ?? 0,
+            s.session_version ?? 1,
+            s.academic_year || '2026-2027',
+            s.created_at || now,
+            now,
+          ],
+        });
+      }
+    }
+  } catch (seedErr) {
+    console.warn('[Turso] Auto-seed students error:', seedErr);
+  }
+
+  try {
+    const testCountRes = await client.execute("SELECT COUNT(*) as c FROM tests WHERE is_archived = 0");
+    const testCount = Number(testCountRes.rows[0]?.c || 0);
+    if (testCount === 0 && Array.isArray(testsMasterData) && testsMasterData.length > 0) {
+      for (const t of testsMasterData) {
+        await client.execute({
+          sql: `INSERT OR IGNORE INTO tests (
+            id, title, description, code, instructions, duration, total_marks, passing_marks,
+            start_time, end_time, status, is_archived, year, question_count, test_type,
+            negative_marking, show_results_immediately, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            t.id, t.title, t.description, t.code, t.instructions, t.duration, t.total_marks,
+            t.passing_marks, t.start_time, t.end_time, t.status, t.is_archived, t.year,
+            t.question_count, t.test_type || 'coding', t.negative_marking || 0,
+            t.show_results_immediately ?? 1, t.created_at, t.updated_at,
+          ],
+        });
+      }
+    }
+
+    const questionCountRes = await client.execute("SELECT COUNT(*) as c FROM questions WHERE is_archived = 0");
+    const qCount = Number(questionCountRes.rows[0]?.c || 0);
+    if (qCount === 0 && Array.isArray(questionsMasterData) && questionsMasterData.length > 0) {
+      for (const q of questionsMasterData) {
+        await client.execute({
+          sql: `INSERT OR IGNORE INTO questions (
+            id, test_id, title, description, difficulty, marks, initial_code, solution_code,
+            test_cases, time_limit, memory_limit, order_index, year, topic, input_format,
+            output_format, constraints, is_archived, is_active, starter_code, question_type,
+            option_a, option_b, option_c, option_d, correct_answer, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            q.id, q.test_id, q.title, q.description, q.difficulty, q.marks, q.initial_code,
+            q.solution_code, q.test_cases, q.time_limit, q.memory_limit, q.order_index,
+            q.year, q.topic, q.input_format, q.output_format, q.constraints, q.is_archived,
+            q.is_active, q.starter_code, q.question_type || 'coding', q.option_a, q.option_b,
+            q.option_c, q.option_d, q.correct_answer, q.created_at,
+          ],
+        });
+      }
+    }
+  } catch (seedErr) {
+    console.warn('[Turso] Auto-seed tests/questions error:', seedErr);
   }
 
   isInitialized = true;

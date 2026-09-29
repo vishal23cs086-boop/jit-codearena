@@ -146,9 +146,26 @@ export default function StudentManagementPage() {
   const fetchStudentsList = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/students');
+      const res = await fetch(`/api/admin/students?_t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success && Array.isArray(json.students)) {
+        if (json.students.length === 0) {
+          // Self-healing: auto-trigger master roster sync if database is empty
+          try {
+            const syncRes = await fetch('/api/admin/students/import-master', { method: 'POST' });
+            const syncJson = await syncRes.json();
+            if (syncJson.success) {
+              const retryRes = await fetch(`/api/admin/students?_t=${Date.now()}`, { cache: 'no-store' });
+              const retryJson = await retryRes.json();
+              if (retryJson.success && Array.isArray(retryJson.students)) {
+                setStudents(retryJson.students);
+                return;
+              }
+            }
+          } catch {
+            // fallback
+          }
+        }
         setStudents(json.students);
       }
     } catch (err) {

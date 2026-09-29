@@ -76,8 +76,8 @@ export default function AdminDashboardPage() {
     if (!silent) setRefreshing(true);
     try {
       const [statsRes, assessRes] = await Promise.all([
-        fetch('/api/admin/dashboard-stats'),
-        fetch('/api/admin/assessments'),
+        fetch(`/api/admin/dashboard-stats?_t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`/api/admin/assessments?_t=${Date.now()}`, { cache: 'no-store' }),
       ]);
       const statsJson = await statsRes.json();
       const assessJson = await assessRes.json();

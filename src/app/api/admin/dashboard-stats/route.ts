@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardStatsFromDb } from '@/lib/turso';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   try {
     const assessmentId = req.nextUrl.searchParams.get('assessmentId') || 'global';
