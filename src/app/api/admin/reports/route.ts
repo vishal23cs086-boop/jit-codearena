@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTursoClient, initTursoDb } from '@/lib/turso';
+import { MAX_PROCTORING_VIOLATIONS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -204,7 +205,8 @@ export async function GET(req: NextRequest) {
       // Violations
       const tabSwitches = Number(r.tab_switches || 0);
       const fullscreenExits = Number(r.fullscreen_exits || 0);
-      const violationCount = Number(r.violation_count || tabSwitches + fullscreenExits || 0);
+      // violation_count = warnings issued (authoritative); raw tab/fullscreen counts only for old rows without it
+      const violationCount = Number(r.violation_count ?? (tabSwitches + fullscreenExits));
 
       // Status resolution
       let status: 'COMPLETED' | 'IN PROGRESS' | 'NOT STARTED' | 'TERMINATED' = 'NOT STARTED';
@@ -214,10 +216,10 @@ export async function GET(req: NextRequest) {
         const rawStatus = String(r.attempt_status || '').toLowerCase();
         if (rawStatus === 'in_progress') {
           status = 'IN PROGRESS';
-        } else if (rawStatus === 'terminated' || (rawStatus === 'auto_submitted' && violationCount > 3)) {
+        } else if (rawStatus === 'terminated' || (rawStatus === 'auto_submitted' && violationCount >= MAX_PROCTORING_VIOLATIONS)) {
           status = 'TERMINATED';
         } else if (rawStatus === 'completed' || rawStatus === 'submitted' || rawStatus === 'auto_submitted') {
-          status = violationCount > 3 ? 'TERMINATED' : 'COMPLETED';
+          status = violationCount >= MAX_PROCTORING_VIOLATIONS ? 'TERMINATED' : 'COMPLETED';
         } else {
           status = 'IN PROGRESS';
         }
@@ -542,8 +544,8 @@ export async function GET(req: NextRequest) {
           violation_type: r.tab_switches > 0 ? 'TAB SWITCH DEVIATION' : 'FULLSCREEN EXIT ATTEMPT',
           violation_count: r.violations,
           timestamp: r.completed_at ? new Date(r.completed_at).toLocaleString() : 'During Examination',
-          severity: r.violations > 3 ? 'CRITICAL' : r.violations > 1 ? 'HIGH' : 'MEDIUM',
-          action_taken: r.violations > 3 ? 'Referred to Disciplinary Committee' : 'Proctoring Warning Issued',
+          severity: r.violations >= MAX_PROCTORING_VIOLATIONS ? 'CRITICAL' : r.violations > 1 ? 'HIGH' : 'MEDIUM',
+          action_taken: r.violations >= MAX_PROCTORING_VIOLATIONS ? 'Referred to Disciplinary Committee' : 'Proctoring Warning Issued',
         });
       }
     }

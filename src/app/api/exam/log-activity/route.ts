@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordActivityLogInDb, getTursoClient } from '@/lib/turso';
 import { getStudentSession } from '@/lib/session';
+import { MAX_PROCTORING_VIOLATIONS } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     let isTerminated = false;
     let currentViolationCount = 0;
-    const terminationReason = 'Excessive proctoring violations recorded (violation_count > 3)';
+    const terminationReason = `Assessment terminated after ${MAX_PROCTORING_VIOLATIONS} proctoring violations`;
 
     try {
       const client = getTursoClient();
@@ -91,14 +92,17 @@ export async function POST(req: NextRequest) {
 
       if (VIOLATION_EVENTS.has(eventType)) {
         if (targetAttemptId) {
+          // One violation = one warning shown to the student (WARNING_TRIGGERED).
+          // A single tab switch or fullscreen exit also sends its own raw event;
+          // those only update their counters, so one incident isn't counted 2-3 times.
           if (eventType === 'TAB_SWITCH') {
             await client.execute({
-              sql: 'UPDATE test_attempts SET tab_switches = tab_switches + 1, violation_count = violation_count + 1 WHERE id = ?',
+              sql: 'UPDATE test_attempts SET tab_switches = tab_switches + 1 WHERE id = ?',
               args: [targetAttemptId],
             });
           } else if (eventType === 'FULLSCREEN_EXIT') {
             await client.execute({
-              sql: 'UPDATE test_attempts SET fullscreen_exits = fullscreen_exits + 1, violation_count = violation_count + 1 WHERE id = ?',
+              sql: 'UPDATE test_attempts SET fullscreen_exits = fullscreen_exits + 1 WHERE id = ?',
               args: [targetAttemptId],
             });
           } else {
@@ -122,8 +126,8 @@ export async function POST(req: NextRequest) {
               args: [currentViolationCount, studentId],
             });
 
-            // Requirement 12: VIOLATION TERMINATION — 4TH VIOLATION (violation_count > 3)
-            if (currentViolationCount > 3 && currentStatus !== 'terminated') {
+            // Requirement 12: terminate at the MAX_PROCTORING_VIOLATIONS-th violation
+            if (currentViolationCount >= MAX_PROCTORING_VIOLATIONS && currentStatus !== 'terminated') {
               await client.execute({
                 sql: `UPDATE test_attempts 
                       SET status = 'terminated', 

@@ -48,7 +48,7 @@ export const ExamGuardModal: React.FC<ExamGuardProps> = ({
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-left text-xs space-y-1.5">
               <span className="font-bold text-rose-900 block">Termination Cause:</span>
               <p className="text-rose-700 leading-relaxed font-mono">
-                {terminationReason || 'Excessive proctoring violations recorded (violation_count > 3)'}
+                {terminationReason || 'Assessment terminated after 3 proctoring violations.'}
               </p>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">

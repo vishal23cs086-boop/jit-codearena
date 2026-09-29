@@ -48,6 +48,7 @@ export type ActivityEventType =
   | 'CODE_EXECUTED'
   | 'CODE_SUBMITTED'
   | 'TAB_SWITCH'
+  | 'WINDOW_BLUR'
   | 'FULLSCREEN_EXIT'
   | 'COPY_ATTEMPT'
   | 'PASTE_ATTEMPT'

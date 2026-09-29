@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { ActivityEventType } from '@/types';
+import { MAX_PROCTORING_VIOLATIONS } from '@/lib/utils';
 
 interface ExamGuardOptions {
   enabled: boolean;
@@ -18,7 +19,7 @@ export function useExamGuard({
   attemptId,
   onSecurityEvent,
   onTerminated,
-  maxWarnings = 3,
+  maxWarnings = MAX_PROCTORING_VIOLATIONS,
 }: ExamGuardOptions) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
@@ -63,7 +64,7 @@ export function useExamGuard({
           .then(async (res) => {
             const data = await res.json().catch(() => ({}));
             if (data?.terminated) {
-              const reason = data.reason || 'Excessive proctoring violations recorded (violation_count > 3)';
+              const reason = data.reason || `Assessment terminated after ${MAX_PROCTORING_VIOLATIONS} proctoring violations.`;
               setIsTerminated(true);
               setTerminationReason(reason);
               if (onTerminated) onTerminated(reason);
@@ -84,8 +85,8 @@ export function useExamGuard({
         const next = Math.min(prev + 1, maxWarnings);
         const msg =
           next >= maxWarnings
-            ? `Maximum security warnings reached (${maxWarnings} of ${maxWarnings}). Continued departures will be flagged for disciplinary review by the Examination Committee.`
-            : `Test security warning: ${reason}. Warning ${next} of ${maxWarnings}.`;
+            ? `Final security violation (${maxWarnings} of ${maxWarnings}): ${reason}. Your assessment is being terminated.`
+            : `Test security warning: ${reason}. Warning ${next} of ${maxWarnings}. Your assessment will be terminated at ${maxWarnings} warnings.`;
 
         setWarningMessage(msg);
         setShowWarningModal(true);
@@ -161,8 +162,9 @@ export function useExamGuard({
     };
 
     const handleWindowBlur = () => {
-      // Window blur can happen alongside visibility change; log as blurred
-      logEvent('TAB_SWITCH', {
+      // Window blur also fires on a real tab switch (already logged above) and on
+      // harmless focus changes, so it's recorded but not counted as a tab switch
+      logEvent('WINDOW_BLUR', {
         reason: 'Window blur detected',
         rapid: true,
       });

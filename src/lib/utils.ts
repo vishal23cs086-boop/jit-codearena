@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Proctoring: one violation = one warning shown to the student; the exam is
+// terminated when this many warnings have been issued
+export const MAX_PROCTORING_VIOLATIONS = 3;
+
 // Academic years that have their own question pool and assessments
 export const ACADEMIC_YEARS = [1, 2, 3, 4] as const;
 export type AcademicYear = (typeof ACADEMIC_YEARS)[number];

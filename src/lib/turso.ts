@@ -3467,7 +3467,7 @@ export async function getDashboardDrilldownFromDb(category: string) {
         assessment_title: String(r.test_title || 'Examination'),
         status: 'terminated',
         terminated_at: String(r.terminated_at || r.end_time || ''),
-        termination_reason: String(r.termination_reason || 'Excessive proctoring violations recorded (violation_count > 3)'),
+        termination_reason: String(r.termination_reason || 'Assessment terminated after 3 proctoring violations'),
         tab_switches: Number(r.tab_switches || 0),
         fullscreen_exits: Number(r.fullscreen_exits || 0),
         violation_count: Number(r.violation_count || 0),
