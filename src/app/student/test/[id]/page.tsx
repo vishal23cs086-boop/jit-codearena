@@ -263,30 +263,33 @@ export default function CodingTestPage() {
     const code = studentCodeMap[currentQuestion.id] || '';
 
     try {
-      const inputToUse = customInput !== undefined ? customInput : currentQuestion.test_cases?.[0]?.input || '';
+      const isCustom = customInput !== undefined;
 
-      // Run in the browser first; this keeps "Run" off the server entirely
-      const local = await runInBrowser(code, inputToUse, currentQuestion.time_limit_ms || 2000);
-      if (local) {
-        setLastRunResult({
-          status: local.status,
-          stdout: local.stdout,
-          stderr: local.stderr,
-          timeMs: local.timeMs,
-          isSubmission: false,
-        });
-        return;
+      // Custom input: run in the browser (no server load). Test-case runs include
+      // hidden cases, which never leave the server, so they always run there.
+      if (isCustom) {
+        const local = await runInBrowser(code, customInput, currentQuestion.time_limit_ms || 2000);
+        if (local) {
+          setLastRunResult({
+            status: local.status,
+            stdout: local.stdout,
+            stderr: local.stderr,
+            timeMs: local.timeMs,
+            isSubmission: false,
+          });
+          return;
+        }
+        // Browser Python unavailable (e.g. CDN blocked): fall through to the server
       }
 
-      // Browser Python unavailable (e.g. CDN blocked): run on the server instead
       const res = await fetch('/api/code/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
-          input: inputToUse,
+          isCustom,
+          customInput: isCustom ? customInput : undefined,
           timeLimitMs: currentQuestion.time_limit_ms,
-          studentId: user?.id,
           questionId: currentQuestion.id,
           attemptId: attemptId || undefined,
         }),
@@ -309,6 +312,9 @@ export default function CodingTestPage() {
         stderr: data.stderr || '',
         timeMs: data.timeMs || 45,
         memoryKb: data.memoryKb || 3200,
+        passedCases: data.passedCases,
+        totalCases: data.totalCases,
+        caseResults: data.caseResults,
         isSubmission: false,
       });
     } catch {

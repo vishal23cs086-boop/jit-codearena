@@ -79,14 +79,14 @@ export async function executeViaRunner(
       signal: AbortSignal.timeout(90000),
     });
   } catch {
-    return failAll('Python execution service connection failed. Please contact the examination administrator.');
+    return failAll('Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.');
   }
 
   if (response.status === 503) {
     return failAll('Python execution service is busy. Please wait a moment and try again. You have not been penalized.');
   }
   if (!response.ok) {
-    return failAll('Python execution service encountered an error. Please contact the examination administrator.');
+    return failAll('Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.');
   }
 
   const data = (await response.json()) as { results?: RunnerCaseResult[] };
@@ -180,17 +180,14 @@ export async function executeJudge0(
 
     if (!response.ok) {
       let statusDesc = 'RUNTIME_ERROR';
-      let userMsg = 'Python execution service encountered an error.';
+      let userMsg = 'Code execution service encountered an error.';
 
       if (response.status === 401 || response.status === 403) {
         statusDesc = 'CONFIGURATION_ERROR';
         userMsg = 'Python execution service is not configured. Please contact the examination administrator.';
-      } else if (response.status === 429) {
-        statusDesc = 'JUDGE0_RATE_LIMITED';
-        userMsg = 'Python execution service rate limit reached. Please wait a moment and try again.';
-      } else if (response.status >= 500) {
+      } else if (response.status === 429 || (response.status >= 500 && response.status <= 504)) {
         statusDesc = 'JUDGE0_UNAVAILABLE';
-        userMsg = 'Python execution service is currently unavailable. Please contact the examination administrator.';
+        userMsg = 'Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.';
       }
 
       return {
@@ -230,7 +227,7 @@ export async function executeJudge0(
   } catch {
     return {
       stdout: null,
-      stderr: 'Python execution service connection failed. Please contact the examination administrator.',
+      stderr: 'Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.',
       compile_output: null,
       status: { id: 11, description: 'JUDGE0_UNAVAILABLE' },
       time: null,
@@ -276,7 +273,7 @@ export async function runTestCases(
   let maxMemoryKb = 0;
   let hasRuntimeError = false;
   let hasCompilationError = false;
-  let hasTimeLimit = false;
+  let hasTimeLimitError = false;
   let configurationErrorMsg: string | undefined;
 
   // Own runner: all cases in one request, run in parallel on the runner.
@@ -314,7 +311,7 @@ export async function runTestCases(
         averageTimeMs: 0,
         maxMemoryKb: 0,
         overallStatus: 'Execution Error',
-        errorDetails: 'Python execution service is currently unavailable. Please contact the examination administrator.',
+        errorDetails: 'Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.',
       };
     }
 
@@ -323,13 +320,18 @@ export async function runTestCases(
     totalTimeMs += execTime;
     maxMemoryKb = Math.max(maxMemoryKb, execMem);
 
-    const desc = execRes.status.description;
-    if (desc === 'COMPILATION_ERROR' || desc === 'Compilation Error') {
+    const statusDesc = (execRes.status.description || '').toUpperCase();
+    if (statusDesc === 'COMPILATION_ERROR' || statusDesc === 'COMPILATION ERROR') {
       hasCompilationError = true;
-    } else if (desc === 'TIME_LIMIT') {
-      hasTimeLimit = true;
-    } else if (desc === 'RUNTIME_ERROR' || desc === 'Runtime Error' || desc === 'MEMORY_LIMIT' || desc === 'OUTPUT_LIMIT') {
+    } else if (
+      statusDesc === 'RUNTIME_ERROR' ||
+      statusDesc === 'RUNTIME ERROR' ||
+      statusDesc === 'MEMORY_LIMIT' || // own runner
+      statusDesc === 'OUTPUT_LIMIT' // own runner
+    ) {
       hasRuntimeError = true;
+    } else if (statusDesc === 'TIME_LIMIT' || statusDesc === 'TIME LIMIT EXCEEDED') {
+      hasTimeLimitError = true;
     }
 
     // Compare normalized outputs (strip trailing spaces/newlines)
@@ -368,7 +370,7 @@ export async function runTestCases(
     overallStatus = 'Compilation Error';
   } else if (hasRuntimeError) {
     overallStatus = 'Runtime Error';
-  } else if (hasTimeLimit) {
+  } else if (hasTimeLimitError) {
     overallStatus = 'Time Limit Exceeded';
   } else if (!allPassed) {
     overallStatus = 'Wrong Answer';
