@@ -81,17 +81,14 @@ export async function executeJudge0(
 
     if (!response.ok) {
       let statusDesc = 'RUNTIME_ERROR';
-      let userMsg = 'Python execution service encountered an error.';
+      let userMsg = 'Code execution service encountered an error.';
 
       if (response.status === 401 || response.status === 403) {
         statusDesc = 'CONFIGURATION_ERROR';
         userMsg = 'Python execution service is not configured. Please contact the examination administrator.';
-      } else if (response.status === 429) {
-        statusDesc = 'JUDGE0_RATE_LIMITED';
-        userMsg = 'Python execution service rate limit reached. Please wait a moment and try again.';
-      } else if (response.status >= 500) {
+      } else if (response.status === 429 || (response.status >= 500 && response.status <= 504)) {
         statusDesc = 'JUDGE0_UNAVAILABLE';
-        userMsg = 'Python execution service is currently unavailable. Please contact the examination administrator.';
+        userMsg = 'Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.';
       }
 
       return {
@@ -131,7 +128,7 @@ export async function executeJudge0(
   } catch {
     return {
       stdout: null,
-      stderr: 'Python execution service connection failed. Please contact the examination administrator.',
+      stderr: 'Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.',
       compile_output: null,
       status: { id: 11, description: 'JUDGE0_UNAVAILABLE' },
       time: null,
@@ -176,6 +173,7 @@ export async function runTestCases(
   let maxMemoryKb = 0;
   let hasRuntimeError = false;
   let hasCompilationError = false;
+  let hasTimeLimitError = false;
   let configurationErrorMsg: string | undefined;
 
   for (const tc of testCases) {
@@ -204,7 +202,7 @@ export async function runTestCases(
         averageTimeMs: 0,
         maxMemoryKb: 0,
         overallStatus: 'Execution Error',
-        errorDetails: 'Python execution service is currently unavailable. Please contact the examination administrator.',
+        errorDetails: 'Code execution service is temporarily unavailable. Your assessment attempt remains active. Please try again.',
       };
     }
 
@@ -213,10 +211,13 @@ export async function runTestCases(
     totalTimeMs += execTime;
     maxMemoryKb = Math.max(maxMemoryKb, execMem);
 
-    if (execRes.status.description === 'Compilation Error') {
+    const statusDesc = (execRes.status.description || '').toUpperCase();
+    if (statusDesc === 'COMPILATION_ERROR' || statusDesc === 'COMPILATION ERROR') {
       hasCompilationError = true;
-    } else if (execRes.status.description === 'Runtime Error') {
+    } else if (statusDesc === 'RUNTIME_ERROR' || statusDesc === 'RUNTIME ERROR') {
       hasRuntimeError = true;
+    } else if (statusDesc === 'TIME_LIMIT' || statusDesc === 'TIME LIMIT EXCEEDED') {
+      hasTimeLimitError = true;
     }
 
     // Compare normalized outputs (strip trailing spaces/newlines)
@@ -255,6 +256,8 @@ export async function runTestCases(
     overallStatus = 'Compilation Error';
   } else if (hasRuntimeError) {
     overallStatus = 'Runtime Error';
+  } else if (hasTimeLimitError) {
+    overallStatus = 'Time Limit Exceeded';
   } else if (!allPassed) {
     overallStatus = 'Wrong Answer';
   }

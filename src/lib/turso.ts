@@ -260,6 +260,7 @@ export async function initTursoDb(): Promise<void> {
     'ALTER TABLE questions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
     'ALTER TABLE questions ADD COLUMN starter_code TEXT;',
     'CREATE INDEX IF NOT EXISTS idx_questions_is_archived ON questions(is_archived);',
+    'ALTER TABLE code_executions ADD COLUMN execution_number INTEGER DEFAULT 1;',
   ];
 
   for (const alt of alters) {
@@ -2354,6 +2355,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
           test_id: testId,
           student_id: studentId,
           start_time: String(existingAttempt.start_time),
+          ends_at: String(existingAttempt.ends_at || ''),
           status: String(existingAttempt.status),
           score: Number(existingAttempt.score || 0),
           max_score: Number(existingAttempt.max_score || 100),
@@ -2525,6 +2527,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
       test_id: testId,
       student_id: studentId,
       start_time: now,
+      ends_at: endsAt,
       status: 'in_progress',
       score: 0,
       max_score: Number(test.total_marks || 100),
@@ -2599,8 +2602,14 @@ export async function verifyQuestionForStudentAttempt(
         };
       }
 
-      // Status guard
-      if (att.status === 'completed' || att.status === 'submitted' || att.status === 'auto_submitted') {
+      // Status guard: only active attempts can run code or save code
+      const currentStatus = String(att.status || '').toLowerCase();
+      if (
+        currentStatus === 'completed' ||
+        currentStatus === 'submitted' ||
+        currentStatus === 'auto_submitted' ||
+        currentStatus === 'terminated'
+      ) {
         return {
           valid: false,
           error: 'Assessment attempt has already concluded.',
@@ -2615,17 +2624,11 @@ export async function verifyQuestionForStudentAttempt(
         : new Date(att.start_time).getTime() + durationMin * 60 * 1000;
 
       if (Date.now() > endsAtMs + 15000) {
-        // Auto-finalize expired attempt in Turso
-        try {
-          await client.execute({
-            sql: "UPDATE test_attempts SET status = 'auto_submitted', end_time = ? WHERE id = ?",
-            args: [new Date().toISOString(), attemptId],
-          });
-        } catch {}
-
+        // IMPORTANT: NEVER mutate test_attempts status here during code execution/validation!
+        // Assessment finalization is handled exclusively by /api/assessment/submit, /api/exam/submit-test, or admin termination.
         return {
           valid: false,
-          error: 'Assessment deadline has expired. Your attempt has been automatically finalized.',
+          error: 'Assessment deadline has expired.',
           code: 403,
         };
       }
@@ -2971,6 +2974,7 @@ export async function recordCodeExecutionInDb(data: {
   source_code: string;
   language?: string;
   execution_status: string;
+  execution_number?: number;
   test_cases_passed?: number;
   test_cases_failed?: number;
   execution_time?: number;
@@ -2981,12 +2985,27 @@ export async function recordCodeExecutionInDb(data: {
 }) {
   await initTursoDb();
   const client = getTursoClient();
-  const execId = data.id || `exec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const execId = data.id || `exec-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
+  let execNum = data.execution_number;
+  if (!execNum && data.attempt_id && data.question_id) {
+    try {
+      const countRes = await client.execute({
+        sql: 'SELECT COUNT(*) as count FROM code_executions WHERE attempt_id = ? AND question_id = ?',
+        args: [data.attempt_id, data.question_id],
+      });
+      execNum = Number(countRes.rows[0]?.count || 0) + 1;
+    } catch {
+      execNum = 1;
+    }
+  } else if (!execNum) {
+    execNum = 1;
+  }
+
   await client.execute({
-    sql: `INSERT INTO code_executions (id, student_id, attempt_id, question_id, source_code, language, execution_status, test_cases_passed, test_cases_failed, execution_time, memory_used, stdout, stderr, compile_output, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO code_executions (id, student_id, attempt_id, question_id, source_code, language, execution_status, execution_number, test_cases_passed, test_cases_failed, execution_time, memory_used, stdout, stderr, compile_output, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       execId,
       data.student_id,
@@ -2995,6 +3014,7 @@ export async function recordCodeExecutionInDb(data: {
       data.source_code,
       data.language || 'python',
       data.execution_status,
+      execNum,
       data.test_cases_passed || 0,
       data.test_cases_failed || 0,
       data.execution_time || 0,
@@ -3005,6 +3025,8 @@ export async function recordCodeExecutionInDb(data: {
       now,
     ],
   });
+
+  return { id: execId, execution_number: execNum };
 }
 
 // -------------------------------------------------------------
