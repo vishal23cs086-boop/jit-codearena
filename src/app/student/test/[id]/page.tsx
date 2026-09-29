@@ -12,6 +12,7 @@ import { PythonMonacoEditor } from '@/components/editor/PythonMonacoEditor';
 import { ConsolePanel } from '@/components/exam/ConsolePanel';
 import { TimerBadge } from '@/components/exam/TimerBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { preloadBrowserPython, runInBrowser } from '@/lib/browserPython';
 import {
   Code2,
   ChevronLeft,
@@ -71,6 +72,11 @@ export default function CodingTestPage() {
   } | null>(null);
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // Start downloading in-browser Python right away so "Run" is instant later
+  useEffect(() => {
+    preloadBrowserPython();
+  }, []);
 
   // Load Test and its Questions from Database via secure Server-Side Year-Based Start Attempt API
   useEffect(() => {
@@ -258,6 +264,21 @@ export default function CodingTestPage() {
 
     try {
       const inputToUse = customInput !== undefined ? customInput : currentQuestion.test_cases?.[0]?.input || '';
+
+      // Run in the browser first; this keeps "Run" off the server entirely
+      const local = await runInBrowser(code, inputToUse, currentQuestion.time_limit_ms || 2000);
+      if (local) {
+        setLastRunResult({
+          status: local.status,
+          stdout: local.stdout,
+          stderr: local.stderr,
+          timeMs: local.timeMs,
+          isSubmission: false,
+        });
+        return;
+      }
+
+      // Browser Python unavailable (e.g. CDN blocked): run on the server instead
       const res = await fetch('/api/code/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

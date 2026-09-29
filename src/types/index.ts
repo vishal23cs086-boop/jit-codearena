@@ -25,6 +25,7 @@ export type TestStatus = 'draft' | 'published' | 'active' | 'ended';
 export type AttemptStatus =
   | 'not_started'
   | 'in_progress'
+  | 'completed' // what finalizeAssessmentAttemptInDb stores for a manual finish
   | 'submitted'
   | 'auto_submitted'
   | 'timed_out'
@@ -175,6 +176,12 @@ export interface TestAttempt {
   copy_paste_count: number;
   completion_rank?: number | null;
   auto_submitted: boolean;
+  question_results?: Array<{
+    question_id: string;
+    score: number;
+    passed_test_cases: number;
+    total_test_cases: number;
+  }>;
   student?: StudentProfile;
   students?: any;
   test?: Test;

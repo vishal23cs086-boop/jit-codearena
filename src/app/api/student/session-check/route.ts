@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateStudentAccountAndSession } from '@/lib/turso';
+import { getStudentSession } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const studentId = body.student_id || body.studentId || req.headers.get('x-student-id');
-    const sessionVersion = body.session_version ?? body.sessionVersion ?? req.headers.get('x-session-version');
-
-    if (!studentId) {
+    // Identity comes only from the signed session cookie. A browser that still
+    // has a user in localStorage but no valid cookie gets 401 and is logged out.
+    const session = await getStudentSession(req);
+    if (!session) {
       return NextResponse.json(
         { success: false, valid: false, message: 'Authentication required.' },
         { status: 401 }
       );
     }
 
-    const versionNum = sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined;
-    const validation = await validateStudentAccountAndSession(studentId, versionNum);
+    const validation = await validateStudentAccountAndSession(session.id, session.session_version);
 
     if (!validation.valid) {
       return NextResponse.json(

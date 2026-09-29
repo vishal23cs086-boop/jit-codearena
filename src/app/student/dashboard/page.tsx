@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { fetchTests, fetchAttempts } from '@/lib/db';
+import { fetchTests, fetchMyAttempts } from '@/lib/db';
 import { Test, TestAttempt } from '@/types';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
@@ -29,13 +29,13 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [allTests, allAttempts] = await Promise.all([
+        const [allTests, myAttempts] = await Promise.all([
           fetchTests(),
-          fetchAttempts(),
+          fetchMyAttempts(),
         ]);
         setTests(allTests);
         if (user) {
-          setAttempts(allAttempts.filter((a) => a.student_id === user.id));
+          setAttempts(myAttempts);
         }
       } catch (err) {
         console.warn('Dashboard data fetch error:', err);
@@ -73,11 +73,17 @@ export default function StudentDashboardPage() {
   const availableTests = eligibleTests.filter((t) => t.status === 'active');
   const upcomingTests = eligibleTests.filter((t) => t.status === 'published');
   const completedAttempts = attempts.filter(
-    (a) => a.status === 'submitted' || a.status === 'auto_submitted'
+    (a) => a.status === 'completed' || a.status === 'submitted' || a.status === 'auto_submitted'
   );
 
   // Performance calculations from real data
   const testsCompletedCount = completedAttempts.length;
+  // A problem counts as solved when its best submission passed every test case
+  const problemsSolvedCount = completedAttempts.reduce(
+    (acc, a) =>
+      acc + (a.question_results || []).filter((q) => q.total_test_cases > 0 && q.passed_test_cases === q.total_test_cases).length,
+    0
+  );
   const avgScore =
     testsCompletedCount > 0
       ? (completedAttempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / testsCompletedCount).toFixed(1)
@@ -168,7 +174,7 @@ export default function StudentDashboardPage() {
               Problems Solved
             </span>
             <div className="text-2xl font-black text-indigo-600">
-              {testsCompletedCount > 0 ? `${testsCompletedCount * 4}` : '0'}
+              {problemsSolvedCount}
             </div>
             <span className="text-[11px] text-slate-400">Test problems cleared</span>
           </div>

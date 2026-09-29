@@ -2,65 +2,45 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runTestCases } from '@/lib/judge0/client';
 import { calculateSubmissionScore } from '@/lib/scoring';
 import { getTursoClient, recordCodeExecutionInDb, recordActivityLogInDb } from '@/lib/turso';
-import { verifySessionToken } from '@/lib/session';
+import { getStudentSession } from '@/lib/session';
 import { TestCase } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      questionId,
-      code,
-      attemptId,
-      attemptNumber = 1,
-      testCases: clientTestCases,
-      timeLimitMs: clientTimeLimit,
-      marks: clientMarks,
-    } = body;
+    const { questionId, code, attemptId } = body;
 
-    let studentId = body.studentId;
-    let sessionVersion = body.sessionVersion ?? body.session_version;
+    // Identity comes only from the signed session cookie
+    const session = await getStudentSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required. Please log in.' }, { status: 401 });
+    }
+    const studentId = session.id;
 
-    // Check authenticated session cookie
-    const studentCookie = req.cookies.get('jit_student_session')?.value;
-    if (studentCookie) {
-      const payload = await verifySessionToken(studentCookie);
-      if (payload && payload.role === 'student') {
-        studentId = payload.id;
-        sessionVersion = payload.session_version;
-      }
+    if (!questionId || typeof code !== 'string' || !attemptId || attemptId === 'general') {
+      return NextResponse.json({ error: 'Question, attempt and code are required' }, { status: 400 });
     }
 
-    if (!questionId || typeof code !== 'string') {
-      return NextResponse.json({ error: 'Question ID and code are required' }, { status: 400 });
-    }
-
-    // Strict Academic Year & Attempt Assignment Guard & Student Validation
-    if (studentId) {
-      const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
-      const verification = await verifyQuestionForStudentAttempt(
-        studentId,
-        questionId,
-        attemptId,
-        sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined
+    // Checks: account active, question exists and matches the student's year,
+    // attempt exists, belongs to this student, is still open and within time
+    const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
+    const verification = await verifyQuestionForStudentAttempt(studentId, questionId, attemptId, session.session_version);
+    if (!verification.valid) {
+      return NextResponse.json(
+        {
+          error: verification.error || 'Submission rejected.',
+          message: verification.error || 'Submission rejected.',
+        },
+        { status: verification.code || 401 }
       );
-      if (!verification.valid) {
-        return NextResponse.json(
-          {
-            error: verification.error || 'Submission rejected.',
-            message: verification.error || 'Submission rejected.',
-          },
-          { status: verification.code || 401 }
-        );
-      }
     }
 
+    // Everything that affects grading comes from the database, never from the request
     let allTestCases: TestCase[] = [];
-    let timeLimitMs = typeof clientTimeLimit === 'number' ? clientTimeLimit : 2000;
-    let questionMarks = typeof clientMarks === 'number' ? clientMarks : 25;
-    let targetTestId = body.testId || '';
-
-    // 1. Fetch Question and Test Cases from Turso DB
+    let timeLimitMs = 2000;
+    let questionMarks = 25;
+    let targetTestId = '';
+    let attemptNumber = 1;
     try {
       const client = getTursoClient();
       const qRes = await client.execute({
@@ -74,22 +54,22 @@ export async function POST(req: NextRequest) {
         questionMarks = Number(row.marks || 25);
       }
 
-      if (!targetTestId && attemptId) {
-        const aRes = await client.execute({
-          sql: 'SELECT test_id FROM test_attempts WHERE id = ? LIMIT 1',
-          args: [attemptId],
-        });
-        if (aRes.rows.length > 0) {
-          targetTestId = String(aRes.rows[0].test_id);
-        }
+      const aRes = await client.execute({
+        sql: 'SELECT test_id FROM test_attempts WHERE id = ? AND student_id = ? LIMIT 1',
+        args: [attemptId, studentId],
+      });
+      if (aRes.rows.length > 0) {
+        targetTestId = String(aRes.rows[0].test_id);
       }
+
+      // Counted server-side: the attempts component of the score depends on it
+      const cRes = await client.execute({
+        sql: 'SELECT COUNT(*) AS n FROM submissions WHERE student_id = ? AND question_id = ? AND attempt_id = ?',
+        args: [studentId, questionId, attemptId],
+      });
+      attemptNumber = Number(cRes.rows[0]?.n || 0) + 1;
     } catch (err) {
       console.warn('Turso question lookup notice:', err);
-    }
-
-    // Fallback to client-provided test cases if server database query returned empty
-    if (allTestCases.length === 0 && Array.isArray(clientTestCases) && clientTestCases.length > 0) {
-      allTestCases = clientTestCases;
     }
 
     if (allTestCases.length === 0) {
@@ -99,14 +79,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Execute code on all test cases (both public and hidden)
-    const execSummary = await runTestCases(code, allTestCases, true);
+    const execSummary = await runTestCases(code, allTestCases, true, timeLimitMs);
 
     // If Judge0 infrastructure failure or misconfiguration, do NOT penalize student with 0 marks
     if (execSummary.overallStatus === 'Execution Error') {
       if (studentId) {
         await recordActivityLogInDb({
-          test_id: targetTestId || null,
+          test_id: targetTestId || undefined,
           student_id: studentId,
           event_type: 'INFRASTRUCTURE_ERROR',
           description: `Execution engine error during submission evaluation for question ${questionId}.`,
@@ -179,7 +158,7 @@ export async function POST(req: NextRequest) {
         }).catch(() => {});
 
         await recordActivityLogInDb({
-          test_id: targetTestId || null,
+          test_id: targetTestId || undefined,
           student_id: studentId,
           event_type: 'SUBMISSION',
           description: `Submitted solution for question ${questionId}. Status: ${execSummary.overallStatus}. Score: ${scoreResult.finalMarks}/${questionMarks}`,

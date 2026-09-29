@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeJudge0 } from '@/lib/judge0/client';
-import { verifySessionToken } from '@/lib/session';
+import { executePython } from '@/lib/judge0/client';
+import { getStudentSession } from '@/lib/session';
 import { recordCodeExecutionInDb, recordActivityLogInDb } from '@/lib/turso';
 
 export async function POST(req: NextRequest) {
@@ -8,44 +8,32 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { code, input, timeLimitMs, questionId, attemptId } = body;
 
-    let studentId = body.studentId;
-    let sessionVersion = body.sessionVersion ?? body.session_version;
+    // Identity comes only from the signed session cookie
+    const session = await getStudentSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required. Please log in.' }, { status: 401 });
+    }
+    const studentId = session.id;
 
-    // Check authenticated session cookie
-    const studentCookie = req.cookies.get('jit_student_session')?.value;
-    if (studentCookie) {
-      const payload = await verifySessionToken(studentCookie);
-      if (payload && payload.role === 'student') {
-        studentId = payload.id;
-        sessionVersion = payload.session_version;
-      }
+    if (typeof code !== 'string' || !questionId) {
+      return NextResponse.json({ error: 'Code and question are required' }, { status: 400 });
     }
 
-    if (typeof code !== 'string') {
-      return NextResponse.json({ error: 'Code is required' }, { status: 400 });
-    }
-
-    if (studentId) {
-      const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
-      const verification = await verifyQuestionForStudentAttempt(
-        studentId,
-        questionId,
-        attemptId,
-        sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined
+    const { verifyQuestionForStudentAttempt } = await import('@/lib/turso');
+    const verification = await verifyQuestionForStudentAttempt(studentId, questionId, attemptId, session.session_version);
+    if (!verification.valid) {
+      return NextResponse.json(
+        {
+          error: verification.error || 'Execution rejected.',
+          message: verification.error || 'Execution rejected.',
+        },
+        { status: verification.code || 401 }
       );
-      if (!verification.valid) {
-        return NextResponse.json(
-          {
-            error: verification.error || 'Execution rejected.',
-            message: verification.error || 'Execution rejected.',
-          },
-          { status: verification.code || 401 }
-        );
-      }
     }
 
-    const timeLimitSec = (timeLimitMs || 2000) / 1000;
-    const result = await executeJudge0(code, input || '', timeLimitSec);
+    // Run only uses the student's own input; still cap the time a caller can request
+    const timeLimitSec = Math.min(5000, Math.max(100, Number(timeLimitMs) || 2000)) / 1000;
+    const result = await executePython(code, input || '', timeLimitSec);
 
     const execStatus = result.status.description;
     const timeMs = Math.round(parseFloat(result.time || '0.05') * 1000);

@@ -17,6 +17,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { ordinalYear } from '@/lib/utils';
 
 interface AssessmentDetails {
   id: string;
@@ -136,8 +137,8 @@ export default function TestInstructionsPage() {
               </span>
             </h3>
             <p className="text-xs text-rose-800 leading-relaxed">
-              This assessment is configured strictly for <strong>{test?.year === 2 ? '2nd' : '3rd'} Year</strong> candidates only.
-              You are authenticated as a <strong>{user?.year === 2 ? '2nd' : '3rd'} Year</strong> candidate.
+              This assessment is configured strictly for <strong>{ordinalYear(test?.year)} Year</strong> candidates only.
+              You are authenticated as a <strong>{ordinalYear(user?.year)} Year</strong> candidate.
               Server-side security policies prevent cross-year assessment attempts.
             </p>
             <div className="pt-2">
@@ -178,7 +179,7 @@ export default function TestInstructionsPage() {
                       : 'bg-purple-50 text-purple-700 border-purple-200'
                   }`}
                 >
-                  {test.year === 2 ? '2nd Year Assessment' : '3rd Year Assessment'}
+                  {ordinalYear(test.year)} Year Assessment
                 </span>
               )}
             </div>

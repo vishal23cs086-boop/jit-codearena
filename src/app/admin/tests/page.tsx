@@ -28,6 +28,7 @@ import {
   Info,
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ACADEMIC_YEARS, type AcademicYear, isAcademicYear, ordinalYear, yearBadgeClasses } from '@/lib/utils';
 
 interface QuestionDraft {
   id?: string;
@@ -70,10 +71,20 @@ export default function AssessmentManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [poolStats, setPoolStats] = useState<{ year2Count: number; year3Count: number }>({
+  const [poolStats, setPoolStats] = useState<{ year1Count: number; year2Count: number; year3Count: number; year4Count: number }>({
+    year1Count: 0,
     year2Count: 0,
     year3Count: 0,
+    year4Count: 0,
   });
+  const poolCountFor = (year: unknown) =>
+    Number(year) === 4
+      ? poolStats.year4Count
+      : Number(year) === 3
+        ? poolStats.year3Count
+        : Number(year) === 1
+          ? poolStats.year1Count
+          : poolStats.year2Count;
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -93,7 +104,7 @@ export default function AssessmentManagementPage() {
   const [formPassingMarks, setFormPassingMarks] = useState(40);
   const [formStartTime, setFormStartTime] = useState('');
   const [formEndTime, setFormEndTime] = useState('');
-  const [formYear, setFormYear] = useState<2 | 3>(2);
+  const [formYear, setFormYear] = useState<AcademicYear>(2);
   const [formQuestionCount, setFormQuestionCount] = useState<number>(0);
   const [formQuestions, setFormQuestions] = useState<QuestionDraft[]>([]);
 
@@ -123,6 +134,8 @@ export default function AssessmentManagementPage() {
         setPoolStats({
           year2Count: dataStats.stats.year2Count || 0,
           year3Count: dataStats.stats.year3Count || 0,
+          year4Count: dataStats.stats.year4Count || 0,
+          year1Count: dataStats.stats.year1Count || 0,
         });
       }
     } catch (err) {
@@ -166,7 +179,7 @@ export default function AssessmentManagementPage() {
     setFormPassingMarks(test.passing_marks || 40);
     setFormStartTime(test.start_time ? test.start_time.slice(0, 16) : '');
     setFormEndTime(test.end_time ? test.end_time.slice(0, 16) : '');
-    setFormYear(Number(test.year) === 3 ? 3 : 2);
+    setFormYear(isAcademicYear(test.year) ? test.year : 2);
     setFormQuestionCount(Number(test.question_count || 0));
 
     // Fetch full question list for this test
@@ -240,7 +253,7 @@ export default function AssessmentManagementPage() {
       return;
     }
 
-    const currentPool = formYear === 2 ? poolStats.year2Count : poolStats.year3Count;
+    const currentPool = poolCountFor(formYear);
     if (formQuestions.length === 0 && Number(formQuestionCount) > currentPool) {
       alert(`Only ${currentPool} questions are available in the Year ${formYear} question bank.`);
       return;
@@ -531,12 +544,10 @@ export default function AssessmentManagementPage() {
                             </span>
                             <span
                               className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
-                                Number(test.year) === 3
-                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                yearBadgeClasses(test.year).badge
                               }`}
                             >
-                              {Number(test.year) === 3 ? '3rd Year Assessment' : '2nd Year Assessment'}
+                              {ordinalYear(test.year)} Year Assessment
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -706,7 +717,7 @@ export default function AssessmentManagementPage() {
               </div>
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
                 <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Academic Year</span>
-                <span className="font-bold text-indigo-700">{viewingAssessment.year === 2 ? '2nd Year Assessment' : '3rd Year Assessment'}</span>
+                <span className="font-bold text-indigo-700">{ordinalYear(viewingAssessment.year)} Year Assessment</span>
               </div>
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
                 <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Status</span>
@@ -715,7 +726,7 @@ export default function AssessmentManagementPage() {
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
                 <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Available in Question Bank</span>
                 <span className="font-bold text-indigo-600">
-                  {viewingAssessment.year === 2 ? poolStats.year2Count : poolStats.year3Count} questions
+                  {poolCountFor(viewingAssessment.year)} questions
                 </span>
               </div>
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
@@ -876,16 +887,17 @@ export default function AssessmentManagementPage() {
                   </label>
                   <select
                     value={formYear}
-                    onChange={(e) => setFormYear(Number(e.target.value) as 2 | 3)}
+                    onChange={(e) => setFormYear(Number(e.target.value) as AcademicYear)}
                     className="w-full bg-white border border-indigo-200 rounded-xl p-2.5 font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
                   >
-                    <option value={2}>2nd Year Assessment (Strict Year 2 Pool)</option>
-                    <option value={3}>3rd Year Assessment (Strict Year 3 Pool)</option>
+                    {ACADEMIC_YEARS.map((y) => (
+                      <option key={y} value={y}>{ordinalYear(y)} Year Assessment (Strict Year {y} Pool)</option>
+                    ))}
                   </select>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Available in {formYear === 2 ? '2nd Year' : '3rd Year'} Question Bank:{' '}
+                    Available in {ordinalYear(formYear)} Year Question Bank:{' '}
                     <strong className="text-indigo-600 font-bold">
-                      {formYear === 2 ? poolStats.year2Count : poolStats.year3Count} questions
+                      {poolCountFor(formYear)} questions
                     </strong>
                   </p>
                 </div>
@@ -897,19 +909,19 @@ export default function AssessmentManagementPage() {
                   <input
                     type="number"
                     min={1}
-                    max={formYear === 2 ? poolStats.year2Count : poolStats.year3Count}
+                    max={poolCountFor(formYear)}
                     placeholder="Enter question count"
                     value={formQuestionCount}
                     onChange={(e) => setFormQuestionCount(Number(e.target.value))}
                     className={`w-full bg-white border rounded-xl p-2.5 font-mono text-slate-900 focus:outline-none ${
-                      formQuestionCount > (formYear === 2 ? poolStats.year2Count : poolStats.year3Count)
+                      formQuestionCount > poolCountFor(formYear)
                         ? 'border-rose-400 bg-rose-50/40 text-rose-900'
                         : 'border-slate-200 focus:border-indigo-500'
                     }`}
                   />
-                  {formQuestionCount > (formYear === 2 ? poolStats.year2Count : poolStats.year3Count) ? (
+                  {formQuestionCount > poolCountFor(formYear) ? (
                     <p className="text-[11px] text-rose-600 font-semibold mt-1">
-                      Only {formYear === 2 ? poolStats.year2Count : poolStats.year3Count} questions are available in the Year {formYear} question bank.
+                      Only {poolCountFor(formYear)} questions are available in the Year {formYear} question bank.
                     </p>
                   ) : (
                     <p className="text-[11px] text-slate-500 mt-1">

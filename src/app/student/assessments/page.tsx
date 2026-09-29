@@ -15,6 +15,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { ordinalYear, yearBadgeClasses } from '@/lib/utils';
 
 interface StudentAssessmentItem {
   id: string;
@@ -116,7 +117,7 @@ export default function StudentAssessmentsPage() {
           <span>Institutional Coding Assessments</span>
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          Official departmental assessments for your academic cohort ({user?.year === 2 ? '2nd Year' : user?.year === 3 ? '3rd Year' : 'Candidate'})
+          Official departmental assessments for your academic cohort ({user?.year ? `${ordinalYear(user.year)} Year` : 'Candidate'})
         </p>
       </div>
 
@@ -141,12 +142,10 @@ export default function StudentAssessmentsPage() {
                     {getStatusBadge(status)}
                     <span
                       className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
-                        Number(test.year) === 3
-                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        yearBadgeClasses(test.year).badge
                       }`}
                     >
-                      {Number(test.year) === 3 ? '3rd Year Assessment' : '2nd Year Assessment'}
+                      {ordinalYear(test.year)} Year Assessment
                     </span>
                   </div>
 
@@ -190,7 +189,7 @@ export default function StudentAssessmentsPage() {
 
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <div className="text-[11px] text-slate-500">
-                    <span className="text-emerald-600 font-medium">✓ Eligible Candidate ({user?.year === 2 ? '2nd' : '3rd'} Year)</span>
+                    <span className="text-emerald-600 font-medium">✓ Eligible Candidate ({ordinalYear(user?.year)} Year)</span>
                   </div>
 
                   {status === 'Completed' ? (

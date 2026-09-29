@@ -1,29 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { finalizeAssessmentAttemptInDb } from '@/lib/turso';
-import { verifySessionToken } from '@/lib/session';
+import { getStudentSession } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { attemptId, isAutoSubmit = false } = body;
 
-    let studentId = body.studentId;
-    let testId = body.testId;
+    const testId = body.testId;
 
-    // Check signed session cookie
-    const studentCookie = req.cookies.get('jit_student_session')?.value;
-    if (studentCookie) {
-      const payload = await verifySessionToken(studentCookie);
-      if (payload && payload.role === 'student') {
-        studentId = payload.id;
-      }
+    // Identity comes only from the signed session cookie
+    const session = await getStudentSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required. Please log in.' }, { status: 401 });
     }
+    const studentId = session.id;
 
-    if (!attemptId || !studentId) {
-      return NextResponse.json(
-        { error: 'attemptId and studentId are required' },
-        { status: 400 }
-      );
+    if (!attemptId) {
+      return NextResponse.json({ error: 'attemptId is required' }, { status: 400 });
     }
 
     const result = await finalizeAssessmentAttemptInDb({
@@ -53,7 +47,7 @@ export async function POST(req: NextRequest) {
     console.error('Finalize test error:', error);
     return NextResponse.json(
       { error: error?.message || 'Failed to finalize test' },
-      { status: 500 }
+      { status: error?.status || 500 }
     );
   }
 }

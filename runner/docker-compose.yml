@@ -1,0 +1,17 @@
+services:
+  runner:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Shared secret with the Next.js app (RUNNER_TOKEN there too). 32+ random chars.
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in runner/.env}
+      # Defaults to one worker per CPU core
+      # RUNNER_WORKERS: "8"
+    # nsjail creates namespaces for each run, which needs these privileges on the
+    # container. Student code itself runs unprivileged inside nsjail.
+    privileged: true
+    # Hard ceilings for the whole service, whatever happens inside
+    mem_limit: 12g
+    pids_limit: 4096

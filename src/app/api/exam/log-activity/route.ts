@@ -1,53 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordActivityLogInDb, getTursoClient } from '@/lib/turso';
-import { verifySessionToken } from '@/lib/session';
+import { getStudentSession } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { eventType, details } = body;
 
-    let studentId = body.studentId;
-    let studentName = body.studentName;
-    let registerNumber = body.registerNumber;
-    let testId = body.testId;
-    let attemptId = body.attemptId;
-    let sessionVersion = body.sessionVersion ?? body.session_version;
+    const testId = body.testId;
+    const attemptId = body.attemptId;
 
-    // Read authenticated session cookie
-    const studentCookie = req.cookies.get('jit_student_session')?.value;
-    if (studentCookie) {
-      const payload = await verifySessionToken(studentCookie);
-      if (payload && payload.role === 'student') {
-        studentId = payload.id;
-        sessionVersion = payload.session_version;
-        if (payload.register_number) registerNumber = payload.register_number;
-      }
+    // Identity comes only from the signed session cookie
+    const session = await getStudentSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required. Please log in.' }, { status: 401 });
+    }
+    const studentId = session.id;
+
+    if (!eventType) {
+      return NextResponse.json({ error: 'eventType is required' }, { status: 400 });
     }
 
-    if (!studentId || !eventType) {
-      return NextResponse.json({ error: 'studentId and eventType are required' }, { status: 400 });
-    }
-
-    if (studentId) {
-      const { validateStudentAccountAndSession } = await import('@/lib/turso');
-      const validation = await validateStudentAccountAndSession(
-        studentId,
-        sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined
+    const { validateStudentAccountAndSession } = await import('@/lib/turso');
+    const validation = await validateStudentAccountAndSession(studentId, session.session_version);
+    if (!validation.valid) {
+      return NextResponse.json(
+        { error: validation.message, message: validation.message },
+        { status: validation.code || 401 }
       );
-      if (!validation.valid) {
-        return NextResponse.json(
-          { error: validation.message, message: validation.message },
-          { status: validation.code || 401 }
-        );
-      }
-      if (!studentName && validation.student) {
-        studentName = validation.student.full_name;
-      }
-      if (!registerNumber && validation.student) {
-        registerNumber = validation.student.register_number;
-      }
     }
+    // Name and register number from the database, not the request
+    const studentName = validation.student?.full_name;
+    const registerNumber = validation.student?.register_number;
 
     const timestamp = new Date().toISOString();
     const userAgent = req.headers.get('user-agent') || 'unknown';
@@ -80,15 +64,15 @@ export async function POST(req: NextRequest) {
       } else if (eventType === 'TAB_SWITCH') {
         if (attemptId) {
           await client.execute({
-            sql: 'UPDATE test_attempts SET tab_switches = tab_switches + 1 WHERE id = ?',
-            args: [attemptId],
+            sql: 'UPDATE test_attempts SET tab_switches = tab_switches + 1 WHERE id = ? AND student_id = ?',
+            args: [attemptId, studentId],
           });
         }
       } else if (eventType === 'FULLSCREEN_EXIT') {
         if (attemptId) {
           await client.execute({
-            sql: 'UPDATE test_attempts SET fullscreen_exits = fullscreen_exits + 1 WHERE id = ?',
-            args: [attemptId],
+            sql: 'UPDATE test_attempts SET fullscreen_exits = fullscreen_exits + 1 WHERE id = ? AND student_id = ?',
+            args: [attemptId, studentId],
           });
         }
       }

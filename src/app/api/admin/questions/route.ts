@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQuestionsFromDb, createQuestionInDb, getQuestionPoolStats } from '@/lib/turso';
+import { isAcademicYear } from '@/lib/utils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -66,9 +67,9 @@ export async function POST(req: NextRequest) {
 
     const rawYear = year !== undefined ? year : academic_year;
     const parsedYear = Number(rawYear);
-    if (parsedYear !== 2 && parsedYear !== 3) {
+    if (!isAcademicYear(parsedYear)) {
       return NextResponse.json(
-        { success: false, error: 'Academic year must be 2 (2nd Year) or 3 (3rd Year).' },
+        { success: false, error: 'Academic year must be 1, 2, 3 or 4 (1st to 4th Year).' },
         { status: 400 }
       );
     }

@@ -19,6 +19,105 @@ export interface Judge0Result {
 
 const PYTHON_LANGUAGE_ID = 71; // Python 3.8.1 (or 92 for Python 3.11 in Judge0)
 
+// ==============================================================================
+// Own sandboxed runner (runner/ in this repo). Used instead of Judge0 when
+// RUNNER_URL and RUNNER_TOKEN are set.
+// ==============================================================================
+
+interface RunnerCaseResult {
+  status: 'SUCCESS' | 'RUNTIME_ERROR' | 'TIME_LIMIT' | 'MEMORY_LIMIT' | 'OUTPUT_LIMIT' | 'COMPILATION_ERROR' | 'INTERNAL_ERROR';
+  stdout: string;
+  stderr: string;
+  timeMs: number;
+}
+
+function runnerConfig() {
+  const clean = (v?: string) => (v || '').trim().replace(/^["']|["']$/g, '');
+  return { url: clean(process.env.RUNNER_URL).replace(/\/+$/, ''), token: clean(process.env.RUNNER_TOKEN) };
+}
+
+export function isRunnerConfigured(): boolean {
+  const { url, token } = runnerConfig();
+  return Boolean(url && token);
+}
+
+function unavailable(message: string): Judge0Result {
+  return {
+    stdout: null,
+    stderr: message,
+    compile_output: null,
+    status: { id: 13, description: 'JUDGE0_UNAVAILABLE' },
+    time: null,
+    memory: null,
+  };
+}
+
+/**
+ * Runs one program against several stdins in a single runner request.
+ * Returns one Judge0-shaped result per stdin, in order.
+ */
+export async function executeViaRunner(
+  code: string,
+  stdins: string[],
+  timeLimitSec = 2.0,
+  memoryLimitKb = 256000
+): Promise<Judge0Result[]> {
+  const { url, token } = runnerConfig();
+  const failAll = (msg: string) => stdins.map(() => unavailable(msg));
+
+  let response: Response;
+  try {
+    response = await fetch(`${url}/v1/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        code,
+        cases: stdins.map((stdin) => ({ stdin })),
+        timeLimitMs: Math.round(timeLimitSec * 1000),
+        memoryLimitMb: Math.round(memoryLimitKb / 1024),
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+  } catch {
+    return failAll('Python execution service connection failed. Please contact the examination administrator.');
+  }
+
+  if (response.status === 503) {
+    return failAll('Python execution service is busy. Please wait a moment and try again. You have not been penalized.');
+  }
+  if (!response.ok) {
+    return failAll('Python execution service encountered an error. Please contact the examination administrator.');
+  }
+
+  const data = (await response.json()) as { results?: RunnerCaseResult[] };
+  if (!Array.isArray(data.results) || data.results.length !== stdins.length) {
+    return failAll('Python execution service returned an invalid response.');
+  }
+
+  return data.results.map((r) => {
+    if (r.status === 'INTERNAL_ERROR') return unavailable('Python execution service encountered an internal error.');
+    return {
+      stdout: r.stdout || null,
+      stderr: r.stderr || null,
+      compile_output: r.status === 'COMPILATION_ERROR' ? r.stderr : null,
+      status: { id: r.status === 'SUCCESS' ? 3 : 11, description: r.status },
+      time: (r.timeMs / 1000).toFixed(3),
+      memory: null,
+    };
+  });
+}
+
+/**
+ * Runs Python once against stdin on whichever engine is configured.
+ */
+export async function executePython(code: string, stdin: string, timeLimitSec = 2.0): Promise<Judge0Result> {
+  if (isRunnerConfigured()) {
+    const [result] = await executeViaRunner(code, [stdin || ''], timeLimitSec);
+    return result;
+  }
+  return executeJudge0(code, stdin, timeLimitSec);
+}
+
 /**
  * Execute Python code against standard input using real Judge0 REST API
  */
@@ -147,7 +246,8 @@ export async function executeJudge0(
 export async function runTestCases(
   code: string,
   testCases: TestCase[],
-  isSubmission = false
+  isSubmission = false,
+  timeLimitMs = 2000
 ): Promise<{
   allPassed: boolean;
   testCasesPassed: number;
@@ -176,10 +276,20 @@ export async function runTestCases(
   let maxMemoryKb = 0;
   let hasRuntimeError = false;
   let hasCompilationError = false;
+  let hasTimeLimit = false;
   let configurationErrorMsg: string | undefined;
 
-  for (const tc of testCases) {
-    const execRes = await executeJudge0(code, tc.input);
+  // Own runner: all cases in one request, run in parallel on the runner.
+  // Judge0: one request per case, as before.
+  const timeLimitSec = timeLimitMs / 1000;
+  let batched: Judge0Result[] | null = null;
+  if (isRunnerConfigured()) {
+    batched = await executeViaRunner(code, testCases.map((tc) => tc.input || ''), timeLimitSec);
+  }
+
+  for (let i = 0; i < testCases.length; i++) {
+    const tc = testCases[i];
+    const execRes = batched ? batched[i] : await executePython(code, tc.input, timeLimitSec);
 
     if (execRes.notConfigured || execRes.status.description === 'CONFIGURATION_ERROR') {
       configurationErrorMsg = 'Python execution service is not configured. Please contact the examination administrator.';
@@ -213,9 +323,12 @@ export async function runTestCases(
     totalTimeMs += execTime;
     maxMemoryKb = Math.max(maxMemoryKb, execMem);
 
-    if (execRes.status.description === 'Compilation Error') {
+    const desc = execRes.status.description;
+    if (desc === 'COMPILATION_ERROR' || desc === 'Compilation Error') {
       hasCompilationError = true;
-    } else if (execRes.status.description === 'Runtime Error') {
+    } else if (desc === 'TIME_LIMIT') {
+      hasTimeLimit = true;
+    } else if (desc === 'RUNTIME_ERROR' || desc === 'Runtime Error' || desc === 'MEMORY_LIMIT' || desc === 'OUTPUT_LIMIT') {
       hasRuntimeError = true;
     }
 
@@ -255,6 +368,8 @@ export async function runTestCases(
     overallStatus = 'Compilation Error';
   } else if (hasRuntimeError) {
     overallStatus = 'Runtime Error';
+  } else if (hasTimeLimit) {
+    overallStatus = 'Time Limit Exceeded';
   } else if (!allPassed) {
     overallStatus = 'Wrong Answer';
   }

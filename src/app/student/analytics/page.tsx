@@ -13,7 +13,7 @@ import {
   Bar,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
-import { fetchAttempts } from '@/lib/db';
+import { fetchMyAttempts } from '@/lib/db';
 import { TestAttempt } from '@/types';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
@@ -36,13 +36,8 @@ export default function StudentAnalyticsPage() {
     async function loadData() {
       setLoading(true);
       try {
-        const allAttempts = await fetchAttempts();
-        const userAttempts = allAttempts.filter(
-          (a) =>
-            a.student_id === user?.id ||
-            a.students?.register_number === user?.register_number ||
-            a.id.includes(user?.register_number || '')
-        );
+        // The server returns only the logged-in student's attempts
+        const userAttempts = await fetchMyAttempts();
         setStudentAttempts(userAttempts);
       } catch (err) {
         console.error('Failed to load student analytics:', err);
@@ -77,7 +72,7 @@ export default function StudentAnalyticsPage() {
 
   // Calculate real performance metrics from student's attempts
   const completedAttempts = studentAttempts.filter(
-    (a) => a.status === 'submitted' || a.status === 'auto_submitted'
+    (a) => a.status === 'completed' || a.status === 'submitted' || a.status === 'auto_submitted'
   );
 
   const totalScore = completedAttempts.reduce((acc, a) => acc + (a.score || 0), 0);

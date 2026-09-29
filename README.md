@@ -78,6 +78,15 @@ JUDGE0_API_URL=https://judge0-ce.p.rapidapi.com
 JUDGE0_API_KEY=your_rapidapi_or_judge0_key
 JUDGE0_API_HOST=judge0-ce.p.rapidapi.com
 
+# Own Python runner (recommended for large exams; replaces Judge0). See runner/README.md
+RUNNER_URL=http://your-runner-server:8787
+RUNNER_TOKEN=same-random-token-as-the-runner
+
+# Auth (required - there are no built-in defaults)
+SESSION_SECRET=random-64-hex-chars    # openssl rand -hex 32
+ADMIN_USERNAME=ADMIN
+ADMIN_PASSWORD=choose-a-strong-password
+
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```

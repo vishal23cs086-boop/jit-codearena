@@ -1,33 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordLoginActivityInDb } from '@/lib/turso';
 import { signSessionToken } from '@/lib/session';
+import crypto from 'crypto';
+
+// Constant-time string comparison so response timing doesn't leak how much of a credential matched
+function safeEqual(a: string, b: string): boolean {
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { username, password } = body;
 
-    const rawExpectedUser = (process.env.ADMIN_USERNAME || 'ADMIN').trim().toUpperCase();
-    const cleanExpectedUser = rawExpectedUser.replace(/^["']|["']$/g, '');
-    const cleanInputUser = (username || '').trim().toUpperCase();
+    // Credentials come only from the environment; there are no built-in defaults
+    const expectedUser = (process.env.ADMIN_USERNAME || '').trim().replace(/^["']|["']$/g, '').toUpperCase();
+    const expectedPass = (process.env.ADMIN_PASSWORD || '').trim().replace(/^["']|["']$/g, '');
 
-    const rawExpectedPass = (process.env.ADMIN_PASSWORD || 'Admin_Jansons').trim();
-    const cleanExpectedPass = rawExpectedPass.replace(/^["']|["']$/g, '');
-    const cleanInputPass = (password || '').trim();
+    if (!expectedUser || !expectedPass) {
+      console.error('Admin login is disabled: ADMIN_USERNAME and ADMIN_PASSWORD must be set.');
+      return NextResponse.json(
+        { success: false, error: 'Administrator login is not configured on this server.' },
+        { status: 503 }
+      );
+    }
 
-    const isUserMatch =
-      cleanInputUser === 'ADMIN' ||
-      cleanInputUser === cleanExpectedUser ||
-      cleanInputUser === rawExpectedUser ||
-      cleanInputUser === 'ADMIN@JIT.EDU' ||
-      cleanInputUser === 'EXAMCELL@JIT.EDU.IN';
+    const cleanInputUser = (typeof username === 'string' ? username : '').trim().toUpperCase();
+    const inputPass = typeof password === 'string' ? password : '';
 
-    const isPassMatch =
-      cleanInputPass === 'Admin_Jansons' ||
-      cleanInputPass === cleanExpectedPass ||
-      cleanInputPass === rawExpectedPass ||
-      password === 'Admin_Jansons' ||
-      password === cleanExpectedPass;
+    const isUserMatch = safeEqual(cleanInputUser, expectedUser);
+    const isPassMatch = safeEqual(inputPass, expectedPass);
 
     if (!isUserMatch || !isPassMatch) {
       return NextResponse.json(

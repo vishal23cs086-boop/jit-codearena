@@ -19,6 +19,7 @@ import {
   Sparkles,
   Edit3,
 } from 'lucide-react';
+import { ACADEMIC_YEARS, type AcademicYear, isAcademicYear, ordinalYear, yearBadgeClasses } from '@/lib/utils';
 
 const TOPICS: QuestionTopic[] = [
   'Variables',
@@ -40,14 +41,14 @@ export default function QuestionBankPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
-  const [selectedYear, setSelectedYear] = useState<'all' | 2 | 3>('all');
+  const [selectedYear, setSelectedYear] = useState<'all' | AcademicYear>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Form states for new question (3 test cases)
   const [newTitle, setNewTitle] = useState('');
-  const [newYear, setNewYear] = useState<2 | 3>(2);
+  const [newYear, setNewYear] = useState<AcademicYear>(2);
   const [newDifficulty, setNewDifficulty] = useState<DifficultyLevel>('Easy');
   const [newTopic, setNewTopic] = useState<QuestionTopic>('Lists');
   const [newMarks, setNewMarks] = useState(20);
@@ -67,7 +68,7 @@ export default function QuestionBankPage() {
   // Form states for editing question
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [editTitle, setEditTitle] = useState('');
-  const [editYear, setEditYear] = useState<2 | 3>(2);
+  const [editYear, setEditYear] = useState<AcademicYear>(2);
   const [editDifficulty, setEditDifficulty] = useState<DifficultyLevel>('Easy');
   const [editTopic, setEditTopic] = useState<QuestionTopic>('Lists');
   const [editMarks, setEditMarks] = useState(20);
@@ -113,8 +114,9 @@ export default function QuestionBankPage() {
     return matchesSearch && matchesTopic && matchesDiff && matchesYear;
   });
 
-  const year2Count = questions.filter((q) => Number(q.year) === 2).length;
-  const year3Count = questions.filter((q) => Number(q.year) === 3).length;
+  const yearCounts = Object.fromEntries(
+    ACADEMIC_YEARS.map((y) => [y, questions.filter((q) => Number(q.year) === y).length])
+  ) as Record<AcademicYear, number>;
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to permanently delete this question from the bank?')) {
@@ -223,7 +225,7 @@ export default function QuestionBankPage() {
   const openEditModal = (q: Question) => {
     setEditingQuestion(q);
     setEditTitle(q.title);
-    setEditYear((Number(q.year) === 3 ? 3 : 2) as 2 | 3);
+    setEditYear(isAcademicYear(q.year) ? q.year : 2);
     setEditDifficulty((q.difficulty || 'Medium') as DifficultyLevel);
     setEditTopic((q.topic || 'Algorithms') as QuestionTopic);
     setEditMarks(Number(q.marks || 20));
@@ -246,8 +248,8 @@ export default function QuestionBankPage() {
     e.preventDefault();
     if (!editingQuestion) return;
 
-    if (Number(editYear) !== 2 && Number(editYear) !== 3) {
-      alert('Academic year must be 2 (2nd Year) or 3 (3rd Year).');
+    if (!isAcademicYear(editYear)) {
+      alert('Academic year must be 1, 2, 3 or 4 (1st to 4th Year).');
       return;
     }
     if (Number(editMarks) <= 0) {
@@ -368,37 +370,31 @@ export default function QuestionBankPage() {
           >
             All Years ({questions.length})
           </button>
-          <button
-            onClick={() => setSelectedYear(2)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-              selectedYear === 2
-                ? 'bg-white text-emerald-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            2nd Year ({year2Count})
-          </button>
-          <button
-            onClick={() => setSelectedYear(3)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-              selectedYear === 3
-                ? 'bg-white text-indigo-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-indigo-500" />
-            3rd Year ({year3Count})
-          </button>
+          {ACADEMIC_YEARS.map((y) => (
+            <button
+              key={y}
+              onClick={() => setSelectedYear(y)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                selectedYear === y
+                  ? `bg-white ${yearBadgeClasses(y).activeText} shadow-xs`
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${yearBadgeClasses(y).dot}`} />
+              {ordinalYear(y)} Year ({yearCounts[y]})
+            </button>
+          ))}
         </div>
 
         <div className="text-xs text-slate-500 font-medium flex items-center gap-4">
-          <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-            Year 2 Pool: {year2Count} Questions
-          </span>
-          <span className="inline-flex items-center gap-1 text-indigo-700 font-semibold bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-            Year 3 Pool: {year3Count} Questions
-          </span>
+          {ACADEMIC_YEARS.map((y) => (
+            <span
+              key={y}
+              className={`inline-flex items-center gap-1 font-semibold px-2.5 py-1 rounded-lg border ${yearBadgeClasses(y).badge}`}
+            >
+              Year {y} Pool: {yearCounts[y]} Questions
+            </span>
+          ))}
         </div>
       </div>
 
@@ -465,7 +461,7 @@ export default function QuestionBankPage() {
                 {filteredQuestions.map((q) => {
                   const publicCount = q.test_cases?.filter((tc) => !tc.is_hidden).length || 0;
                   const hiddenCount = q.test_cases?.filter((tc) => tc.is_hidden).length || 0;
-                  const isYear3 = Number(q.year) === 3;
+                  const yearColors = yearBadgeClasses(q.year);
 
                   return (
                     <tr key={q.id} className="hover:bg-slate-50/80 transition">
@@ -476,17 +472,13 @@ export default function QuestionBankPage() {
                       <td className="py-4 px-3">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                            isYear3
-                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            yearColors.badge
                           }`}
                         >
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              isYear3 ? 'bg-indigo-500' : 'bg-emerald-500'
-                            }`}
+                            className={`w-1.5 h-1.5 rounded-full ${yearColors.dot}`}
                           />
-                          {isYear3 ? '3rd Year' : '2nd Year'}
+                          {ordinalYear(q.year)} Year
                         </span>
                       </td>
                       <td className="py-4 px-3">
@@ -550,7 +542,7 @@ export default function QuestionBankPage() {
           title={
             selectedYear === 'all'
               ? 'No questions available yet'
-              : `No ${selectedYear === 2 ? '2nd' : '3rd'} Year questions found`
+              : `No ${ordinalYear(selectedYear)} Year questions found`
           }
           description="Create algorithmic challenges with public sample test cases and hidden evaluation assertions to populate this question pool."
           action={{
@@ -597,11 +589,12 @@ export default function QuestionBankPage() {
                   </label>
                   <select
                     value={newYear}
-                    onChange={(e) => setNewYear(Number(e.target.value) as 2 | 3)}
+                    onChange={(e) => setNewYear(Number(e.target.value) as AcademicYear)}
                     className="w-full bg-slate-50 border border-indigo-200 rounded-xl p-3 text-slate-800 font-bold focus:bg-white focus:outline-none focus:border-indigo-500 shadow-xs"
                   >
-                    <option value={2}>2nd Year (Pool 2)</option>
-                    <option value={3}>3rd Year (Pool 3)</option>
+                    {ACADEMIC_YEARS.map((y) => (
+                      <option key={y} value={y}>{ordinalYear(y)} Year (Pool {y})</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -859,11 +852,12 @@ export default function QuestionBankPage() {
                   </label>
                   <select
                     value={editYear}
-                    onChange={(e) => setEditYear(Number(e.target.value) as 2 | 3)}
+                    onChange={(e) => setEditYear(Number(e.target.value) as AcademicYear)}
                     className="w-full bg-slate-50 border border-indigo-200 rounded-xl p-3 text-slate-800 font-bold focus:bg-white focus:outline-none focus:border-indigo-500 shadow-xs"
                   >
-                    <option value={2}>2nd Year (Pool 2)</option>
-                    <option value={3}>3rd Year (Pool 3)</option>
+                    {ACADEMIC_YEARS.map((y) => (
+                      <option key={y} value={y}>{ordinalYear(y)} Year (Pool {y})</option>
+                    ))}
                   </select>
                 </div>
               </div>

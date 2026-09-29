@@ -196,6 +196,12 @@ export const ConsolePanel: React.FC<ConsolePanelProps> = ({
                   } else if (isRuntime) {
                     displayTitle = 'RUNTIME ERROR';
                     displayDesc = 'Runtime exception raised during execution';
+                  } else if (s === 'MEMORY_LIMIT') {
+                    displayTitle = 'MEMORY LIMIT EXCEEDED';
+                    displayDesc = 'Program used more memory than allowed';
+                  } else if (s === 'OUTPUT_LIMIT') {
+                    displayTitle = 'OUTPUT LIMIT EXCEEDED';
+                    displayDesc = 'Program printed too much output';
                   } else if (isWrong) {
                     displayTitle = 'WRONG ANSWER';
                     displayDesc = lastRunResult.passedCases !== undefined && lastRunResult.totalCases !== undefined

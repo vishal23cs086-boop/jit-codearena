@@ -28,6 +28,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (typeof password !== 'string' || password.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Please enter your password.' },
+        { status: 400 }
+      );
+    }
+
     const student = await findStudentByRegNo(cleanRegNo);
     if (!student || Number(student.account_deleted || 0) === 1) {
       return NextResponse.json(
@@ -62,11 +69,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Password verification: If password is stored, verify; otherwise allow default test access
-    if (student.password_hash && password) {
+    // Password verification: always required; accounts without a stored password cannot log in
+    {
       const { verifyPassword, hashPassword, getTursoClient } = await import('@/lib/turso');
-      const isMatch = verifyPassword(password, student.password_hash);
-      if (!isMatch) {
+      const isMatch = Boolean(student.password_hash) && verifyPassword(password, student.password_hash);
+      if (!isMatch || !student.password_hash) {
         return NextResponse.json(
           {
             success: false,

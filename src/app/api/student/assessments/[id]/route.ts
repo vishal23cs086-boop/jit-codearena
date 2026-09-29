@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken } from '@/lib/session';
 import { getAssessmentWithQuestions, getTursoClient, validateStudentAccountAndSession } from '@/lib/turso';
+import { ordinalYear } from '@/lib/utils';
 
 export async function GET(
   req: NextRequest,
@@ -58,7 +59,7 @@ export async function GET(
       return NextResponse.json(
         {
           success: false,
-          error: `This assessment is configured strictly for ${test.year === 2 ? '2nd' : '3rd'} Year candidates only.`,
+          error: `This assessment is configured strictly for ${ordinalYear(test.year)} Year candidates only.`,
         },
         { status: 403 }
       );

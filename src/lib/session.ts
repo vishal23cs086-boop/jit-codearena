@@ -3,11 +3,13 @@
 // Uses Web Crypto API compatible with Next.js Edge Runtime and Node.js
 // ==============================================================================
 
-const SESSION_SECRET_FALLBACK = 'jit-codearena-production-session-auth-key-2026';
-
 function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET || SESSION_SECRET_FALLBACK;
-  return secret.trim().replace(/^["']|["']$/g, '');
+  const secret = (process.env.SESSION_SECRET || '').trim().replace(/^["']|["']$/g, '');
+  // No built-in fallback: a secret published in the source would let anyone forge admin tokens
+  if (secret.length < 32) {
+    throw new Error('SESSION_SECRET must be set to a random value of at least 32 characters.');
+  }
+  return secret;
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -68,6 +70,18 @@ export async function signSessionToken(payload: Omit<SessionPayload, 'exp'>, max
   const sigB64 = toBase64Url(new Uint8Array(sigBuffer));
 
   return `${payloadB64}.${sigB64}`;
+}
+
+/**
+ * Returns the logged-in student from the signed `jit_student_session` cookie,
+ * or null. Student routes must identify the student this way only, never from
+ * IDs in the request body.
+ */
+export async function getStudentSession(req: { cookies: { get(name: string): { value: string } | undefined } }): Promise<SessionPayload | null> {
+  const token = req.cookies.get('jit_student_session')?.value;
+  if (!token) return null;
+  const payload = await verifySessionToken(token);
+  return payload && payload.role === 'student' && payload.id ? payload : null;
 }
 
 /**

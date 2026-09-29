@@ -1,31 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateHeartbeatInDb } from '@/lib/turso';
-import { verifySessionToken } from '@/lib/session';
+import { getStudentSession } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    let student_id = body.student_id;
-    let register_number = body.register_number;
-    let session_version = body.session_version ?? body.sessionVersion;
-
-    // Authoritative student identification from signed HMAC session token
-    const studentCookie = req.cookies.get('jit_student_session')?.value;
-    if (studentCookie) {
-      const payload = await verifySessionToken(studentCookie);
-      if (payload && payload.role === 'student') {
-        student_id = payload.id;
-        session_version = payload.session_version;
-        if (payload.register_number) register_number = payload.register_number;
-      }
+    // Identity comes only from the signed session cookie
+    const session = await getStudentSession(req);
+    if (!session || !session.register_number) {
+      return NextResponse.json({ success: false, error: 'Authentication required. Please log in.' }, { status: 401 });
     }
-
-    if (!student_id || !register_number) {
-      return NextResponse.json(
-        { success: false, error: 'student_id and register_number are required' },
-        { status: 400 }
-      );
-    }
+    const student_id = session.id;
+    const register_number = session.register_number;
+    const session_version = session.session_version;
 
     const {
       full_name,

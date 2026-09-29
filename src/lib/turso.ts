@@ -1,5 +1,6 @@
 import { createClient, type Client } from '@libsql/client';
 import crypto from 'crypto';
+import { isAcademicYear, ordinalYear } from '@/lib/utils';
 
 let tursoClientInstance: Client | null = null;
 let isInitialized = false;
@@ -1436,10 +1437,10 @@ export async function createAssessmentInDb(data: {
     throw err;
   }
 
-  // 2. Academic year validation (strictly 2 or 3)
+  // 2. Academic year validation (1 to 4)
   const testYear = Number(data.year !== undefined ? data.year : 2);
-  if (testYear !== 2 && testYear !== 3) {
-    const err: any = new Error('Academic year must be 2 (2nd Year) or 3 (3rd Year).');
+  if (!isAcademicYear(testYear)) {
+    const err: any = new Error('Academic year must be 1, 2, 3 or 4 (1st to 4th Year).');
     err.status = 400;
     throw err;
   }
@@ -1669,8 +1670,8 @@ export async function updateAssessmentInDb(
   // 3. Year validation & protection
   const targetYear = data.year !== undefined ? Number(data.year) : existing.year;
   if (data.year !== undefined) {
-    if (targetYear !== 2 && targetYear !== 3) {
-      const err: any = new Error('Academic year must be 2 (2nd Year) or 3 (3rd Year).');
+    if (!isAcademicYear(targetYear)) {
+      const err: any = new Error('Academic year must be 1, 2, 3 or 4 (1st to 4th Year).');
       err.status = 400;
       throw err;
     }
@@ -2021,7 +2022,7 @@ export async function createQuestionInDb(data: {
   const client = getTursoClient();
   const qId = data.id || `q-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
-  const qYear = Number(data.year) === 3 ? 3 : 2; // Strict 2 or 3
+  const qYear = isAcademicYear(data.year) ? Number(data.year) : 2;
 
   if (!Array.isArray(data.test_cases) || data.test_cases.length !== 3) {
     const err: any = new Error('Every coding question must have exactly 3 test cases.');
@@ -2103,7 +2104,7 @@ export async function updateQuestionInDb(
   }
   if (data.year !== undefined) {
     updates.push('year = ?');
-    args.push(Number(data.year) === 3 ? 3 : 2);
+    args.push(isAcademicYear(data.year) ? Number(data.year) : 2);
   }
   if (data.difficulty !== undefined) {
     updates.push('difficulty = ?');
@@ -2214,15 +2215,19 @@ export async function deleteQuestionInDb(id: string) {
 export async function getQuestionPoolStats() {
   await initTursoDb();
   const client = getTursoClient();
-  const [y2Res, y3Res, totalRes] = await Promise.all([
+  const [y1Res, y2Res, y3Res, y4Res, totalRes] = await Promise.all([
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 1 AND (is_archived = 0 OR is_archived IS NULL)'),
     client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 2 AND (is_archived = 0 OR is_archived IS NULL)'),
     client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 3 AND (is_archived = 0 OR is_archived IS NULL)'),
+    client.execute('SELECT COUNT(*) as count FROM questions WHERE year = 4 AND (is_archived = 0 OR is_archived IS NULL)'),
     client.execute('SELECT COUNT(*) as count FROM questions WHERE (is_archived = 0 OR is_archived IS NULL)'),
   ]);
 
   return {
+    year1Count: Number(y1Res.rows[0]?.count || 0),
     year2Count: Number(y2Res.rows[0]?.count || 0),
     year3Count: Number(y3Res.rows[0]?.count || 0),
+    year4Count: Number(y4Res.rows[0]?.count || 0),
     totalCount: Number(totalRes.rows[0]?.count || 0),
   };
 }
@@ -2408,7 +2413,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
 
   // Edge case check:
   if (pool.length < requiredCount || pool.length === 0) {
-    const yearLabel = studentYear === 2 ? '2nd Year' : studentYear === 3 ? '3rd Year' : `Year ${studentYear}`;
+    const yearLabel = `${ordinalYear(studentYear)} Year`;
     const err: any = new Error(
       `Insufficient questions for this assessment. Required: ${requiredCount}. Available for ${yearLabel}: ${pool.length}.`
     );
@@ -2495,7 +2500,7 @@ export async function startOrGetAssessmentAttempt(testId: string, studentId: str
     student_name: student.full_name,
     register_number: student.register_number,
     event_type: 'TEST_STARTED',
-    description: `Candidate started ${test.title} (${testYear === 2 ? '2nd Year' : '3rd Year'}). Assigned ${selectedQuestions.length} randomized questions.`,
+    description: `Candidate started ${test.title} (${ordinalYear(testYear)} Year). Assigned ${selectedQuestions.length} randomized questions.`,
     metadata: {
       attemptId,
       studentYear,
@@ -2567,7 +2572,7 @@ export async function verifyQuestionForStudentAttempt(
     args: [questionId],
   });
   if (qRes.rows.length === 0) {
-    return { valid: false, error: 'Question not found.' };
+    return { valid: false, error: 'Question not found.', code: 404 };
   }
   const questionYear = Number(qRes.rows[0].year);
 
@@ -2575,7 +2580,7 @@ export async function verifyQuestionForStudentAttempt(
   if (questionYear !== studentYear) {
     return {
       valid: false,
-      error: `Question does not belong to your academic year (${studentYear === 2 ? '2nd' : '3rd'} Year).`,
+      error: `Question does not belong to your academic year (${ordinalYear(studentYear)} Year).`,
       code: 403,
     };
   }
@@ -2587,11 +2592,15 @@ export async function verifyQuestionForStudentAttempt(
       args: [attemptId],
     });
 
+    if (aRes.rows.length === 0) {
+      return { valid: false, error: 'Assessment attempt not found.', code: 404 };
+    }
+
     if (aRes.rows.length > 0) {
       const att: any = aRes.rows[0];
 
       // Ownership guard
-      if (att.student_id && att.student_id !== studentId) {
+      if (String(att.student_id) !== studentId) {
         return {
           valid: false,
           error: 'Unauthorized attempt access. Attempt belongs to another candidate.',
@@ -3029,6 +3038,11 @@ export async function finalizeAssessmentAttemptInDb(params: {
     throw new Error('Assessment attempt record not found.');
   }
   const attempt: any = aRes.rows[0];
+  if (String(attempt.student_id) !== studentId) {
+    const err: any = new Error('Unauthorized attempt access. Attempt belongs to another candidate.');
+    err.status = 403;
+    throw err;
+  }
   const targetTestId = attempt.test_id || params.testId;
 
   // 2. Fetch test
@@ -3064,10 +3078,11 @@ export async function finalizeAssessmentAttemptInDb(params: {
     const qDiff = String(row.difficulty || 'Easy');
     const testCases = row.test_cases ? JSON.parse(String(row.test_cases)) : [];
 
-    // Query highest score submission for this student + question + attempt
+    // Highest score submission made in THIS attempt only; submissions from other
+    // tests that share the question must not carry over
     const subRes = await client.execute({
-      sql: `SELECT * FROM submissions 
-            WHERE (attempt_id = ? OR student_id = ?) AND question_id = ?
+      sql: `SELECT * FROM submissions
+            WHERE attempt_id = ? AND student_id = ? AND question_id = ?
             ORDER BY score DESC, created_at DESC LIMIT 1`,
       args: [attemptId, studentId, qId],
     });
@@ -3595,4 +3610,109 @@ export async function migrateQuestionsToThreeTestCasesAndCleanStarterCode(resetS
     migratedSpecificQuestionsCount: migratedCount,
     summary,
   };
+}
+
+// ==============================================================================
+// Attempt reports (admin reports page, student dashboard & analytics)
+// ==============================================================================
+
+/**
+ * Test attempts with student and test details. Pass a studentId to get only
+ * that student's attempts (student-facing routes must always pass one).
+ */
+function parseQuestionResults(raw: unknown) {
+  try {
+    const parsed = raw ? JSON.parse(String(raw)) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAttemptReportsFromDb(studentId?: string) {
+  await initTursoDb();
+  const client = getTursoClient();
+
+  const sql = `
+    SELECT 
+      ta.id,
+      ta.test_id,
+      ta.student_id,
+      ta.start_time,
+      ta.end_time,
+      ta.score,
+      ta.max_score,
+      ta.percentage,
+      ta.time_taken_seconds,
+      ta.completion_rank,
+      ta.question_results,
+      ta.status,
+      ta.tab_switches,
+      ta.fullscreen_exits,
+      ta.violation_count,
+      ta.answers,
+      ta.created_at,
+      s.register_number,
+      s.full_name,
+      s.department,
+      s.year,
+      s.email,
+      t.title as test_title,
+      t.duration as test_duration
+    FROM test_attempts ta
+    LEFT JOIN students s ON ta.student_id = s.id
+    LEFT JOIN tests t ON ta.test_id = t.id
+    ${studentId ? 'WHERE ta.student_id = ?' : ''}
+    ORDER BY ta.created_at DESC
+  `;
+
+  const res = await client.execute({ sql, args: studentId ? [studentId] : [] });
+
+  const attempts = res.rows.map((r: any) => {
+    const score = Number(r.score || 0);
+    const maxScore = Number(r.max_score || 100);
+    const percentage = r.percentage !== undefined && r.percentage !== null && Number(r.percentage) > 0
+      ? Number(r.percentage)
+      : maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
+
+    let timeTakenSeconds = Number(r.time_taken_seconds || 0);
+    if (timeTakenSeconds <= 0) {
+      if (r.start_time && r.end_time) {
+        timeTakenSeconds = Math.max(1, Math.floor((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / 1000));
+      } else if (r.start_time) {
+        timeTakenSeconds = Math.max(1, Math.floor((Date.now() - new Date(r.start_time).getTime()) / 1000));
+      }
+    }
+
+    return {
+      id: String(r.id),
+      test_id: String(r.test_id),
+      student_id: String(r.student_id),
+      score,
+      max_score: maxScore,
+      total_marks: maxScore,
+      percentage,
+      started_at: r.start_time ? String(r.start_time) : String(r.created_at),
+      completed_at: r.end_time ? String(r.end_time) : null,
+      status: (r.status as 'completed' | 'in_progress' | 'timed_out' | 'submitted' | 'auto_submitted') || 'in_progress',
+      tab_switch_count: Number(r.tab_switches || 0),
+      fullscreen_exit_count: Number(r.fullscreen_exits || 0),
+      time_taken_seconds: timeTakenSeconds,
+      completion_rank: Number(r.completion_rank || 1),
+      question_results: parseQuestionResults(r.question_results),
+      students: {
+        register_number: r.register_number ? String(r.register_number) : 'N/A',
+        department: r.department ? String(r.department) : 'Engineering',
+        year: Number(r.year || 2),
+        profiles: {
+          full_name: r.full_name ? String(r.full_name) : 'Student',
+        },
+      },
+      tests: {
+        title: r.test_title ? String(r.test_title) : 'Python Assessment',
+      },
+    };
+  });
+
+  return attempts;
 }

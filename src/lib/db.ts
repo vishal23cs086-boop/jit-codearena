@@ -315,6 +315,24 @@ export async function fetchAttempts(): Promise<TestAttempt[]> {
   return [];
 }
 
+/**
+ * The logged-in student's own attempts (student pages; /api/admin/* is admin-only).
+ */
+export async function fetchMyAttempts(): Promise<TestAttempt[]> {
+  try {
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/student/attempts');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.attempts)) {
+        return data.attempts;
+      }
+    }
+  } catch (err) {
+    console.warn('API fetchMyAttempts error:', err);
+  }
+  return [];
+}
+
 export async function saveAttempt(attempt: TestAttempt): Promise<boolean> {
   return true;
 }

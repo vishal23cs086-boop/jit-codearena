@@ -1,24 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { startOrGetAssessmentAttempt } from '@/lib/turso';
+import { getStudentSession } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { testId, studentId } = body;
+    const { testId } = body;
 
-    if (!testId || !studentId) {
+    // Identity comes only from the signed session cookie
+    const session = await getStudentSession(req);
+    if (!session) {
       return NextResponse.json(
-        { success: false, error: 'Test ID and Student ID are required.' },
+        { success: false, error: 'Authentication required. Please log in.' },
+        { status: 401 }
+      );
+    }
+
+    if (!testId) {
+      return NextResponse.json(
+        { success: false, error: 'Test ID is required.' },
         { status: 400 }
       );
     }
 
-    const sessionVersion = body.session_version ?? body.sessionVersion;
-    const result = await startOrGetAssessmentAttempt(
-      testId,
-      studentId,
-      sessionVersion !== undefined && sessionVersion !== null ? Number(sessionVersion) : undefined
-    );
+    const result = await startOrGetAssessmentAttempt(testId, session.id, session.session_version);
 
     return NextResponse.json({
       success: true,
